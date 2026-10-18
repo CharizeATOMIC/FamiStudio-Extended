@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,7 +14,34 @@ namespace FamiStudio
         private Song song;
         private int channelType;
         private int chipInstance;
+        private int playbackDelay;
+        private int loopVariantId = -1;
         public int ChipInstance { get => chipInstance; set => chipInstance = value; }
+        // Delay the events, including their release/stop, in video frames. The
+        // sequencer grid and loop boundary remain at the original musical time.
+        public int PlaybackDelay { get => playbackDelay; set => playbackDelay = Utils.Clamp(value, 0, 255); }
+        // A source arrangement may change articulation on later song passes.
+        // Keep the same timeline and choose an ordinary editable pattern only
+        // after a real song-loop jump. IDs permit forward references on load.
+        public Pattern LoopVariant
+        {
+            get => loopVariantId < 0 ? null : Channel?.GetPattern(loopVariantId);
+            set
+            {
+                if (value != null && (value == this || value.Channel != Channel ||
+                    value.loopVariantId >= 0 || Channel.Patterns.Exists(p => p.loopVariantId == id)))
+                    throw new ArgumentException("A loop variant must be a different, unlinked pattern in the same channel.");
+                loopVariantId = value?.Id ?? -1;
+            }
+        }
+
+        public Pattern GetPlaybackPattern(bool useLoopVariant) => useLoopVariant ? LoopVariant ?? this : this;
+
+        public void ValidateLoopVariant()
+        {
+            if (loopVariantId >= 0 && (LoopVariant == null || LoopVariant == this || LoopVariant.loopVariantId >= 0))
+                throw new ArgumentException("Invalid loop variant reference.");
+        }
         private Color color;
         private SortedList<int, Note> notes = new SortedList<int, Note>();
 
@@ -160,7 +187,7 @@ namespace FamiStudio
             var maxInstanceLength = -1;
             for (int i = 0; i < song.Length; i++)
             {
-                if (channel.PatternInstances[i] == this)
+                if (channel.PatternInstances[i] == this || channel.PatternInstances[i]?.LoopVariant == this)
                     maxInstanceLength = Math.Max(maxInstanceLength, song.GetPatternLength(i));
             }
 
@@ -177,6 +204,9 @@ namespace FamiStudio
             var channel = newChannel == null ? song.GetChannelByType(channelType, chipInstance) : newChannel;
             var pattern = channel.CreatePattern();
             pattern.color = color;
+            pattern.playbackDelay = playbackDelay;
+            if (LoopVariant != null)
+                pattern.LoopVariant = LoopVariant.ShallowClone(channel);
 
             foreach (var kv in notes)
                 pattern.Notes[kv.Key] = kv.Value.Clone();
@@ -269,6 +299,8 @@ namespace FamiStudio
         {
             var serializer = new ProjectCrcBuffer(crc, ProjectBufferFlags.IgnoreId);
             Serialize(serializer);
+            uint variantCrc = LoopVariant?.ComputeCRC() ?? 0;
+            serializer.Serialize(ref variantCrc);
             return serializer.CRC;
         }
 
@@ -475,6 +507,8 @@ namespace FamiStudio
             buffer.Serialize(ref name);
             buffer.Serialize(ref channelType);
             if (buffer.Version >= Project.TuningFormatVersion) buffer.Serialize(ref chipInstance);
+            if (buffer.Version >= 1003) buffer.Serialize(ref playbackDelay);
+            if (buffer.Version >= 1003) buffer.Serialize(ref loopVariantId, true);
             buffer.Serialize(ref color);
             buffer.Serialize(ref song);
 

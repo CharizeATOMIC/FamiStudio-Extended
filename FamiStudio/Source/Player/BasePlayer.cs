@@ -47,6 +47,7 @@ namespace FamiStudio
         protected NesApu.DmcReadDelegate dmcCallback;
         protected int sampleRate;
         protected int loopCount = 0;
+        private bool hasLoopedSong;
         protected int maxLoopCount = -1;
         protected int frameNumber = 0;
         protected int playbackRate = 1; // 1 = normal, 2 = 1/2, 4 = 1/4, etc.
@@ -239,7 +240,7 @@ namespace FamiStudio
         {
             foreach (var channel in channelStates)
             {
-                channel.Advance(song, playLocation, ref famitrackerSpeed);
+                channel.Advance(song, playLocation, ref famitrackerSpeed, hasLoopedSong && loopMode != LoopMode.Pattern);
             }
         }
 
@@ -328,6 +329,8 @@ namespace FamiStudio
             famitrackerSpeed = song.FamitrackerSpeed;
             playLocation = NoteLocation.Invalid; // This means "before the first frame".
             frameNumber = 0;
+            loopCount = 0;
+            hasLoopedSong = false;
             famitrackerTempoCounter = 0;
             channelStates = CreateChannelStates(song.Project, apuIndex, song.GetTuningHz(), palPlayback, song.Project.ExpansionNumN163Channels);
             reachedEnd = false;
@@ -514,6 +517,7 @@ namespace FamiStudio
                         if (song.LoopPoint >= 0)
                         {
                             playLocation.PatternIndex = song.LoopPoint;
+                            hasLoopedSong = true;
                             playLocation.NoteIndex = 0;
                             advancedPattern = true;
                         }
@@ -525,6 +529,7 @@ namespace FamiStudio
                     else if (loopMode == LoopMode.Song)
                     {
                         playLocation.PatternIndex = Math.Max(0, song.LoopPoint);
+                        hasLoopedSong = true;
                         playLocation.NoteIndex = 0;
                         advancedPattern = true;
                     }

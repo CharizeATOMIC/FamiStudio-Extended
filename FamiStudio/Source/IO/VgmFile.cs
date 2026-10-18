@@ -74,9 +74,10 @@ namespace FamiStudio
             public int SCSPclock;
             public int ExtraHeaderOffset;
         };
-        public unsafe static void Save(Song song, string filename, string trackTitle, string gameName, string system, string composer, string releaseDate, string VGMby, string notes, bool smoothLoop)
+        public unsafe static bool Save(Song song, string filename, string trackTitle, string gameName, string system, string composer, string releaseDate, string VGMby, string notes, bool smoothLoop)
         {   //This is a mess, works somehow tho
-            if (song.Project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return; }
+            if (song.Project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+            if (song.UsesExtendedPlayback(false)) { Log.LogMessage(LogSeverity.Error, TuningStrings.ScheduledVgmExportError); return false; }
             var project = song.Project.DeepClone();
             song = project.GetSong(song.Id);
             var regPlayer = new RegisterPlayer(project.PalMode, project.OutputsStereoAudio);
@@ -426,6 +427,7 @@ namespace FamiStudio
                 writer.Flush();
                 writer.Close();
             }
+            return true;
         }
         private static int GetAmountOfBankswitching(Dictionary<int, int> sampleBanks, RegisterWrite[] writes)
         {

@@ -52,6 +52,11 @@ namespace FamiStudio
 
         private static void SavePatternList(ProjectSaveBuffer serializer, ICollection<Pattern> patterns)
         {
+            // Clipboard IDs are remapped as patterns are read. Store the leaf
+            // variants before their owners so every reference is available.
+            var orderedPatterns = new List<Pattern>(patterns);
+            orderedPatterns.Sort((a, b) => (a.LoopVariant != null).CompareTo(b.LoopVariant != null));
+            patterns = orderedPatterns;
             int numUniquePatterns = patterns.Count;
             serializer.Serialize(ref numUniquePatterns);
 
@@ -647,15 +652,20 @@ namespace FamiStudio
                     if (pattern != null)
                     {
                         uniquePatterns.Add(pattern);
-
-                        foreach (var n in pattern.Notes.Values)
-                        {
-                            if (n.Instrument != null)
-                                uniqueInstruments.Add(n.Instrument);
-                            if (n.Arpeggio != null)
-                                uniqueArpeggios.Add(n.Arpeggio);
-                        }
+                        if (pattern.LoopVariant != null)
+                            uniquePatterns.Add(pattern.LoopVariant);
                     }
+                }
+            }
+
+            foreach (var pattern in uniquePatterns)
+            {
+                foreach (var n in pattern.Notes.Values)
+                {
+                    if (n.Instrument != null)
+                        uniqueInstruments.Add(n.Instrument);
+                    if (n.Arpeggio != null)
+                        uniqueArpeggios.Add(n.Arpeggio);
                 }
             }
 

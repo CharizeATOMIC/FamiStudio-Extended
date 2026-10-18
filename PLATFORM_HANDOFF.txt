@@ -1,4 +1,4 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 3)
+FamiStudio Tuning: platform and upstream integration notes (revision 4)
 
 Maintenance assessment
 
@@ -17,7 +17,7 @@ Suggested review order:
 
 Before upstream merge, maintainers should choose the official format version and
 opcode, review ROM/RAM/CPU budgets, and decide which optional features to accept.
-Format 1002 and the separate settings directory intentionally identify this fork;
+Format 1003 and the separate settings directory intentionally identify this fork;
 they should not silently become the upstream format/settings policy.
 
 Revision 3 architecture and format
@@ -211,3 +211,33 @@ Reference documentation for the added build configuration:
 https://cmake.org/cmake/help/latest/variable/CMAKE_OSX_ARCHITECTURES.html
 https://github.com/actions/setup-dotnet
 https://github.com/actions/checkout
+
+Revision 4 integration addendum
+
+The shared model now includes optional hardware noise macros, software volume
+envelope decay, per-pattern video-frame playback delay, and a same-channel
+loop-variant reference. Version 1003 reads fork versions 1001/1002 as well as
+official projects through 19. All seven language files include the new controls.
+The existing piano roll edits first-pass or loop-variant notes. Resource cleanup,
+clipboard remapping, independent pattern copies and tempo resizing include both.
+
+FamitonePlaybackCompiler.cs is included in all four managed platform projects.
+It compiles note events and their owner-aware stop/release events without changing
+the source project. FamiTracker-tempo playback delay is explicitly unsupported by
+sound-engine export; FamiTracker-tempo loop variants without delay are supported.
+The hardware engine has optional $60 noise-macro and $61 envelope-decay opcodes.
+Standalone flags default off; bundled drivers are rebuilt with both enabled.
+Regular NES TOC is $F900, EPSM TOC $FBA0; FDS TOC $7700 and music $7900.
+These addresses must be changed together in linker configs and the image exporter.
+The FDS song area is now $4700 bytes. Check ROM/RAM/CPU budgets before adoption.
+
+The musical loop markers in a project are preserved. An exported stream may need
+an initial pass followed by a repeat stream when inherited articulation differs;
+the exporter deduplicates shared byte sequences. Do not rotate the editor's loop
+or lengthen its introduction merely to obtain repeatable register state.
+
+Revision 4 desktop managed builds are tested on Windows only; Linux/macOS builds
+do not establish native/runtime compatibility. The prior Android toolchain blocker
+remains, and no physical mobile or NES hardware validation has been performed.
+Game-specific decoding scripts, extracted assets and projects stay outside the
+public application/source package. They are not a general game music importer.

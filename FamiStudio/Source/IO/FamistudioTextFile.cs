@@ -293,7 +293,7 @@ namespace FamiStudio
 
                     foreach (var pattern in channel.Patterns)
                     {
-                        lines.Add($"\t\t\tPattern{GenerateAttribute("Name", pattern.Name)}{ConditionalGenerateAttribute("Color", pattern.Color.ToHexString(), !noColors)}");
+                        lines.Add($"\t\t\tPattern{GenerateAttribute("Name", pattern.Name)}{ConditionalGenerateAttribute("Color", pattern.Color.ToHexString(), !noColors)}{ConditionalGenerateAttribute("PlaybackDelay", pattern.PlaybackDelay, pattern.PlaybackDelay != 0)}{ConditionalGenerateAttribute("LoopVariant", pattern.LoopVariant?.Name, pattern.LoopVariant != null)}");
 
                         foreach (var kv in pattern.Notes)
                         {
@@ -336,6 +336,7 @@ namespace FamiStudio
                                 if (note.HasDeltaCounter)   noteLine += GenerateAttribute("DeltaCounter", note.DeltaCounter);
                                 if (note.HasPhaseReset)     noteLine += GenerateAttribute("PhaseReset", note.PhaseReset);
                                 if (note.HasEnvelopePeriod) noteLine += GenerateAttribute("EnvelopePeriod", note.EnvelopePeriod);
+                                if (note.HasEnvelopeDecay) noteLine += GenerateAttribute("EnvelopeDecay", note.EnvelopeDecay);
 
                                 lines.Add(noteLine);
                             }
@@ -436,6 +437,7 @@ namespace FamiStudio
                 var song = (Song)null;
                 var channel = (Channel)null;
                 var pattern = (Pattern)null;
+                var loopVariants = new List<(Pattern Pattern, string Name)>();
 
                 SetInvariantCulture();
 
@@ -767,6 +769,10 @@ namespace FamiStudio
                         case "Pattern":
                         {
                             pattern = channel.CreatePattern(parameters["Name"]);
+                            if (parameters.TryGetValue("PlaybackDelay", out var playbackDelay))
+                                pattern.PlaybackDelay = int.Parse(playbackDelay);
+                            if (parameters.TryGetValue("LoopVariant", out var loopVariant))
+                                loopVariants.Add((pattern, loopVariant));
                             if (parameters.TryGetValue("Color", out var hexColor))
                                 pattern.Color = Theme.EnforceThemeColor(Color.FromHexString(hexColor));
                             break;
@@ -821,6 +827,8 @@ namespace FamiStudio
                                 note.PhaseReset = byte.Parse(phaseResetStr);
                             if (parameters.TryGetValue("EnvelopePeriod", out var envPeriodStr) && channel.SupportsEffect(Note.EffectEnvelopePeriod))
                                 note.EnvelopePeriod = ushort.Parse(envPeriodStr);
+                            if (parameters.TryGetValue("EnvelopeDecay", out var envDecayStr) && channel.SupportsEffect(Note.EffectEnvelopeDecay))
+                                note.EnvelopeDecay = byte.Parse(envDecayStr);
 
                             break;
                         }
@@ -834,6 +842,12 @@ namespace FamiStudio
                 }
 
                 // Post-load
+                foreach (var entry in loopVariants)
+                {
+                    var variant = entry.Pattern.Channel.GetPattern(entry.Name);
+                    if (variant == null) throw new FormatException("Loop variant pattern not found.");
+                    entry.Pattern.LoopVariant = variant;
+                }
                 foreach (var inst in project.Instruments)
                 {
                     // Ensure all envelopes are within valid range (in the event of a garbage text file).

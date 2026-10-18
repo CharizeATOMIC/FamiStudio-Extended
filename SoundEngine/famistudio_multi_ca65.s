@@ -388,6 +388,15 @@ FAMISTUDIO_USE_ARPEGGIO          = 1
     FAMISTUDIO_USE_VOLUME_SLIDES = 0
 .endif
 
+; Three optional APU noise macros: raw period, raw control, and length/envelope restart.
+.ifndef FAMISTUDIO_USE_ENVELOPE_DECAY
+    FAMISTUDIO_USE_ENVELOPE_DECAY = 0
+.endif
+
+.ifndef FAMISTUDIO_USE_NOISE_ENVELOPES
+    FAMISTUDIO_USE_NOISE_ENVELOPES = 0
+.endif
+
 .ifndef FAMISTUDIO_USE_CUSTOM_TUNING
     FAMISTUDIO_USE_CUSTOM_TUNING = 0
 .endif
@@ -517,7 +526,7 @@ FAMISTUDIO_DPCM_PTR = (FAMISTUDIO_DPCM_OFF & $3fff) >> 6
 .else
 FAMISTUDIO_EXP_EPSM_CHANNELS    = 0
 .endif
-FAMISTUDIO_NUM_ENVELOPES        = (3+3+2+3)+(3+3+3)+(2+2+2+2+2+2)+(3)+(3+3)+(3+3+3+3+3+3+3+3)+(4+4+4)+(FAMISTUDIO_EXP_EPSM_SSG_CHN_CNT * 4) + (FAMISTUDIO_EXP_EPSM_FM_CHN_CNT * 2)
+FAMISTUDIO_NUM_ENVELOPES        = (3+3+2+3)+(3+3+3)+(2+2+2+2+2+2)+(3)+(3+3)+(3+3+3+3+3+3+3+3)+(4+4+4)+(FAMISTUDIO_EXP_EPSM_SSG_CHN_CNT * 4) + (FAMISTUDIO_EXP_EPSM_FM_CHN_CNT * 2) + (3 * FAMISTUDIO_USE_NOISE_ENVELOPES)
 FAMISTUDIO_NUM_PITCH_ENVELOPES  = (3)+(3)+(6)+(1)+(2)+(8)+(3)+(FAMISTUDIO_EXP_EPSM_SSG_CHN_CNT + FAMISTUDIO_EXP_EPSM_FM_CHN_CNT)
 FAMISTUDIO_NUM_CHANNELS         = (5)+(3)+(6)+(1)+(2)+(8)+(3)+(FAMISTUDIO_EXP_EPSM_CHANNELS)
 FAMISTUDIO_NUM_DUTY_CYCLES      = (3)+(3)+(0)+(0)+(2)+(0)+(0)+(0)
@@ -818,6 +827,24 @@ famistudio_env_repeat:            .res FAMISTUDIO_NUM_ENVELOPES
 famistudio_env_addr_lo:           .res FAMISTUDIO_NUM_ENVELOPES
 famistudio_env_addr_hi:           .res FAMISTUDIO_NUM_ENVELOPES
 famistudio_env_ptr:               .res FAMISTUDIO_NUM_ENVELOPES
+
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+.segment "EXRAM"
+; Keep compressed-envelope repeat/position untouched while decay is active.
+famistudio_env_decay_rate: .res FAMISTUDIO_NUM_ENVELOPES
+famistudio_env_decay_counter: .res FAMISTUDIO_NUM_ENVELOPES
+.segment .string(FAMISTUDIO_CA65_RAM_SEGMENT)
+.endif
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+FAMISTUDIO_NOISE_PERIOD_ENV = FAMISTUDIO_NUM_ENVELOPES - 3
+FAMISTUDIO_NOISE_CONTROL_ENV = FAMISTUDIO_NUM_ENVELOPES - 2
+FAMISTUDIO_NOISE_RESTART_ENV = FAMISTUDIO_NUM_ENVELOPES - 1
+famistudio_noise_env_mask: .res 1
+famistudio_noise_restart: .res 1
+famistudio_noise_period_buffer: .res 1
+famistudio_noise_control_buffer: .res 1
+.endif
+
 
 .if FAMISTUDIO_USE_CUSTOM_TUNING
 famistudio_tuning_lsb_lo: .res FAMISTUDIO_NUM_PITCH_ENVELOPES
@@ -1532,6 +1559,12 @@ ldx #0
 
     ldx #0
 
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    lda #0
+    sta famistudio_noise_env_mask
+    sta famistudio_noise_restart
+.endif
+
 @set_envelopes:
 
     lda #<famistudio_dummy_envelope
@@ -1541,6 +1574,10 @@ ldx #0
     lda #0
     sta famistudio_env_repeat,x
     sta famistudio_env_value,x
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    sta famistudio_env_decay_rate,x
+    sta famistudio_env_decay_counter,x
+.endif
     sta famistudio_env_ptr,x
     inx
     cpx #FAMISTUDIO_NUM_ENVELOPES
@@ -2296,6 +2333,34 @@ famistudio_get_note_pitch_vrc6_saw:
     sta reg_vol
 
 .endmacro
+
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+; Preserve the ordinary pitch/volume path independently for each disabled macro.
+famistudio_update_noise_sound:
+    famistudio_update_channel_sound 3, FAMISTUDIO_CH3_ENVS, , famistudio_noise_period_buffer, , famistudio_noise_control_buffer
+    lda famistudio_chn_note+3
+    beq @noise_write
+    lda famistudio_noise_env_mask
+    and #1
+    beq @noise_control
+    lda famistudio_noise_period_buffer
+    and #$80
+    ora famistudio_env_value+FAMISTUDIO_NOISE_PERIOD_ENV
+    sta famistudio_noise_period_buffer
+@noise_control:
+    lda famistudio_noise_env_mask
+    and #2
+    beq @noise_write
+    lda famistudio_env_value+FAMISTUDIO_NOISE_CONTROL_ENV
+    sta famistudio_noise_control_buffer
+@noise_write:
+    lda famistudio_noise_period_buffer
+    sta FAMISTUDIO_ALIAS_NOISE_LO
+    lda famistudio_noise_control_buffer
+    sta FAMISTUDIO_ALIAS_NOISE_VOL
+    rts
+.endif
+
 
 .if FAMISTUDIO_EXP_FDS
 
@@ -4149,6 +4214,18 @@ famistudio_update:
     ldx #0
 
 @env_process:
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    lda famistudio_env_decay_rate,x
+    beq @decay_inactive
+    dec famistudio_env_decay_counter,x
+    bne @env_next
+    sta famistudio_env_decay_counter,x
+    lda famistudio_env_value,x
+    beq @env_next
+    dec famistudio_env_value,x
+    jmp @env_next
+@decay_inactive:
+.endif
     lda famistudio_env_repeat,x
     beq @env_read  
     dec famistudio_env_repeat,x
@@ -4392,7 +4469,11 @@ famistudio_update:
     famistudio_update_channel_sound 0, FAMISTUDIO_CH0_ENVS, famistudio_pulse1_prev, FAMISTUDIO_ALIAS_PL1_HI, FAMISTUDIO_ALIAS_PL1_LO, FAMISTUDIO_ALIAS_PL1_VOL, FAMISTUDIO_APU_PL1_SWEEP
     famistudio_update_channel_sound 1, FAMISTUDIO_CH1_ENVS, famistudio_pulse2_prev, FAMISTUDIO_ALIAS_PL2_HI, FAMISTUDIO_ALIAS_PL2_LO, FAMISTUDIO_ALIAS_PL2_VOL, FAMISTUDIO_APU_PL2_SWEEP
     famistudio_update_channel_sound 2, FAMISTUDIO_CH2_ENVS, , FAMISTUDIO_ALIAS_TRI_HI, FAMISTUDIO_ALIAS_TRI_LO, FAMISTUDIO_ALIAS_TRI_LINEAR
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    jsr famistudio_update_noise_sound
+.else
     famistudio_update_channel_sound 3, FAMISTUDIO_CH3_ENVS, , FAMISTUDIO_ALIAS_NOISE_LO, , FAMISTUDIO_ALIAS_NOISE_VOL
+.endif
 
 .if FAMISTUDIO_EXP_VRC6
     ; [MULTI] BEGIN : Check the active expansion mask.
@@ -4519,6 +4600,32 @@ famistudio_update:
     jsr famistudio_process_phase_resets
 .endif
 
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    lda famistudio_song_speed
+    bmi @noise_restart_clear
+    beq @noise_restart_clear
+    lda famistudio_chn_note+3
+    beq @noise_restart_clear
+    lda famistudio_noise_env_mask
+    and #4
+    beq @noise_restart_automatic
+    lda famistudio_env_value+FAMISTUDIO_NOISE_RESTART_ENV
+    jmp @noise_restart_apply
+@noise_restart_automatic:
+    lda famistudio_noise_restart
+@noise_restart_apply:
+    beq @noise_restart_clear
+    sec
+    sbc #1
+    asl a
+    asl a
+    asl a
+    sta FAMISTUDIO_APU_NOISE_HI
+@noise_restart_clear:
+    lda #0
+    sta famistudio_noise_restart
+.endif
+
 @update_sound_done:
 .if FAMISTUDIO_USE_FAMITRACKER_TEMPO
     lda famistudio_song_speed
@@ -4608,6 +4715,8 @@ famistudio_update:
     sta FAMISTUDIO_APU_NOISE_LO
 
 .endif
+
+
 
 .if FAMISTUDIO_CFG_THREAD
     pla
@@ -4782,6 +4891,28 @@ famistudio_do_fds_note_attack:
 
 famistudio_do_note_attack:
 
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    cpx #3
+    bne @noise_attack_done
+    ldx #FAMISTUDIO_NOISE_PERIOD_ENV
+    lda #0
+@noise_attack_reset:
+    sta famistudio_env_ptr,x
+    sta famistudio_env_repeat,x
+    inx
+    cpx #FAMISTUDIO_NUM_ENVELOPES
+    bne @noise_attack_reset
+    lda famistudio_noise_env_mask
+    and #6
+    cmp #2 ; Control-only instruments need a hardware envelope trigger.
+    bne @noise_attack_restore_x
+    lda #2 ; Encoded $08: length table index 1, the longest counter.
+    sta famistudio_noise_restart
+@noise_attack_restore_x:
+    ldx #3
+@noise_attack_done:
+.endif
+
     @chan_idx = famistudio_r0
     @tmp_x    = famistudio_r2
 
@@ -4792,7 +4923,13 @@ famistudio_do_note_attack:
 .if FAMISTUDIO_EXP_EPSM_RHYTHM_CNT > 0
     lda @chan_idx
     cmp #FAMISTUDIO_EPSM_CHAN_RHYTHM_START
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    bcc @decay_non_rhythm
+    jmp @epsm_instrument
+@decay_non_rhythm:
+.else
     bcs @epsm_instrument
+.endif
 .endif
     lda famistudio_channel_env,x
     tax
@@ -4802,6 +4939,32 @@ famistudio_do_note_attack:
     sta famistudio_env_ptr,x ; Reset volume envelope pointer to 1 (volume have releases point in index 0)
     lda #0
     sta famistudio_env_repeat,x
+
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    lda famistudio_r1 ; bit5: a decay effect was set in this command row.
+    and #$20
+    bne @decay_attack_pending
+    lda #0
+    sta famistudio_env_decay_rate,x
+@decay_attack_pending:
+    lda famistudio_env_decay_rate,x
+    beq @decay_attack_done
+    sty famistudio_r3
+    lda famistudio_env_addr_lo,x
+    sta famistudio_ptr1+0
+    lda famistudio_env_addr_hi,x
+    sta famistudio_ptr1+1
+    ldy #1
+    lda (famistudio_ptr1),y
+    clc
+    adc #256-192
+    sta famistudio_env_value,x
+    lda #2
+    sta famistudio_env_ptr,x
+    ldy famistudio_r3
+@decay_attack_done:
+    lda #0 ; The following arpeggio reset expects A=0.
+.endif
 
     ; Arpeggio envelope
     sta famistudio_env_repeat+FAMISTUDIO_ENV_NOTE_OFF,x
@@ -6020,6 +6183,9 @@ famistudio_advance_channel:
 
     sta famistudio_env_ptr,x
     lda #0
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    sta famistudio_env_decay_rate,x
+.endif
     sta famistudio_env_repeat,x ; Need to reset envelope repeat to force update.
 
 @env_has_no_release:
@@ -6182,6 +6348,49 @@ famistudio_advance_channel:
     lda (@channel_data_ptr),y
     iny
     jmp @instrument_change
+.endif
+
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+@opcode_envelope_decay:
+    lda famistudio_channel_to_volume_env,x
+    tax
+    lda (@channel_data_ptr),y
+    iny
+    sta famistudio_env_decay_rate,x
+    sta famistudio_env_decay_counter,x
+    lda @update_flags
+    ora #$20
+    sta @update_flags
+    ldx @chan_idx
+    jmp @read_byte
+.endif
+
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+@opcode_noise_envelopes:
+    lda famistudio_noise_env_mask
+    and #2
+    sta famistudio_noise_restart ; Restore length if leaving hardware control.
+    lda (@channel_data_ptr),y
+    iny
+    sta famistudio_noise_env_mask
+    and #2
+    beq @noise_bind
+    lda #0
+    sta famistudio_noise_restart
+@noise_bind:
+    ldx #FAMISTUDIO_NOISE_PERIOD_ENV
+@noise_bind_loop:
+    lda (@channel_data_ptr),y
+    iny
+    sta famistudio_env_addr_lo,x
+    lda (@channel_data_ptr),y
+    iny
+    sta famistudio_env_addr_hi,x
+    inx
+    cpx #FAMISTUDIO_NUM_ENVELOPES
+    bne @noise_bind_loop
+    ldx @chan_idx
+    jmp @read_byte
 .endif
 
 .if FAMISTUDIO_USE_CUSTOM_TUNING
@@ -6639,8 +6848,22 @@ famistudio_advance_channel:
     .byte <@opcode_invalid                      ; $5e
 .endif
 .endif
+.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
 .if FAMISTUDIO_USE_CUSTOM_TUNING
     .byte <@opcode_tuning ; $5f
+.else
+    .byte <@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    .byte <@opcode_noise_envelopes ; $60
+.else
+    .byte <@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    .byte <@opcode_envelope_decay ; $61
 .endif
 
 
@@ -6770,8 +6993,22 @@ famistudio_advance_channel:
     .byte >@opcode_invalid                      ; $5e
 .endif
 .endif
+.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
 .if FAMISTUDIO_USE_CUSTOM_TUNING
     .byte >@opcode_tuning ; $5f
+.else
+    .byte >@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    .byte >@opcode_noise_envelopes ; $60
+.else
+    .byte >@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    .byte >@opcode_envelope_decay ; $61
 .endif
 
 

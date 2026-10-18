@@ -1,6 +1,6 @@
 # FamiStudio Tuning
 
-An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 3 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
+An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 4 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
 
 ## Features
 
@@ -15,11 +15,24 @@ An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/Fa
 - Revision 2 enlarges numeric hit targets. Click a table's number to type cents or chip count; Enter accepts and Escape cancels. Shift-click steps by ten. Typed pan values preview during playback. Reference-Hz fields remain directly editable.
 - Revision 3 replaces the NSF/NSFe song selector with a checklist. Import several subsongs from one file into one project, with a separate editable duration for each selection and Select All / Select None. Import progress can be cancelled. This retains the existing register-capture importer; it does not reconstruct a game's source instruments or sequencer commands.
 
+## Revision 4: instrument and sequence fidelity
+
+- Optional APU noise macros expose period/mode, hardware envelope control and explicit restart writes. A single chromatic trigger can play a complete percussion instrument; an empty macro preserves the original behavior. Hardware decay runs in the APU rather than being approximated by one software volume per video frame.
+- The envelope-decay effect freezes the current software volume envelope and reduces its level every N video frames. Zero resumes the envelope. A fresh attack resets the effect, and a real volume release section cancels it. Hardware volume envelopes take precedence; EPSM rhythm voices do not support this effect.
+- Pattern properties add playback delay in video frames and an optional loop-variant pattern. Delay retains the score's note positions while carrying notes, releases and stops across boundaries. A variant is selected only after the song actually returns to its loop point; selection-loop playback retains the first-pass score. The sequencer's Edit Loop Variant command opens the alternate notes in the existing piano roll, including undo, redo, clipboard and persistence.
+- FamiStudio-engine export compiles delayed/variant note events into ordinary instrument and effect commands. The editor's loop markers stay at their musical boundaries. A separate first-pass stream may still be needed in the exported engine data when the introduction leaves different articulation state. This is not a per-frame register recording.
+
+The new engine options are `FAMISTUDIO_USE_NOISE_ENVELOPES = 1` and `FAMISTUDIO_USE_ENVELOPE_DECAY = 1`; follow the flags printed in the music export header. Stream instructions `$60` and `$61` require this fork's matching engine. Both options default to zero in standalone sources; bundled NSF/NES/FDS kernels enable them. Decay adds two bytes per envelope channel. The assembler matrix checks 128 configurations across CA65, ASM6, NESASM and SDAS; 64 configurations with decay disabled retain their previous executable bytes.
+
+Sound-engine export of playback delay requires FamiStudio tempo. Loop variants without delay also support FamiTracker tempo. Unsupported FamiTone2 combinations and FamiTracker delayed-note/cut combinations are rejected with an export error. This is an explicit compatibility boundary, not a conversion to a different tempo.
+
+FamiTracker text and MIDI export reject the new delay, loop-variant, decay and hardware-noise semantics instead of silently dropping them. VGM export rejects pattern delay and loop variants because its current loop construction cannot preserve their boundary behavior; ordinary noise/decay register playback remains available.
+
 ## Format and installation
 
 The Windows x64 package is self-contained: extract the whole directory and run `FamiStudio.exe`. It does not require installing .NET. Settings use `%LOCALAPPDATA%/FamiStudio-Tuning`; the installed official application and its settings are not replaced. Upstream update notifications default to off because official releases do not include these additions.
 
-Official project formats through version 19 and this fork's previous format 1001 can be read. Revision 3 saves format **1002**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
+Official project formats through version 19 and this fork's previous formats 1001 and 1002 can be read. Revision 4 saves format **1003**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
 
 Curves are global to a project. Importing songs from a project with different curves on its active chips is rejected before either song is retuned; first make the curves match. An empty destination adopts the imported curves. Importing instruments alone does not require matching curves. Curves for inactive chips are preserved for when those chips are enabled.
 
@@ -62,7 +75,7 @@ The fork's `$5f` music-stream instruction supplies three 16-bit pointers: period
 
 The single-expansion engine adds six bytes per pitch-envelope channel in BSS and nine bytes in zero page when the option is enabled. There is additional ROM data and CPU work; integrators must budget their own game's frame time and memory. The option defaults to zero when building the standalone engine. Custom-tuning music is incompatible with an unmodified engine. Existing global project tuning can still emit the original replacement `.bin` tables; follow the export header for that case as well.
 
-The FDS driver now places its TOC at `$7600` and song data at `$7800`, leaving `$4800` bytes for one song before the DPCM area. Its linker configuration and exporter agree on these addresses.
+The FDS driver now places its TOC at `$7700` and song data at `$7900`, leaving `$4700` bytes for one song before the DPCM area. Its linker configuration and exporter agree on these addresses.
 
 ## Architecture
 
@@ -105,9 +118,11 @@ For future mobile work, the shared curve editor includes touch selection, long-p
 
 ## Verification and limits
 
+Revision 4 adds independent noise-envelope, envelope-decay, pattern-delay, loop-variant and sound-engine-export regression suites. All seven languages load in the actual application window; English and Chinese loop-variant tests edit notes, undo/redo, save, unload and reopen. The packaged BUILD-INFO and verification logs record the final counts. Linux/macOS compilation remains separate from runtime validation.
+
 Revision 3 passes **3,431 backend assertions** across three commands: the original 1,506 regression checks, 1,886 chip-curve checks and 39 multiple-subsong-import checks. Coverage includes serialization, inheritance, cents quantization, every expansion's NSF pitch registers in PAL/NTSC modes, dual-region export, held notes, slides, vibrato, loop/track tuning resets, duplicate-chip stereo isolation, N163 wave allocation, keyboard preview, clipboard ownership, project merging and the 64-channel boundary. The curve checks verify exact requested hardware values at all 96 notes for all eight chips in both regions, reference-basis persistence/conversion, binary/text/undo round trips, old-format loading, curve isolation and all-expansion editor/NSF execution. The import checks exercise ordering, individual durations, resource references, persistence, validation, cancellation and CLI compatibility.
 
-All seven UI languages render in revision 3, and the Chinese interaction tests also pass at 150% scaling. Tests include integer input beyond the drag band, hardware bounds, the full keyboard, zoom/scroll and default restoration. An additional 29 touch-event checks pass on the desktop harness at both 100% and 150% scaling; these verify shared event handling, not Android device behavior. Earlier verification established that ten upstream register-trace fixtures remain byte-identical and all four assemblers produce identical executable bytes over 32 engine configurations; revision 3 does not change the assembly engine or native audio code. Linux and macOS managed builds pass with zero errors, which is compilation evidence only.
+All seven UI languages render in revision 3, and the Chinese interaction tests also pass at 150% scaling. Tests include integer input beyond the drag band, hardware bounds, the full keyboard, zoom/scroll and default restoration. An additional 29 touch-event checks pass on the desktop harness at both 100% and 150% scaling; these verify shared event handling, not Android device behavior. Earlier verification established that ten upstream register-trace fixtures remain byte-identical and all four assemblers produce identical executable bytes over 32 engine configurations; those revision 3 checks preceded the revision 4 engine additions described above. Linux and macOS managed builds pass with zero errors, which is compilation evidence only.
 
 NSF behavior is executed in the bundled 6502 emulator and compared with editor register output. Revision 2 includes a simple NROM cartridge in `Tests/NesTuning`: actual exported music and the modified engine run in an independent FCEUmm CPU/PPU/APU emulator. Its captured audio verifies 440 Hz, 432 Hz, 450 Hz references, C +50 cents and loop restoration against the nearest hardware timer. See that directory's README for reproduction commands. NES/FDS images have not been tested on physical hardware. This is a locally tested development fork, not an upstream-reviewed release. Long sessions, every third-party NSF player and every operating system have not been validated.
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -352,6 +352,14 @@ namespace FamiStudio
         {
             PianoRoll.StartEditChannel(channelIdx, patternIdx);
             ConditionalSwitchToPianoRoll();
+        }
+
+        public void StartEditLoopVariant(int channelIdx, int patternIdx)
+        {
+            selectedChannelIndex = channelIdx;
+            PianoRoll.StartEditLoopVariant(channelIdx, patternIdx);
+            ConditionalSwitchToPianoRoll();
+            SetActiveControl(PianoRoll);
         }
 
         public void StartEditDPCMSample(DPCMSample sample)

@@ -1621,15 +1621,16 @@ namespace FamiStudio
             SetInt32(bytes.Count - chunckStartIdx - 4, chunckStartIdx);
         }
 
-        public void Save(Project originalProject, string filename, int songId, int instrumentMode, int[] instrumentMapping, bool volumeAsVelocity, bool slideToPitchWheel, int pitchWheelRange)
+        public bool Save(Project originalProject, string filename, int songId, int instrumentMode, int[] instrumentMapping, bool volumeAsVelocity, bool slideToPitchWheel, int pitchWheelRange)
         {
-            if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return; }
-            if (originalProject.GetSong(songId).UsesCustomTuning) { Log.LogMessage(LogSeverity.Error, TuningStrings.FormatExportError); return; }
+            if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+            if (originalProject.GetSong(songId).UsesCustomTuning) { Log.LogMessage(LogSeverity.Error, TuningStrings.FormatExportError); return false; }
+            if (originalProject.GetSong(songId).UsesExtendedPlayback(true)) { Log.LogMessage(LogSeverity.Error, TuningStrings.ExtendedFormatExportError); return false; }
 
             if (originalProject.UsesFamiTrackerTempo)
             {
                 Log.LogMessage(LogSeverity.Error, "MIDI export is only available for projects using FamiStudio tempo. Aborting.");
-                return;
+                return false;
             }
 
             Debug.Assert(
@@ -1664,6 +1665,7 @@ namespace FamiStudio
             }
 
             File.WriteAllBytes(filename, bytes.ToArray());
+            return true;
         }
     }
 

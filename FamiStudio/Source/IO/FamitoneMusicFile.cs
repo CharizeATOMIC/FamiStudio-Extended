@@ -12,7 +12,7 @@ using System.Threading.Channels;
 
 namespace FamiStudio
 {
-    public class FamitoneMusicFile
+    public partial class FamitoneMusicFile
     {
         private Project project;
 
@@ -34,6 +34,9 @@ namespace FamiStudio
         private Dictionary<byte, string> vibratoEnvelopeNames = new Dictionary<byte, string>();
         private Dictionary<Arpeggio, string> arpeggioEnvelopeNames = new Dictionary<Arpeggio, string>();
         private Dictionary<Envelope, string> instrumentArpeggioNames = new Dictionary<Envelope, string>();
+        private Dictionary<Envelope, string> noiseEnvelopeNames = new Dictionary<Envelope, string>();
+        private bool usesNoiseEnvelopes;
+        private bool usesEnvelopeDecay;
         private Dictionary<Instrument, int> instrumentIndices = new Dictionary<Instrument, int>();
         private Dictionary<DPCMSampleMapping, int> sampleMappingIndices = new Dictionary<DPCMSampleMapping, int>();
         private string noArpeggioEnvelopeName;
@@ -83,6 +86,8 @@ namespace FamiStudio
         private const byte OpcodeEpsmReleaseNote       = 0x5c; // EPSM only
         private const byte OpcodeEPSMManualEnvPeriod   = 0x5d; // EPSM only
         private const byte OpcodeS5BManualEnvPeriod    = 0x5e; // S5B only
+        private const byte OpcodeNoiseEnvelopes        = 0x60; // Three optional APU noise macros
+        private const byte OpcodeEnvelopeDecay        = 0x61;
 
         private const byte OpcodeSetReferenceFT2       = 0xff; // FT2
         private const byte OpcodeLoopFT2               = 0xfd; // FT2
@@ -287,7 +292,8 @@ namespace FamiStudio
                 }
                 else
                 {
-                    var grooveName = GetGrooveAsmName(song.Groove, song.GroovePaddingMode);
+                    var initialTempo = compiledPlaybackTempos.TryGetValue(song, out var tempos) ? tempos[0] : (song.Groove, song.GroovePaddingMode);
+                    var grooveName = GetGrooveAsmName(initialTempo.Item1, initialTempo.Item2);
                     lines.Add($"\t{db} {lo}({llp}tempo_env_{grooveName}), {hi}({llp}tempo_env_{grooveName}), {(project.PalMode ? 2 : 0)}, 0"); 
                 }
 
@@ -322,17 +328,19 @@ namespace FamiStudio
             return ymenv;
         }
 
-        private byte[] ProcessEnvelope(Envelope env, bool allowReleases, bool newPitchEnvelope)
+        private byte[] ProcessEnvelope(Envelope env, bool allowReleases, bool newPitchEnvelope, bool restartPulse = false)
         {
             // HACK : Pass dummy type here, volume envelopes have been taken care of already.
             if (env.IsEmpty(EnvelopeType.Count))
                 return null;
 
-            env.Optimize();
+            // Repeated restart values are separate hardware triggers, including at the tail.
+            if (!restartPulse)
+                env.Optimize();
 
             // Special case for envelopes with a single value (like duty often are).
             // Make them 127 in length so that they update less often.
-            if (env.Length == 1 && !env.Relative && env.Release < 0)
+            if (env.Length == 1 && !env.Relative && env.Release < 0 && !restartPulse)
             {
                 if (newPitchEnvelope || allowReleases)
                     return new byte[] { 0x00, (byte)(192 + env.Values[0]), 0x7f, 0x00, 0x02 };
@@ -340,11 +348,11 @@ namespace FamiStudio
                     return new byte[] { (byte)(192 + env.Values[0]), 0x7f, 0x00, 0x00 } ;
             }
 
-            var data = new byte[256];
+            var data = new byte[1024];
 
-            byte ptr = (byte)(allowReleases || newPitchEnvelope ? 1 : 0);
-            byte ptrLoop = 0xff;
-            byte relCount = 0;
+            int ptr = allowReleases || newPitchEnvelope ? 1 : 0;
+            int ptrLoop = -1;
+            int relCount = 0;
             byte prevVal = (byte)(env.Values[0] + 1);//prevent rle match
             bool foundRelease = false;
             bool allowRle = !env.Relative;
@@ -381,7 +389,7 @@ namespace FamiStudio
                                 relCount -= 127;
                             }
 
-                            data[ptr++] = relCount;
+                            data[ptr++] = (byte)relCount;
                         }
 
                         relCount = 0;
@@ -392,11 +400,11 @@ namespace FamiStudio
                     if (j == env.Release && allowReleases)
                     {
                         // A release implies the end of the loop.
-                        Debug.Assert(ptrLoop != 0xff && data[ptrLoop] >= 128); // Cant be jumping back to the middle of RLE.
+                        Debug.Assert(ptrLoop >= 0 && data[ptrLoop] >= 128); // Cant be jumping back to the middle of RLE.
                         foundRelease = true;
                         data[ptr++] = 0;
-                        data[ptr++] = ptrLoop;
-                        data[0] = ptr;
+                        data[ptr++] = checked((byte)ptrLoop);
+                        data[0] = checked((byte)ptr);
                     }
 
                     data[ptr++] = val;
@@ -409,13 +417,13 @@ namespace FamiStudio
                 }
             }
 
-            if (ptrLoop == 0xff || foundRelease)
+            if (ptrLoop < 0 || foundRelease)
             {
                 // Non-looping relative pitch envelopes need to end with a zero so they stop doing anything.
-                if (newPitchEnvelope && env.Relative && data[ptr - 1] != 192)
+                if (((newPitchEnvelope && env.Relative) || restartPulse) && data[ptr - 1] != 192)
                     data[ptr++] = 192;
 
-                ptrLoop = (byte)(ptr - 1);
+                ptrLoop = ptr - 1;
             }
             else
             {
@@ -423,7 +431,10 @@ namespace FamiStudio
             }
 
             data[ptr++] = 0;
-            data[ptr++] = ptrLoop;
+            data[ptr++] = checked((byte)ptrLoop);
+
+            if (ptr > 256)
+                throw new InvalidDataException("An encoded sound-engine envelope exceeds its 256-byte address space.");
 
             Array.Resize(ref data, ptr);
 
@@ -501,6 +512,9 @@ namespace FamiStudio
                             break;
                         case EnvelopeType.S5BMixer:
                             processed = ProcessEnvelope(ProcessMixerEnvelope(env), false, false);
+                            break;
+                        case EnvelopeType.NoiseEnvelopeRestart:
+                            processed = ProcessEnvelope(env, false, false, true);
                             break;
                         default:
                             processed = ProcessEnvelope(env,
@@ -809,6 +823,11 @@ namespace FamiStudio
             }
 
             // Write envelopes.
+            foreach (var instrument in project.Instruments)
+                for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
+                    if (instrument.Envelopes[type] != null)
+                        noiseEnvelopeNames[instrument.Envelopes[type]] = $"{llp}env{uniqueEnvelopes.IndexOfKey(instrumentEnvelopes[instrument.Envelopes[type]])}";
+
             int idx = 0;
             foreach (var kv in uniqueEnvelopes)
             {
@@ -959,6 +978,10 @@ namespace FamiStudio
                         }
                     }
                 }
+
+                foreach (var tempo in compiledPlaybackTempos.Values.SelectMany(v => v.Values))
+                    if (!uniqueGrooves.Any(g => Utils.CompareArrays(g.Item1, tempo.Groove) == 0 && g.Item2 == tempo.Padding))
+                        uniqueGrooves.Add(Tuple.Create(tempo.Groove, tempo.Padding));
 
                 foreach (var groove in uniqueGrooves)
                 {
@@ -1255,10 +1278,11 @@ namespace FamiStudio
                         channelData.Add($"{hi}({table}_fraction)");
                     }
 
-                    if (isSpeedChannel && project.UsesFamiStudioTempo)
+                    if (isSpeedChannel && project.UsesFamiStudioTempo &&
+                        (!compiledPlaybackTempos.TryGetValue(song, out var playbackTempos) || playbackTempos.ContainsKey(p)))
                     {
-                        var groove = song.GetPatternGroove(p);
-                        var groovePadMode = song.GetPatternGroovePaddingMode(p);
+                        var groove = playbackTempos != null ? playbackTempos[p].Groove : song.GetPatternGroove(p);
+                        var groovePadMode = playbackTempos != null ? playbackTempos[p].Padding : song.GetPatternGroovePaddingMode(p);
 
                         // If the groove changes or we are at the loop point, set the tempo envelope again.
                         if (Utils.CompareArrays(groove, previousGroove) != 0 || groovePadMode != previousGroovePadMode || p == song.LoopPoint)
@@ -1480,6 +1504,13 @@ namespace FamiStudio
                             usesDeltaCounter = true;
                         }
 
+                        if (note.HasEnvelopeDecay)
+                        {
+                            channelData.Add($"{hexp}{OpcodeEnvelopeDecay:x2}+");
+                            channelData.Add($"{hexp}{note.EnvelopeDecay:x2}");
+                            usesEnvelopeDecay = true;
+                        }
+
                         if (note.IsValid)
                         {
                             // Instrument change.
@@ -1526,6 +1557,18 @@ namespace FamiStudio
 
                                 if (note.Instrument != instrument && !channel.IsDpcmChannel)
                                 {
+                                    if (usesNoiseEnvelopes && channel.Type == ChannelType.Noise)
+                                    {
+                                        channelData.Add($"{hexp}{OpcodeNoiseEnvelopes:x2}+");
+                                        channelData.Add($"{hexp}{GetNoiseEnvelopeMask(note.Instrument):x2}");
+                                        for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
+                                        {
+                                            var name = noiseEnvelopeNames[note.Instrument.Envelopes[type]];
+                                            channelData.Add($"{lo}({name})");
+                                            channelData.Add($"{hi}({name})");
+                                        }
+                                    }
+
                                     // Change saw volume if needed.
                                     if (channel.Type == ChannelType.Vrc6Saw && sawVolume != note.Instrument.Vrc6SawMasterVolume)
                                     {
@@ -1683,6 +1726,7 @@ namespace FamiStudio
                                     note.HasFdsModSpeed    || 
                                     note.HasFdsModDepth    ||
                                     note.HasEnvelopePeriod || 
+                                    note.HasEnvelopeDecay  ||
                                     note.HasNoteDelay      ||
                                     note.HasCutDelay       ||
                                     note.HasDeltaCounter   ||
@@ -2205,7 +2249,11 @@ namespace FamiStudio
             // Work on a temporary copy.
             project = originalProject.DeepClone();
             project.Filename = originalProject.Filename;
-            project.ConvertToSimpleNotes();
+            project.DeleteAllSongsBut(songIds, false);
+            var compiledPlaybackSongs = CompilePlaybackPatterns();
+            foreach (var song in project.Songs)
+                if (!compiledPlaybackSongs.Contains(song))
+                    song.ConvertToSimpleNotes();
 
             if (kernel == FamiToneKernel.FamiTone2 && project.UsesFamiStudioTempo)
             {
@@ -2374,6 +2422,10 @@ namespace FamiStudio
                 flags.Add("Slide notes are used, you must set FAMISTUDIO_USE_SLIDE_NOTES = 1.");
             if (usesNoiseSlideNotes)
                 flags.Add("Slide notes are used on the noise channel, you must set FAMISTUDIO_USE_NOISE_SLIDE_NOTES = 1.");
+            if (usesNoiseEnvelopes)
+                flags.Add("APU noise macros require FAMISTUDIO_USE_NOISE_ENVELOPES = 1 and the enhanced sound engine.");
+            if (usesEnvelopeDecay)
+                flags.Add("Envelope decay requires FAMISTUDIO_USE_ENVELOPE_DECAY = 1 and the enhanced sound engine.");
             if (usesVibrato)
                 flags.Add("Vibrato effect is used, you must set FAMISTUDIO_USE_VIBRATO = 1.");
             if (usesArpeggio)
@@ -2398,6 +2450,15 @@ namespace FamiStudio
             return flags;
         }
 
+        private static int GetNoiseEnvelopeMask(Instrument instrument)
+        {
+            int mask = 0;
+            for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
+                if (instrument.Envelopes[type]?.Length > 0)
+                    mask |= 1 << (type - EnvelopeType.NoisePeriod);
+            return mask;
+        }
+
         public bool Save(Project originalProject, int[] songIds, int format, int maxDpcmBankSize, bool separateSongs, string filename, string dmcFilename, int dmcExportMode, bool exportUnusedMappings, string includeFilename, int machine)
         {
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
@@ -2405,13 +2466,32 @@ namespace FamiStudio
             this.machine = machine;
             tuningTableNames.Clear();
             tuningTableLines.Clear();
+            if (kernel != FamiToneKernel.FamiStudio && originalProject.Songs.Where(s => songIds.Contains(s.Id))
+                .Any(s => s.Channels.Any(c => c.Patterns.Any(p => p.Notes.Values.Any(n => n.HasEnvelopeDecay)))))
+            {
+                Log.LogMessage(LogSeverity.Error, "Envelope decay requires the FamiStudio sound engine.");
+                return false;
+            }
             if (kernel != FamiToneKernel.FamiStudio && originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesCustomTuning))
             {
                 Log.LogMessage(LogSeverity.Error, TuningStrings.EngineExportError);
                 return false;
             }
 
-            SetupProject(originalProject, songIds, dmcExportMode);
+            usesEnvelopeDecay = false;
+            try { SetupProject(originalProject, songIds, dmcExportMode); }
+            catch (InvalidOperationException exception)
+            {
+                Log.LogMessage(LogSeverity.Error, exception.Message);
+                return false;
+            }
+            noiseEnvelopeNames.Clear();
+            usesNoiseEnvelopes = project.Instruments.Any(i => GetNoiseEnvelopeMask(i) != 0);
+            if (usesNoiseEnvelopes && kernel != FamiToneKernel.FamiStudio)
+            {
+                Log.LogMessage(LogSeverity.Error, "APU hardware noise macros require the FamiStudio sound engine.");
+                return false;
+            }
             SetupFormat(format, separateSongs);
             CleanupEnvelopes();
             GatherDPCMMappings(dmcExportMode, exportUnusedMappings);
@@ -2635,13 +2715,23 @@ namespace FamiStudio
         // HACK: This is pretty stupid. We write the ASM and parse it to get the bytes. Kind of backwards.
         public byte[] GetBytes(Project project, int[] songIds, int songOffset, int dpcmBankSize, int dpcmExportMode, bool dpcmExportUnusedMappings, int dpcmOffset, int machine)
         {
-            var tempFolder = Utils.GetTemporaryDirectory();
+            // Exporters may run concurrently (audio/background validation), and
+            // a failed save must never parse another export's stale assembly.
+            var tempFolder = Path.Combine(Utils.GetTemporaryDirectory(), "engine-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempFolder);
             var tempAsmFilename = Path.Combine(tempFolder, "nsf.asm");
             var tempDmcFilename = Path.Combine(tempFolder, "nsf.dmc");
 
-            Save(project, songIds, AssemblyFormat.ASM6, dpcmBankSize, false, tempAsmFilename, tempDmcFilename, dpcmExportMode, dpcmExportUnusedMappings, null, machine);
-
-            return ParseAsmFile(tempAsmFilename, songOffset, dpcmOffset);
+            try
+            {
+                if (!Save(project, songIds, AssemblyFormat.ASM6, dpcmBankSize, false, tempAsmFilename, tempDmcFilename, dpcmExportMode, dpcmExportUnusedMappings, null, machine))
+                    throw new InvalidOperationException("Sound-engine music export failed. See the export log for the unsupported setting.");
+                return ParseAsmFile(tempAsmFilename, songOffset, dpcmOffset);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
         }
 
         private static bool PatchNoteTableInternal(byte[] data, string tblFile, int tableOffset, int tuning, bool pal, int numN163Channels)

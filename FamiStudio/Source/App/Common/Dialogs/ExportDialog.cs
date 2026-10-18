@@ -1648,7 +1648,7 @@ namespace FamiStudio
         {
             var props = dialog.GetPropertyPage((int)ExportFormat.Midi);
 
-            Action<string> ExportMidiAction = (filename) =>
+            Func<string, bool> ExportMidiAction = (filename) =>
             {
                 if (filename != null)
                 {
@@ -1684,12 +1684,11 @@ namespace FamiStudio
                     for (int i = 0; i < instrumentMapping.Length; i++)
                         instrumentMapping[i] = Array.IndexOf(MidiFileReader.MidiInstrumentNames, props.GetPropertyValue<string>(5, i, 1));
 
-                    new MidiFileWriter().Save(project, filename, song.Id, instrumentMode, instrumentMapping, velocity, slideNotes, pitchRange);
-
-                    ShowExportResultToast(FormatMidiMessage);
-
-                    lastExportFilename = filename;
+                    var success = new MidiFileWriter().Save(project, filename, song.Id, instrumentMode, instrumentMapping, velocity, slideNotes, pitchRange);
+                    if (success) lastExportFilename = filename;
+                    return success;
                 }
+                return false;
             };
 
             if (Platform.IsMobile)
@@ -1697,15 +1696,15 @@ namespace FamiStudio
                 var songName = props.GetPropertyValue<string>(0);
                 Platform.StartMobileSaveFileOperationAsync($"{songName}.mid", (f) =>
                 {
-                    ExportMidiAction(f);
-                    Platform.FinishMobileSaveFileOperationAsync(true, () => ShowExportResultToast(FormatMidiMessage, true));
+                    var success = ExportMidiAction(f);
+                    Platform.FinishMobileSaveFileOperationAsync(success, () => ShowExportResultToast(FormatMidiMessage, success));
                 });
             }
             else
             {
                 var filename = lastExportFilename != null ? lastExportFilename  : Platform.ShowSaveFileDialog("Export MIDI File", "MIDI Files (*.mid)|*.mid", ref Settings.LastExportFolder);
-                ExportMidiAction(filename);
-                ShowExportResultToast(FormatMidiMessage);
+                if (filename != null)
+                    ShowExportResultToast(FormatMidiMessage, ExportMidiAction(filename));
             }
         }
 
@@ -1828,7 +1827,7 @@ namespace FamiStudio
             {
                 Platform.StartMobileSaveFileOperationAsync($"{trackTitle}.vgm", (f) =>
                 {
-                    VgmFile.Save(project.GetSong(song), (f), trackTitle,
+                    var success = VgmFile.Save(project.GetSong(song), (f), trackTitle,
                         gameName,
                         system,
                         composer,
@@ -1836,7 +1835,7 @@ namespace FamiStudio
                         vgmBy,
                         notes,
                         smoothLoop);
-                    Platform.FinishMobileSaveFileOperationAsync(true, () => { ShowExportResultToast(FormatVgmMessage); });
+                    Platform.FinishMobileSaveFileOperationAsync(success, () => { ShowExportResultToast(FormatVgmMessage, success); });
                 });
             }
             else
@@ -1844,7 +1843,7 @@ namespace FamiStudio
                 var filename = lastExportFilename ?? Platform.ShowSaveFileDialog($"Export {FormatVgmMessage}", $"{FormatVgmMessage} File (*.vgm)|*.vgm", ref Settings.LastExportFolder);
                 if (filename != null)
                 {
-                    VgmFile.Save(project.GetSong(song), filename, trackTitle,
+                    var success = VgmFile.Save(project.GetSong(song), filename, trackTitle,
                         gameName,
                         system,
                         composer,
@@ -1852,8 +1851,8 @@ namespace FamiStudio
                         vgmBy,
                         notes,
                         smoothLoop);
-                    lastExportFilename = filename;
-                    ShowExportResultToast(FormatVgmMessage);
+                    if (success) lastExportFilename = filename;
+                    ShowExportResultToast(FormatVgmMessage, success);
                 }
             }  
         }
@@ -1892,9 +1891,9 @@ namespace FamiStudio
 
                 settings.SongList = project.Songs.Select((song, index) => new SongListExportSettings { SongId = song.Id, Enabled = bools[index] }).ToList();
 
-                new FamitrackerTextFile().Save(project, filename, GetSongIds(bools));
-                ShowExportResultToast(FormatFamiTrackerMessage);
-                lastExportFilename = filename;
+                var success = new FamitrackerTextFile().Save(project, filename, GetSongIds(bools));
+                ShowExportResultToast(FormatFamiTrackerMessage, success);
+                if (success) lastExportFilename = filename;
             }
         }
 

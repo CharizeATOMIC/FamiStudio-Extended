@@ -35,7 +35,7 @@ namespace FamiStudio
             values = new sbyte[maxLength];
             canResize = type != EnvelopeType.FdsModulation;
             canRelease = type == EnvelopeType.Volume || type == EnvelopeType.WaveformRepeat || type == EnvelopeType.N163Waveform || type == EnvelopeType.FdsWaveform;
-            canLoop = type <= EnvelopeType.DutyCycle || type == EnvelopeType.WaveformRepeat || type == EnvelopeType.N163Waveform || type == EnvelopeType.FdsWaveform || type == EnvelopeType.S5BNoiseFreq || type == EnvelopeType.S5BMixer;
+            canLoop = type <= EnvelopeType.DutyCycle || type == EnvelopeType.WaveformRepeat || type == EnvelopeType.N163Waveform || type == EnvelopeType.FdsWaveform || type == EnvelopeType.S5BNoiseFreq || type == EnvelopeType.S5BMixer || EnvelopeType.IsHardwareNoise(type);
             chunkLength = type == EnvelopeType.FdsWaveform ? 64 : (type == EnvelopeType.N163Waveform ? 16 : 1);
 
             if (canResize)
@@ -99,7 +99,7 @@ namespace FamiStudio
             if (chunkLength > 1)
                 length = chunkLength;
             else if (canResize)
-                length = type == EnvelopeType.DutyCycle || type == EnvelopeType.Volume || type == EnvelopeType.S5BMixer ? 1 : 8;
+                length = EnvelopeType.IsHardwareNoise(type) ? 0 : type == EnvelopeType.DutyCycle || type == EnvelopeType.Volume || type == EnvelopeType.S5BMixer ? 1 : 8;
 
             for (int i = 0; i < values.Length; i++)
                 values[i] = def;
@@ -602,6 +602,11 @@ namespace FamiStudio
             if (length == 0)
                 return true;
 
+            // Zero is an active hardware value (including "do not restart").
+            // Only a zero-length hardware macro is disabled.
+            if (EnvelopeType.IsHardwareNoise(type))
+                return false;
+
             return AllValuesEqual(GetEnvelopeZeroValue(type));
         }
 
@@ -639,7 +644,7 @@ namespace FamiStudio
 
         public static void GetMinMaxValueForType(Instrument instrument, int type, out int min, out int max)
         {
-            if (type == EnvelopeType.Volume || type == EnvelopeType.N163Waveform)
+            if (type == EnvelopeType.Volume || type == EnvelopeType.N163Waveform || type == EnvelopeType.NoisePeriod)
             {
                 min = 0;
                 max = 15;
@@ -649,7 +654,7 @@ namespace FamiStudio
                 min = 0;
                 max = instrument.IsVrc6 ? 7 : 3;
             }
-            else if (type == EnvelopeType.FdsWaveform)
+            else if (type == EnvelopeType.FdsWaveform || type == EnvelopeType.NoiseEnvelope)
             {
                 min = 0;
                 max = 63;
@@ -669,6 +674,11 @@ namespace FamiStudio
                 min = 0;
                 max = 31;
             }
+            else if (type == EnvelopeType.NoiseEnvelopeRestart)
+            {
+                min = 0;
+                max = 32;
+            }
             else
             {
                 min = -64;
@@ -678,7 +688,18 @@ namespace FamiStudio
 
         public static string GetDisplayValue(Instrument instrument, int type, int value)
         {
-            if (type == EnvelopeType.S5BMixer)
+            if (type == EnvelopeType.NoiseEnvelope)
+            {
+                var constant = (value & 16) != 0;
+                var hold = (value & 32) != 0;
+                return (constant ? (hold ? EnvelopeType.NoiseConstantHoldLabel : EnvelopeType.NoiseConstantLabel) :
+                                   (hold ? EnvelopeType.NoiseLoopDecayLabel : EnvelopeType.NoiseDecayLabel)).Format(value & 15);
+            }
+            else if (type == EnvelopeType.NoiseEnvelopeRestart)
+            {
+                return value == 0 ? EnvelopeType.NoiseNoRestartLabel.ToString() : EnvelopeType.NoiseRestartLengthLabel.Format(EnvelopeType.NoiseLengthTicks[Math.Clamp(value - 1, 0, 31)]);
+            }
+            else if (type == EnvelopeType.S5BMixer)
             {
                 switch (value)
                 {
@@ -762,6 +783,9 @@ namespace FamiStudio
                 buffer.Serialize(ref relative);
             buffer.Serialize(ref values);
 
+            if (buffer.IsReading && EnvelopeType.IsHardwareNoise(type) && relative)
+                throw new ArgumentException("Hardware noise envelopes cannot use relative values.");
+
             if (buffer.IsReading && !buffer.IsForUndoRedo)
                 FixBadEnvelopeLength(type);
         }
@@ -780,7 +804,19 @@ namespace FamiStudio
         public const int WaveformRepeat = 7;
         public const int S5BMixer       = 8;
         public const int S5BNoiseFreq   = 9;
-        public const int Count          = 10;
+        public const int NoisePeriod   = 10;
+        public const int NoiseEnvelope = 11;
+        public const int NoiseEnvelopeRestart = 12;
+        public const int Count          = 13;
+
+        public static bool IsHardwareNoise(int type) => type >= NoisePeriod && type <= NoiseEnvelopeRestart;
+        public static readonly int[] NoiseLengthTicks = { 10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30 };
+        public static LocalizedString NoiseConstantLabel;
+        public static LocalizedString NoiseConstantHoldLabel;
+        public static LocalizedString NoiseDecayLabel;
+        public static LocalizedString NoiseLoopDecayLabel;
+        public static LocalizedString NoiseNoRestartLabel;
+        public static LocalizedString NoiseRestartLengthLabel;
 
         // Use these to display to user
         public static readonly LocalizedString[] LocalizedNames = new LocalizedString[Count];
@@ -798,6 +834,9 @@ namespace FamiStudio
             "Repeat",
             "MixerSettings",
             "NoiseFreq",
+            "NoisePeriod",
+            "NoiseEnvelope",
+            "NoiseEnvelopeRestart",
         };
 
         public static readonly string[] Icons = new string[]
@@ -812,6 +851,9 @@ namespace FamiStudio
             "EnvelopeWave", // Never actually displayed
             "EnvelopeMixer",
             "EnvelopeNoise", 
+            "EnvelopeNoise",
+            "EnvelopeVolume",
+            "EnvelopeVolume",
         };
 
         static EnvelopeType()

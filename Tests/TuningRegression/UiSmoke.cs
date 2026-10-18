@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
 using FamiStudio;
@@ -41,6 +41,7 @@ static class UiSmoke
         glfwSetWindowSize(native, 1280, 900);
         app.Initialize(window, args.Length > 3 ? Path.GetFullPath(args[3]) : null);
         window.RunEventLoop();
+        if (args.Length > 3) LoopVariantUiTests.InspectExisting(window, language, output, Capture);
         bool initialStereo = app.SelectedSong.Channels[0].StereoEnabled;
         int initialPan = app.SelectedSong.Channels[0].Pan;
         Invoke(window.ProjectExplorer, "EditSongProperties", app.Project.Songs[0], false);
@@ -90,6 +91,7 @@ static class UiSmoke
         CurveUiTests.Run(window, language, output, Capture);
         if (language == "zho") CurveTouchUiTests.Run(window);
         NsfMultiImportRegression.Ui(window, Path.Combine(output, "nsf"), (ok, message) => { if (!ok) throw new Exception(message); Console.WriteLine("PASS " + message); }, Capture);
+        if (language == "zho" || language == "eng") LoopVariantUiTests.Run(window, language, output, Capture);
         Invoke(app, "ShutdownAudioPlayers", true);
         Invoke(window, "DestroyWindow");
         Init.ShutdownBaseSystems();

@@ -100,6 +100,9 @@ namespace FamiStudio
         public Envelope WaveformRepeatEnvelope  => envelopes[EnvelopeType.WaveformRepeat];
         public Envelope YMMixerSettingsEnvelope => envelopes[EnvelopeType.S5BMixer];
         public Envelope YMNoiseFreqEnvelope     => envelopes[EnvelopeType.S5BNoiseFreq];
+        public Envelope NoisePeriodEnvelope    => envelopes[EnvelopeType.NoisePeriod];
+        public Envelope NoiseControlEnvelope   => envelopes[EnvelopeType.NoiseEnvelope];
+        public Envelope NoiseRestartEnvelope   => envelopes[EnvelopeType.NoiseEnvelopeRestart];
 
         public const int MaxResampleWavSamples = 12000;
 
@@ -179,6 +182,10 @@ namespace FamiStudio
             {
                 return expansion == ExpansionType.S5B ||
                        expansion == ExpansionType.EPSM;
+            }
+            else if (EnvelopeType.IsHardwareNoise(envelopeType))
+            {
+                return expansion == ExpansionType.None;
             }
 
             return false;
@@ -1074,6 +1081,14 @@ namespace FamiStudio
                 {
                     envelopes[i] = null;
                 }
+            }
+
+            // Older projects have no bits for the optional hardware-noise macros.
+            // Create disabled envelopes so they remain editable after loading.
+            if (buffer.IsReading && IsRegular)
+            {
+                for (int i = EnvelopeType.NoisePeriod; i <= EnvelopeType.NoiseEnvelopeRestart; i++)
+                    envelopes[i] ??= new Envelope(i);
             }
 
             // At version 5 (FamiStudio 2.0.0) we added duty cycle envelopes.

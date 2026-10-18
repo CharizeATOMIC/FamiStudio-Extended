@@ -52,7 +52,8 @@ namespace FamiStudio
         public const int EffectDeltaCounter       = 11; // Zxx
         public const int EffectPhaseReset         = 12; // =xx (is famitracker running out of letters? lol)
         public const int EffectEnvelopePeriod     = 13; // Ixx/Jxx
-        public const int EffectCount              = 14; 
+        public const int EffectEnvelopeDecay      = 14;
+        public const int EffectCount              = 15;
 
         public const int EffectVolumeMask         = (1 << EffectVolume);
         public const int EffectVibratoMask        = (1 << EffectVibratoSpeed) | (1 << EffectVibratoDepth);
@@ -68,8 +69,9 @@ namespace FamiStudio
         public const int EffectDeltaCounterMask   = (1 << EffectDeltaCounter);
         public const int EffectPhaseResetMask     = (1 << EffectPhaseReset);
         public const int EffectEnvelopePeriodMask = (1 << EffectEnvelopePeriod);
+        public const int EffectEnvelopeDecayMask  = (1 << EffectEnvelopeDecay);
 
-        public const int EffectAllMask = 0x3fff; // Must be updated every time a new effect is added.
+        public const int EffectAllMask = 0x7fff; // Must be updated every time a new effect is added.
 
         // As of FamiStudio 3.0.0, these are semi-deprecated and mostly used in parts of the
         // code that have not been migrated to compound notes (notes with release and duration) 
@@ -103,6 +105,7 @@ namespace FamiStudio
         private byte   dmcCounter;
         private byte   phaseReset;
         private ushort envPeriod;
+        private byte   envDecay;
 
         // As of version 5 (FamiStudio 2.0.0), these are deprecated and are only kept around
         // for migration.
@@ -147,6 +150,7 @@ namespace FamiStudio
                 dmcCounter = NesApu.DACDefaultValue;
                 phaseReset = 0;
                 envPeriod = 32;
+                envDecay = 0;
             }
         }
 
@@ -389,6 +393,12 @@ namespace FamiStudio
             get { Debug.Assert(HasEnvelopePeriod); return envPeriod; }
             set { envPeriod = (ushort)Utils.Clamp(value, 0, 65535); HasEnvelopePeriod = true; }
         }
+
+        public byte EnvelopeDecay
+        {
+            get { Debug.Assert(HasEnvelopeDecay); return envDecay; }
+            set { envDecay = value; HasEnvelopeDecay = true; }
+        }
         
         public bool HasVolume
         {
@@ -466,6 +476,12 @@ namespace FamiStudio
         {
             get { return (effectMask & EffectEnvelopePeriodMask) != 0; }
             set { if (value) effectMask |= EffectEnvelopePeriodMask; else effectMask = (ushort)(effectMask & ~EffectEnvelopePeriodMask); }
+        }
+
+        public bool HasEnvelopeDecay
+        {
+            get { return (effectMask & EffectEnvelopeDecayMask) != 0; }
+            set { if (value) effectMask |= EffectEnvelopeDecayMask; else effectMask = (ushort)(effectMask & ~EffectEnvelopeDecayMask); }
         }
 
         public bool HasAttack
@@ -711,6 +727,7 @@ namespace FamiStudio
             if (buffer.Version >= 13 && (EffectMask & EffectDeltaCounterMask)   != 0) buffer.Serialize(ref dmcCounter);
             if (buffer.Version >= 15 && (EffectMask & EffectPhaseResetMask)     != 0) buffer.Serialize(ref phaseReset);
             if (buffer.Version >= 16 && (EffectMask & EffectEnvelopePeriodMask) != 0) buffer.Serialize(ref envPeriod);
+            if (buffer.Version >= Project.NoiseEnvelopeFormatVersion && (EffectMask & EffectEnvelopeDecayMask) != 0) buffer.Serialize(ref envDecay);
 
             // At version 7 (FamiStudio 2.2.0) we added support for arpeggios.
             if (buffer.Version >= 7)
@@ -737,6 +754,7 @@ namespace FamiStudio
                 case EffectDeltaCounter   : return HasDeltaCounter;
                 case EffectPhaseReset     : return HasPhaseReset;
                 case EffectEnvelopePeriod : return HasEnvelopePeriod;
+                case EffectEnvelopeDecay  : return HasEnvelopeDecay;
             }
 
             return false;
@@ -760,6 +778,7 @@ namespace FamiStudio
                 case EffectDeltaCounter   : return DeltaCounter;
                 case EffectPhaseReset     : return PhaseReset;
                 case EffectEnvelopePeriod : return EnvelopePeriod;
+                case EffectEnvelopeDecay  : return EnvelopeDecay;
             }
 
             return 0;
@@ -783,6 +802,7 @@ namespace FamiStudio
                 case EffectDeltaCounter   : DeltaCounter      = (byte)Utils.Clamp(val, byte.MinValue, byte.MaxValue); break;
                 case EffectPhaseReset     : PhaseReset        = (byte)Utils.Clamp(val, 1, 1); break;
                 case EffectEnvelopePeriod : EnvelopePeriod    = (ushort)Utils.Clamp(val, ushort.MinValue, ushort.MaxValue); break;
+                case EffectEnvelopeDecay  : EnvelopeDecay     = (byte)Utils.Clamp(val, byte.MinValue, byte.MaxValue); break;
             }
         }
         
@@ -804,6 +824,7 @@ namespace FamiStudio
                 case EffectDeltaCounter   : HasDeltaCounter   = false; break;
                 case EffectPhaseReset     : HasPhaseReset     = false; break;
                 case EffectEnvelopePeriod : HasEnvelopePeriod = false; break;
+                case EffectEnvelopeDecay  : HasEnvelopeDecay  = false; break;
             }
         }
 
@@ -848,6 +869,7 @@ namespace FamiStudio
                 case EffectDeltaCounter   : return 127;
                 case EffectPhaseReset     : return 1;
                 case EffectEnvelopePeriod : return 65535;
+                case EffectEnvelopeDecay  : return 255;
             }
 
             return 0;
@@ -881,6 +903,7 @@ namespace FamiStudio
     public static class EffectType
     {
         public static LocalizedString[] LocalizedNames = new LocalizedString[Note.EffectCount];
+        public static LocalizedString EnvelopeDecayTooltip;
 
         public static readonly string[] Icons = new string[]
         {
@@ -898,6 +921,7 @@ namespace FamiStudio
             "EffectDAC",
             "EffectPhaseReset",
             "EffectEnvelopePeriod",
+            "EffectVolume",
         };
 
         static EffectType()
@@ -924,6 +948,7 @@ namespace FamiStudio
         EffectNoteDelay   = Note.EffectNoteDelayMask      << 16,
         EffectCutDelay    = Note.EffectCutDelayMask       << 16,
         EffectEnvPeriod   = Note.EffectEnvelopePeriodMask << 16,
+        EffectEnvDecay    = Note.EffectEnvelopeDecayMask  << 16,
 
         // There are all the filter that can interrupt the duration of a note.
         CutDurationMask = Musical | Stop | EffectCutDelay,

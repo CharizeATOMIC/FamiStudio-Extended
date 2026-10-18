@@ -17,7 +17,9 @@ static class GimmickConversion
     static readonly Dictionary<string, int> EnvelopeTypes = new() {
         ["Volume"] = EnvelopeType.Volume, ["Arpeggio"] = EnvelopeType.Arpeggio,
         ["Pitch"] = EnvelopeType.Pitch, ["DutyCycle"] = EnvelopeType.DutyCycle,
-        ["S5BMixer"] = EnvelopeType.S5BMixer, ["S5BNoiseFreq"] = EnvelopeType.S5BNoiseFreq
+        ["S5BMixer"] = EnvelopeType.S5BMixer, ["S5BNoiseFreq"] = EnvelopeType.S5BNoiseFreq,
+        ["NoisePeriod"] = EnvelopeType.NoisePeriod, ["NoiseEnvelope"] = EnvelopeType.NoiseEnvelope,
+        ["NoiseEnvelopeRestart"] = EnvelopeType.NoiseEnvelopeRestart
     };
 
     static int Int(JsonElement item, string name, int fallback = 0) => item.TryGetProperty(name, out var value) ? value.GetInt32() : fallback;
@@ -47,9 +49,11 @@ static class GimmickConversion
 
     public static void Run(string input, string output)
     {
+        Settings.SquareSmoothVibrato = false;
         input = Path.GetFullPath(input); output = Path.GetFullPath(output); Directory.CreateDirectory(output);
         using var document = JsonDocument.Parse(File.ReadAllBytes(input));
         var root = document.RootElement;
+        bool structuredLoops = root.TryGetProperty("layout_revision", out _);
         var project = new Project { Name = "Gimmick! (Japan) - Editable", Author = "", Copyright = "", PalMode = false, Tuning = 440, AutoSortSongs = false };
         project.SetExpansionAudioMask(ExpansionType.S5BMask);
         foreach (var folder in new[] { "Pulse", "Triangle", "Noise", "S5B", "DPCM" }) project.CreateFolder(FolderType.Instrument, folder);
@@ -88,6 +92,7 @@ static class GimmickConversion
             }
 
             var name = source.GetProperty("name").GetString();
+            if (project.GetInstrument(name) != null) name += $" / variation {id}";
             int chip = Int(source, "chip");
             Require(chip == ExpansionType.None || chip == ExpansionType.S5B, $"Unexpected instrument chip {chip}.");
             var instrument = project.CreateInstrument(chip, name);
@@ -124,44 +129,156 @@ static class GimmickConversion
             int sourceId = Int(source, "id"), frames = Int(source, "frames"), loop = Int(source, "loop", -1);
             Require(frames > 0 && (loop < 0 || loop < frames), $"Invalid song span {sourceId}.");
             var boundaries = new SortedSet<int> { 0, frames };
-            for (int frame = 256; frame < frames; frame += 256) boundaries.Add(frame);
+            var tempos = source.TryGetProperty("tempo_segments", out var tempoArray) ? tempoArray.EnumerateArray().ToArray() : Array.Empty<JsonElement>();
+            if (tempos.Length == 0)
+                for (int frame = 256; frame < frames; frame += 256) boundaries.Add(frame);
+            for (int t = 0; t < tempos.Length; t++)
+            {
+                var tempo = tempos[t];
+                int from = Int(tempo, "frame"), to = t + 1 < tempos.Length ? Int(tempos[t + 1], "frame") : frames;
+                int origin = Int(tempo, "beat_grid_origin", from), bar = Int(tempo, "quarter_frames") * Int(tempo, "inferred_beats_per_bar", 4);
+                boundaries.Add(from);
+                int firstEnd = loop >= origin && loop < to ? loop : to;
+                for (int frame = origin; frame < firstEnd; frame += bar) boundaries.Add(frame);
+                if (firstEnd < to) for (int frame = firstEnd; frame < to; frame += bar) boundaries.Add(frame);
+            }
             if (loop >= 0) boundaries.Add(loop);
+            foreach (var group in source.GetProperty("notes").EnumerateArray().GroupBy(n => Int(n, "channel")))
+            {
+                int previousDelay = -1;
+                foreach (var n in group.OrderBy(n => Int(n, "start")))
+                {
+                    int delay = Int(n, "playback_delay");
+                    if (previousDelay >= 0 && delay != previousDelay) boundaries.Add(Int(n, "start"));
+                    previousDelay = delay;
+                }
+            }
             var starts = boundaries.ToArray();
             Require(starts.Length - 1 <= Song.MaxLength, $"Song {sourceId} exceeds the pattern timeline limit.");
             var song = project.CreateSong(source.GetProperty("name").GetString());
+            int baseBeat = tempos.Length > 0 ? Int(tempos[0], "quarter_frames") : 16;
+            int baseLength = tempos.Length > 0 ? baseBeat * Int(tempos[0], "inferred_beats_per_bar", 4) : 256;
             song.ChangeFamiStudioTempoGroove(new[] { 1 }, false);
-            song.SetDefaultPatternLength(256); song.SetBeatLength(16); song.SetLength(starts.Length - 1);
+            song.SetDefaultPatternLength(baseLength); song.SetBeatLength(baseBeat); song.SetLength(starts.Length - 1);
             for (int i = 0; i < starts.Length - 1; i++)
             {
                 int length = starts[i + 1] - starts[i];
-                if (length != 256) song.SetPatternCustomSettings(i, length, Math.Min(16, length), new[] { 1 });
+                int beat = baseBeat, grid = 1;
+                if (tempos.Length > 0)
+                {
+                    var tempo = tempos.Last(t => Int(t, "frame") <= starts[i]);
+                    beat = Int(tempo, "quarter_frames");
+                    grid = tempo.GetProperty("constant_groove_preserving_all_frames")[0].GetInt32();
+                    while (grid > 1 && (length % grid != 0 || beat % grid != 0)) grid--;
+                }
+                song.SetPatternCustomSettings(i, length, beat, new[] { grid });
             }
             song.SetLoopPoint(loop < 0 ? -1 : Array.IndexOf(starts, loop));
-            int count = 0;
-            foreach (var sourceNote in source.GetProperty("notes").EnumerateArray())
+            int PatternIndex(int time) { int i = Array.BinarySearch(starts, time); return i < 0 ? ~i - 1 : i; }
+            bool SameNote(Note a, Note b) => a.Value == b.Value && a.Instrument == b.Instrument && a.Flags == b.Flags &&
+                a.Duration == b.Duration && a.Release == b.Release && a.EffectMask == b.EffectMask &&
+                Enumerable.Range(0, Note.EffectCount).All(f => !a.HasValidEffectValue(f) || a.GetEffectValue(f) == b.GetEffectValue(f));
+            var firstSource = source.GetProperty("notes").EnumerateArray().OrderBy(n => Int(n, "start")).ToArray();
+            Pattern[][] BuildPatterns(JsonElement[] sourceNotes, bool repeat)
             {
-                int channel = Int(sourceNote, "channel"), start = Int(sourceNote, "start"), duration = Int(sourceNote, "duration"), release = Int(sourceNote, "release", -1);
-                int originalInstrument = Int(sourceNote, "instrument"), value = Int(sourceNote, "note"), fine = Int(sourceNote, "fine");
-                Require(channel >= 0 && channel < ChannelTypes.Length && start >= 0 && start < frames && duration > 0 && duration <= ushort.MaxValue && start + duration <= frames, $"Invalid note span in song {sourceId}.");
-                Require(release == -1 || (release > 0 && release < duration), $"Unrepresentable note release in song {sourceId}.");
-                Require(fine >= sbyte.MinValue && fine <= sbyte.MaxValue, $"Fine pitch cannot be stored exactly in song {sourceId}.");
-                if (channel == 4) value = dpcmKeys[originalInstrument];
-                Require(value >= 1 && value <= 96, $"Note outside editor range in song {sourceId}.");
-                int patternIndex = Array.BinarySearch(starts, start);
-                if (patternIndex < 0) patternIndex = ~patternIndex - 1;
-                var pattern = song.GetChannelByType(ChannelTypes[channel]).GetOrCreatePattern(patternIndex);
-                int row = start - starts[patternIndex];
-                Require(!pattern.Notes.ContainsKey(row), $"Overlapping note starts in song {sourceId}, channel {channel}, frame {start}.");
-                var note = new Note(value) { Instrument = instruments[originalInstrument], Duration = duration };
-                if (release >= 1) note.Release = release;
-                if (channel != 4) note.FinePitch = (sbyte)fine;
-                if (Bool(sourceNote, "reset_phase")) note.PhaseReset = 1;
-                if (sourceNote.TryGetProperty("delta", out var delta))
+                var result = Enumerable.Range(0, 8).Select(_ => new Pattern[song.Length]).ToArray();
+                var previousFine = new int[8];
+                var previousVolume = Enumerable.Repeat(15, 8).ToArray();
+                var firstLoopNote = new bool[8];
+                if (repeat)
+                    for (int c = 0; c < 8; c++)
+                    {
+                        var tail = firstSource.LastOrDefault(n => Int(n, "channel") == c);
+                        if (tail.ValueKind != JsonValueKind.Undefined) { previousFine[c] = Int(tail, "fine"); previousVolume[c] = Int(tail, "volume", 15); }
+                    }
+                Pattern Ensure(int channel, int time, int delay)
                 {
-                    Require(delta.GetInt32() >= 0 && delta.GetInt32() <= 127, "Invalid DPCM delta.");
-                    note.DeltaCounter = (byte)delta.GetInt32();
+                    int p = PatternIndex(time);
+                    if (result[channel][p] == null)
+                    {
+                        var owner = song.GetChannelByType(ChannelTypes[channel]);
+                        result[channel][p] = repeat ? owner.CreatePattern() : owner.GetOrCreatePattern(p);
+                        result[channel][p].PlaybackDelay = delay;
+                        result[channel][p].Name = $"{(repeat ? "Loop " : "")}{p + 1:D2}";
+                    }
+                    Require(result[channel][p].PlaybackDelay == delay, $"Conflicting pattern delays: {sourceId}/{channel}/{p}.");
+                    return result[channel][p];
                 }
-                pattern.Notes.Add(row, note); count++;
+                foreach (var n in sourceNotes)
+                {
+                    int c = Int(n, "channel"), time = Int(n, "start"), duration = Int(n, "duration"), release = Int(n, "release", -1);
+                    int id = Int(n, "instrument"), value = Int(n, "note"), fine = Int(n, "fine"), delay = Int(n, "playback_delay");
+                    Require(c >= 0 && c < 8 && time >= 0 && time < frames && duration > 0 && duration <= ushort.MaxValue, $"Invalid note in {sourceId}.");
+                    Require(!repeat || time >= loop, "Variant note precedes the musical loop.");
+                    Require(release == -1 || release > 0 && release < duration, $"Invalid release in {sourceId}.");
+                    Require(fine >= -128 && fine <= 127, "Fine pitch cannot be represented.");
+                    if (c == 4) value = dpcmKeys[id];
+                    Require(value >= 1 && value <= 96, "Note outside keyboard range.");
+                    var pattern = Ensure(c, time, delay);
+                    int row = time - starts[PatternIndex(time)];
+                    Require(!pattern.Notes.ContainsKey(row), $"Duplicate source attack: {sourceId}/{c}/{time}.");
+                    var note = new Note(value) { Instrument = instruments[id], Duration = duration };
+                    if (release > 0) note.Release = release;
+                    bool entry = loop >= 0 && time >= loop && !firstLoopNote[c];
+                    bool fineReset = fine != previousFine[c];
+                    if (entry)
+                    {
+                        var tail = sourceNotes.Last(t => Int(t, "channel") == c);
+                        fineReset |= Int(tail, "fine") != fine;
+                        firstLoopNote[c] = true;
+                    }
+                    if (c != 3 && c != 4 && fineReset) note.FinePitch = (sbyte)fine;
+                    previousFine[c] = fine;
+                    if (n.TryGetProperty("volume", out var volume))
+                    {
+                        int v = volume.GetInt32();
+                        if (v != previousVolume[c] || entry) note.Volume = (byte)v;
+                        previousVolume[c] = v;
+                    }
+                    if (n.TryGetProperty("duty_cycle", out var duty)) note.DutyCycle = (byte)duty.GetInt32();
+                    if (Bool(n, "no_attack")) note.HasAttack = false;
+                    if (Bool(n, "reset_phase")) note.PhaseReset = 1;
+                    if (n.TryGetProperty("delta", out var delta)) note.DeltaCounter = (byte)delta.GetInt32();
+                    pattern.Notes.Add(row, note);
+                }
+                foreach (var n in sourceNotes)
+                {
+                    if (!n.TryGetProperty("envelope_decay_events", out var effects)) continue;
+                    int c = Int(n, "channel"), delay = Int(n, "playback_delay");
+                    foreach (var effect in effects.EnumerateArray())
+                    {
+                        int time = Int(n, "start") + Int(effect, "offset");
+                        if (time >= frames)
+                        {
+                            if (!repeat || loop < 0) continue;
+                            time = loop + (time - frames) % (frames - loop);
+                        }
+                        var pattern = Ensure(c, time, delay);
+                        var note = pattern.GetOrCreateNoteAt(time - starts[PatternIndex(time)]);
+                        if (note.HasEnvelopeDecay) Require(note.EnvelopeDecay == Int(effect, "period"), "Conflicting decay controls.");
+                        note.EnvelopeDecay = (byte)Int(effect, "period");
+                    }
+                }
+                return result;
+            }
+            var firstPatterns = BuildPatterns(firstSource, false);
+            int count = firstSource.Length;
+            Require(firstPatterns.SelectMany(c => c).Where(p => p != null).Sum(p => p.Notes.Values.Count(n => n.IsMusical)) == count, "Lost source attacks.");
+            if (loop >= 0 && source.TryGetProperty("loop_notes", out var loopSource))
+            {
+                var repeatPatterns = BuildPatterns(loopSource.EnumerateArray().OrderBy(n => Int(n, "start")).ToArray(), true);
+                for (int c = 0; c < 8; c++)
+                for (int p = song.LoopPoint; p < song.Length; p++)
+                {
+                    var first = firstPatterns[c][p]; var next = repeatPatterns[c][p];
+                    var owner = song.GetChannelByType(ChannelTypes[c]);
+                    bool equal = first == null && next == null || first != null && next != null && first.PlaybackDelay == next.PlaybackDelay &&
+                        first.Notes.Count == next.Notes.Count && first.Notes.All(kv => next.Notes.TryGetValue(kv.Key, out var other) && SameNote(kv.Value, other));
+                    if (equal) { if (next != null) owner.Patterns.Remove(next); continue; }
+                    if (first == null) first = owner.GetOrCreatePattern(p);
+                    if (next == null) { next = owner.CreatePattern(); next.PlaybackDelay = first.PlaybackDelay; next.Name = $"Loop {p + 1:D2}"; }
+                    first.LoopVariant = next;
+                }
             }
             if (source.TryGetProperty("loop_stop_channels", out var stopChannels))
             {
@@ -175,6 +292,12 @@ static class GimmickConversion
                     // Upstream intentionally holds notes whose duration ends at the
                     // song boundary. Explicit silence is required on a silent loop entry.
                     pattern.Notes.Add(0, new Note(Note.NoteStop));
+                    if (pattern.LoopVariant != null)
+                    {
+                        Require(!pattern.LoopVariant.Notes.TryGetValue(0, out var existingStop) || !existingStop.IsMusical, "Loop stop overlaps a variant attack.");
+                        var stop = pattern.LoopVariant.GetOrCreateNoteAt(0);
+                        stop.Value = Note.NoteStop;
+                    }
                     loopStopEvents++;
                 }
             }
@@ -183,7 +306,41 @@ static class GimmickConversion
             songMetadata.Add((sourceId, song, frames, loop, count)); sourceNotes += count;
         }
 
-        Require(NoteCount(project) == sourceNotes && EventCount(project) == sourceNotes + loopStopEvents, "Lost notes during event construction.");
+        int firstPassSourceNotes = sourceNotes;
+        sourceNotes = NoteCount(project); // Includes editable loop-variation patterns.
+        int loopVariationPatterns = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count(p => p.LoopVariant != null)));
+        int phaseEffectsBefore = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasPhaseReset))));
+        int removedAutomaticPhaseEffects = 0;
+        foreach (var entry in songMetadata)
+        {
+            var phaseTrace = new TracePlayer(0);
+            phaseTrace.Render(entry.Song, entry.Loop < 0 ? 1 : 2);
+            for (int c = 0; c < 2; c++)
+            for (int p = 0; p < entry.Song.Length; p++)
+            {
+                var pattern = entry.Song.Channels[c].PatternInstances[p];
+                if (pattern == null) continue;
+                int patternStart = entry.Song.GetPatternStartAbsoluteNoteIndex(p);
+                foreach (bool variation in new[] { false, true })
+                {
+                    var selected = variation ? pattern.LoopVariant : pattern;
+                    if (selected == null) continue;
+                    foreach (var kv in selected.Notes.Where(kv => kv.Value.HasPhaseReset))
+                    {
+                        var occurrences = new List<int>();
+                        int at = patternStart + kv.Key + selected.PlaybackDelay;
+                        if (!variation) occurrences.Add(at);
+                        if (entry.Loop >= 0 && p >= entry.Song.LoopPoint && (variation || pattern.LoopVariant == null))
+                            occurrences.Add(at + entry.Frames - entry.Loop);
+                        if (occurrences.Count > 0 && occurrences.All(f => f < phaseTrace.Writes.Count && phaseTrace.Writes[f].Count(w => w[0] == 0x4003 + c * 4) >= 2))
+                        {
+                            kv.Value.HasPhaseReset = false;
+                            removedAutomaticPhaseEffects++;
+                        }
+                    }
+                }
+            }
+        }
         project.ValidateIntegrity();
         string fms = Path.Combine(output, "Gimmick-Editable.fms"), text = Path.Combine(output, "Gimmick-Inspection.txt");
         Require(new ProjectFile().Save(project, fms), "FMS save failed.");
@@ -262,10 +419,10 @@ static class GimmickConversion
             }
             if (entry.Loop >= 0)
             {
-                var loopPlayer = new TracePlayer(0);
+                var loopPlayer = new TracePlayer(preview ? 600 : 0);
                 loopPlayer.Render(restored.GetSong(entry.Song.Name), 2);
                 Require(loopPlayer.Frames.Count == entry.Frames * 2 - entry.Loop, $"Loop playback length changed: {entry.Song.Name}.");
-                for (int offset = 0; offset < entry.Frames - entry.Loop; offset++)
+                for (int offset = 0; !structuredLoops && offset < entry.Frames - entry.Loop; offset++)
                 {
                     int first = entry.Loop + offset, second = entry.Frames + offset;
                     Require(AudibleState(loopPlayer.Frames[first]).SequenceEqual(AudibleState(loopPlayer.Frames[second])),
@@ -284,6 +441,14 @@ static class GimmickConversion
                         Require(loopPlayer.Frames[first][4].SequenceEqual(loopPlayer.Frames[second][4]), $"Loop changed DPCM parameters: {entry.Song.Name}, offset {offset}.");
                     loopFrames++;
                 }
+                if (structuredLoops)
+                {
+                    // Real source loops may carry echo tails and controller
+                    // state from the previous pass. Compare both passes to the
+                    // continuously executing ROM, not to each other.
+                    player = loopPlayer;
+                    loopFrames += entry.Frames - entry.Loop;
+                }
                 loopTracks++;
             }
             var tracePath = Path.Combine(traceFolder, $"{entry.Id:x2}.fms.json.gz");
@@ -300,12 +465,15 @@ static class GimmickConversion
             source_sha256 = root.GetProperty("source_sha256").GetString(), input_json = input, project_format = Project.Version,
             songs = project.Songs.Count, source_instrument_variants = root.GetProperty("instruments").GetArrayLength(),
             instruments = project.Instruments.Count, dpcm_mappings = dpcmKeys.Count, samples = project.Samples.Count,
-            notes = sourceNotes, loop_stop_events = loopStopEvents, curve_entries = root.GetProperty("curves").GetArrayLength(), curve_unit = "absolute hardware period/register",
+            notes = sourceNotes, first_pass_source_notes = firstPassSourceNotes, loop_variation_patterns = loopVariationPatterns, loop_stop_events = loopStopEvents, curve_entries = root.GetProperty("curves").GetArrayLength(), curve_unit = "absolute hardware period/register",
+            phase_effects_before = phaseEffectsBefore, redundant_automatic_phase_effects_removed = removedAutomaticPhaseEffects,
+            fine_pitch_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasFinePitch)))),
             family_counts = project.Instruments.GroupBy(i => i.FolderName).ToDictionary(g => g.Key, g => g.Count()),
             binary_roundtrip_exact = true, text_structural_counts_match = true, text_inspection_only = !textEditable,
             text_playback_registers_exact = textEditable, text_file = Path.GetFileName(text),
             text_pitch_envelopes_that_reimport_would_clamp = textPitchLimitations, exact_dpcm_bytes = true, playback_frame_counts = true,
-            repeated_loop_tracks = loopTracks, repeated_loop_frames = loopFrames, repeated_loop_audible_registers_and_phase_exact = true,
+            repeated_loop_tracks = loopTracks, repeated_loop_frames = loopFrames, repeated_loop_audible_registers_and_phase_exact = !structuredLoops,
+            source_structural_loop_boundaries = structuredLoops, loop_validation = structuredLoops ? "Both passes captured for independent continuous ROM comparison." : "First and second loop states compared.",
             register_comparison = "Pending independent comparison with original ROM traces; these files contain actual FMS playback registers.",
             tracks = traces
         };

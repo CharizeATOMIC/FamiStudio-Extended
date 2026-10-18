@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -130,6 +130,7 @@ namespace FamiStudio
             {
                 case Note.EffectVolume:
                 case Note.EffectVolumeSlide: return type != ChannelType.Dpcm;
+                case Note.EffectEnvelopeDecay: return type != ChannelType.Dpcm && !IsEPSMRythmChannel;
                 case Note.EffectFinePitch: return type != ChannelType.Noise && type != ChannelType.Dpcm && !IsEPSMRythmChannel;
                 case Note.EffectVibratoSpeed: return type != ChannelType.Noise && type != ChannelType.Dpcm && !IsEPSMRythmChannel;
                 case Note.EffectVibratoDepth: return type != ChannelType.Noise && type != ChannelType.Dpcm && !IsEPSMRythmChannel;
@@ -182,6 +183,13 @@ namespace FamiStudio
                     }
 
                     instanceLengthMap[pattern] = patternLen;
+                    var variant = pattern.LoopVariant;
+                    if (variant != null)
+                    {
+                        if (instanceLengthMap.TryGetValue(variant, out var variantLength) && variantLength != patternLen)
+                            pattern.LoopVariant = variant = variant.ShallowClone();
+                        instanceLengthMap[variant] = patternLen;
+                    }
                 }
             }
 
@@ -211,6 +219,14 @@ namespace FamiStudio
                     }
 
                     instanceLengthMap[pattern] = Tuple.Create(groove, groovePadMode);
+                    var variant = pattern.LoopVariant;
+                    if (variant != null)
+                    {
+                        if (instanceLengthMap.TryGetValue(variant, out var variantGroove) &&
+                            (groove != variantGroove.Item1 || groovePadMode != variantGroove.Item2))
+                            pattern.LoopVariant = variant = variant.ShallowClone();
+                        instanceLengthMap[variant] = Tuple.Create(groove, groovePadMode);
+                    }
                 }
             }
 
@@ -300,7 +316,8 @@ namespace FamiStudio
         {
             for (int i = 0; i < patternInstances.Length; i++)
             {
-                if (patternInstances[i] != null && !patternInstances[i].HasAnyNotes)
+                if (patternInstances[i] != null && !patternInstances[i].HasAnyNotes &&
+                    !(patternInstances[i].LoopVariant?.HasAnyNotes ?? false))
                 {
                     patternInstances[i] = null;
                 }
@@ -414,6 +431,8 @@ namespace FamiStudio
                 if (inst != null)
                 {
                     usedPatterns.Add(inst);
+                    if (inst.LoopVariant != null)
+                        usedPatterns.Add(inst.LoopVariant);
                 }
             }
 
@@ -1156,6 +1175,9 @@ namespace FamiStudio
 
                 if (patternCrcMap.TryGetValue(crc, out var matchingPattern))
                 {
+                    foreach (var owner in patterns)
+                        if (owner.LoopVariant == pattern)
+                            owner.LoopVariant = matchingPattern;
                     patterns.RemoveAt(i);
 
                     for (int j = 0; j < song.Length; j++)
@@ -1542,6 +1564,10 @@ namespace FamiStudio
 
             for (int i = 0; i < patternInstances.Length; i++)
                 buffer.Serialize(ref patternInstances[i], this);
+
+            if (buffer.IsReading)
+                foreach (var pattern in patterns)
+                    pattern.ValidateLoopVariant();
 
             if (buffer.IsReading && !buffer.IsForUndoRedo)
                 ClearPatternsInstancesPastSongLength();

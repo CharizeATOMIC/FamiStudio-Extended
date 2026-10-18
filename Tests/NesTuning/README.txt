@@ -41,3 +41,18 @@ https://docs.libretro.com/development/cores/developing-cores/
 The demo source uses the repository's existing MIT-licensed demo font.
 There has been no physical NES test. This simple cartridge uses only the base
 APU; expansion-chip tuning has separate NSF regression coverage.
+
+Revision 4: actual bundled ROM exporter
+
+The separate --nes-r4 harness creates original pulse-decay and hardware-noise
+music through RomFile.Save, exercising the rebuilt bundled kernel and image
+layout rather than the custom demonstration cartridge above:
+  dotnet run --project Tests/TuningRegression -c Release -- --nes-r4 work/nes-r4
+  python Tests/NesTuning/verify_r4.py <core> work/nes-r4/R4-Noise-Decay.nes work/nes-r4 <matching-rom_ntsc.dbg>
+
+Use the rom_ntsc.dbg produced alongside the matching kernel by the ROM make
+script. The independent core reads actual CPU RAM using those symbols and
+compares the engine volume/noise buffers with editor-reference.json, generated
+by --nes-r4 in the output directory. The test runs 600 video frames, compares
+512 music frames (two passes, 1,216 state checks), measures pulse pitch and checks
+hardware-noise audio. It does not claim physical hardware or FDS boot validation.

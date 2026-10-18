@@ -22,8 +22,8 @@ namespace FamiStudio
         const int RomBankSize         = 0x2000; // Most expansions have 8KB banks.
         const int RomBankSizeVrc6     = 0x4000; // VRC6 uses 16KB banks.
         const int RomPrgAndTocSize    = 0x2000; // 6.5KB of code + TOC + vectors. 
-        const int RomTocOffset        = 0x1800; // Table of content is right after the code at F800
-        const int RomTocOffsetEpsm    = 0x1b00; // Table of content is right after the code at FB00 (EPSM)
+        const int RomTocOffset        = 0x1900; // Table of content is right after the code at F900
+        const int RomTocOffsetEpsm    = 0x1ba0; // FBA0 leaves all 32 song entries below the vectors.
         const int RomChrSize          = 0x2000; // 8KB CHR data.
         const int MaxSongSize         = 0x4000; // 16KB max per song.
         const int MinRomSizeInKB      = 32;     // 32KB minimum.

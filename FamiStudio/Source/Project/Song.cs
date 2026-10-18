@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -15,6 +15,29 @@ namespace FamiStudio
         private TuningSettings tuningSettings = new TuningSettings();
         public TuningSettings TuningSettings { get => tuningSettings; set { value.Validate(); tuningSettings = value.Clone(); } }
         public bool UsesCustomTuning => project.HasActiveChipTuning || tuningSettings.Override || patternCustomSettings.Take(songLength).Any(p => p.Tuning.Override);
+        // Inspect scheduled patterns only: unused resources and other songs must not
+        // prevent exporting an otherwise compatible selection.
+        public bool UsesExtendedPlayback(bool includeInstrumentEffects)
+        {
+            foreach (var channel in channels)
+            for (int p = 0; p < songLength; p++)
+            {
+                var pattern = channel.PatternInstances[p];
+                if (pattern == null) continue;
+                if (pattern.PlaybackDelay != 0 || pattern.LoopVariant != null) return true;
+                if (!includeInstrumentEffects) continue;
+                foreach (var entry in pattern.Notes)
+                {
+                    if (entry.Key >= GetPatternLength(p)) continue;
+                    var note = entry.Value;
+                    if (note.HasEnvelopeDecay) return true;
+                    if (channel.Type == ChannelType.Noise && note.IsMusical && note.Instrument != null)
+                        for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
+                            if (note.Instrument.Envelopes[type]?.Length > 0) return true;
+                }
+            }
+            return false;
+        }
         public TuningSettings GetTuning(int patternIndex = -1) => patternIndex >= 0 && patternIndex < songLength && patternCustomSettings[patternIndex].Tuning.Override ? patternCustomSettings[patternIndex].Tuning : tuningSettings.Override ? tuningSettings : null;
         public int GetTuningHz(int patternIndex = -1) => GetTuning(patternIndex)?.ReferenceHz ?? project.Tuning;
 
@@ -426,8 +449,8 @@ namespace FamiStudio
                 ratio = 1.0f;
 
             foreach (var channel in channels)
+            foreach (var pattern in new[] { channel.PatternInstances[p], channel.PatternInstances[p]?.LoopVariant })
             {
-                var pattern = channel.PatternInstances[p];
 
                 if (pattern == null || (processedPatterns != null && processedPatterns.Contains(pattern)))
                     continue;
@@ -556,7 +579,7 @@ namespace FamiStudio
 
                 for (var p = 0; p < songLength; p++)
                 {
-                    var pattern = channel.PatternInstances[p];
+                    foreach (var pattern in new[] { channel.PatternInstances[p], channel.PatternInstances[p]?.LoopVariant })
 
                     if (pattern != null)
                     {
@@ -593,6 +616,10 @@ namespace FamiStudio
                         {
                             channel.PatternInstances[p] = newPattern;
                         }
+                        // A leaf variation can also be shared by different visible owners.
+                        // Keep the outside range intact when resizing only this range.
+                        if (oldPattern?.LoopVariant != null && oldToNewPattern.TryGetValue(oldPattern.LoopVariant, out var newVariant))
+                            channel.PatternInstances[p].LoopVariant = newVariant;
                     }
                 }
             }
@@ -651,7 +678,8 @@ namespace FamiStudio
             {
                 for (int p = 0; p < songLength; p++)
                 {
-                    var pattern = channels[ChannelType.Dpcm].PatternInstances[p];
+                    var first = channels[ChannelType.Dpcm].PatternInstances[p];
+                    foreach (var pattern in new[] { first, first?.LoopVariant })
                     if (pattern != null)
                     {
                         foreach (var note in pattern.Notes.Values)
@@ -989,8 +1017,8 @@ namespace FamiStudio
                     var localGroovePadMode = GetPatternGroovePaddingMode(p);
 
                     foreach (var c in channels)
+                    foreach (var pattern in new[] { c.PatternInstances[p], c.PatternInstances[p]?.LoopVariant })
                     {
-                        var pattern = c.PatternInstances[p];
 
                         if (pattern == null || processedPatterns.Contains(pattern))
                             continue;

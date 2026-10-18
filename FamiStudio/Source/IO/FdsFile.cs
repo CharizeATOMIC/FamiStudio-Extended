@@ -15,11 +15,11 @@ namespace FamiStudio
     {
         // FDS memory layout, must match CFG file.
         //   0x6000: Sound engine + ROM code.
-        //   0x7600: Song table of content
-        //   0x7800: Song data for the current song
+        //   0x7700: Song table of content
+        //   0x7900: Song data for the current song
         //   0xc000: DPCM data
 
-        const int FdsSongDataAddr    = 0x7800;
+        const int FdsSongDataAddr    = 0x7900;
         const int FdsMaxDpcmSize     = 0x2000 - 10; // 8KB - 10 bytes of vectors
         const int FdsDpcmStart       = 0xc000;
         const int FdsMaxFileSize     = 65516; // Header + 1 side

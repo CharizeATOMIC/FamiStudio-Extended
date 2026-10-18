@@ -725,6 +725,7 @@ namespace FamiStudio
         {
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
             if (originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesCustomTuning)) { Log.LogMessage(LogSeverity.Error, TuningStrings.FormatExportError); return false; }
+            if (originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesExtendedPlayback(true))) { Log.LogMessage(LogSeverity.Error, TuningStrings.ExtendedFormatExportError); return false; }
 
             if (originalProject.UsesMultipleExpansionAudios)
             {

@@ -2,6 +2,8 @@
 .ifdef FAMISTUDIO
 
     ; Enable all features.
+    FAMISTUDIO_USE_ENVELOPE_DECAY           = 1
+    FAMISTUDIO_USE_NOISE_ENVELOPES           = 1
     FAMISTUDIO_USE_CUSTOM_TUNING             = 1
     FAMISTUDIO_CFG_EXTERNAL                  = 1
     FAMISTUDIO_CFG_SMOOTH_VIBRATO            = 1

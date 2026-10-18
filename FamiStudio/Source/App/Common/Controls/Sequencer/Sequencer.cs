@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -229,6 +229,12 @@ namespace FamiStudio
 
         // Pattern properties dialog
         LocalizedString PatternPropertiesTitle;
+        LocalizedString PlaybackDelayLabel;
+        LocalizedString PlaybackDelayTooltip;
+        LocalizedString LoopVariantLabel;
+        LocalizedString EditLoopVariantLabel;
+        LocalizedString LoopVariantTooltip;
+        LocalizedString LoopVariantNone;
         LocalizedString MultiplePatternsSelectedLabel;
         LocalizedString ErrorRenamingPattern;
 
@@ -1985,6 +1991,8 @@ namespace FamiStudio
 
                 if (pattern != null)
                 {
+                    if (pattern.LoopVariant != null)
+                        menu.Add(new ContextMenuOption("MenuPiano", EditLoopVariantLabel, () => App.StartEditLoopVariant(location.ChannelIndex, location.PatternIndex)));
                     if (IsPatternSelected(location) && SelectionContainsMultiplePatterns())
                     {
                         menu.Insert(0, new ContextMenuOption("MenuDeleteSelection", DeleteSelectionLabel, () => { DeleteSelection(true); }));
@@ -3245,6 +3253,19 @@ namespace FamiStudio
             dlg.Properties.AddColoredTextBox(multiplePatternsSelected ? MultiplePatternsSelectedLabel : pattern.Name, pattern.Color);
             dlg.Properties.SetPropertyEnabled(0, !multiplePatternsSelected);
             dlg.Properties.AddColorPicker(pattern.Color);
+            var delayIndex = dlg.Properties.AddNumericUpDown(PlaybackDelayLabel.Colon, pattern.PlaybackDelay, 0, 255, 1, PlaybackDelayTooltip);
+            var variants = new List<Pattern> { null };
+            var variantNames = new List<string> { LoopVariantNone };
+            if (!pattern.Channel.Patterns.Exists(p => p.LoopVariant == pattern))
+                foreach (var candidate in pattern.Channel.Patterns)
+                    if (candidate != pattern && candidate.LoopVariant == null)
+                    {
+                        variants.Add(candidate);
+                        variantNames.Add(candidate.Name);
+                    }
+            var selectedVariant = Math.Max(0, variants.IndexOf(pattern.LoopVariant));
+            var variantIndex = dlg.Properties.AddDropDownList(LoopVariantLabel.Colon, variantNames.ToArray(), variantNames[selectedVariant], LoopVariantTooltip);
+            dlg.Properties.SetPropertyEnabled(variantIndex, !multiplePatternsSelected && variants.Count > 1);
             dlg.Properties.Build();
 
             dlg.ShowDialogAsync((r) =>
@@ -3258,6 +3279,7 @@ namespace FamiStudio
 
                     var newName  = dlg.Properties.GetPropertyValue<string>(0).Trim();
                     var newColor = dlg.Properties.GetPropertyValue<Color>(1);
+                    var newDelay = dlg.Properties.GetPropertyValue<int>(delayIndex);
 
                     if (multiplePatternsSelected)
                     {
@@ -3267,7 +3289,10 @@ namespace FamiStudio
                             {
                                 var pat = Song.Channels[i].PatternInstances[j];
                                 if (pat != null)
+                                {
                                     pat.Color = newColor;
+                                    pat.PlaybackDelay = newDelay;
+                                }
                             }
                         }
                         App.UndoRedoManager.EndTransaction();
@@ -3275,6 +3300,8 @@ namespace FamiStudio
                     else if (Song.Channels[location.ChannelIndex].RenamePattern(pattern, newName))
                     {
                         pattern.Color = newColor;
+                        pattern.PlaybackDelay = newDelay;
+                        pattern.LoopVariant = variants[dlg.Properties.GetSelectedIndex(variantIndex)];
                         App.UndoRedoManager.EndTransaction();
                     }
                     else

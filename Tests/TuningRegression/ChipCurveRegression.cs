@@ -62,8 +62,8 @@ static class ChipCurveRegression
         Check(cloned.ChipTuning.HasOffsets(1), "project curve setter takes an independent snapshot");
 
         string fms = Path.Combine(output, "all-curves.fms"), txt = Path.ChangeExtension(fms, "txt");
-        Check(new ProjectFile().Save(p, fms), "format 1002 curve project saves");
-        Check(BitConverter.ToInt32(File.ReadAllBytes(fms), 4) == Project.ChipTuningFormatVersion, "curve projects declare the new fork format version");
+        Check(new ProjectFile().Save(p, fms), "current format curve project saves");
+        Check(BitConverter.ToInt32(File.ReadAllBytes(fms), 4) == Project.Version, "curve projects declare the current fork format version");
         Check(new ProjectFile().Load(fms).ChipTuning.ContentEquals(expected), "curve binary round trip preserves every bit");
         var oldCulture = CultureInfo.CurrentCulture;
         try

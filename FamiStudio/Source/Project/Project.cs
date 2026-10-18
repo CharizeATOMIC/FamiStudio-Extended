@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -31,9 +31,10 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1002;
+        public const int Version = 1003;
         public const int TuningFormatVersion = 1001;
         public const int ChipTuningFormatVersion = 1002;
+        public const int NoiseEnvelopeFormatVersion = 1003;
         public const int MaxMappedSampleSize = 0x40000;
         public const int MaxDPCMBanks = 64;
         public const int MaxSampleAddress = 255 * 64;
@@ -1916,7 +1917,7 @@ namespace FamiStudio
                 {
                     foreach (var channel in song.Channels)
                     {
-                        var pattern = channel.PatternInstances[p];
+                        foreach (var pattern in new[] { channel.PatternInstances[p], channel.PatternInstances[p]?.LoopVariant })
                         if (pattern != null)
                         {
                             foreach (var note in pattern.Notes.Values)
@@ -1960,7 +1961,7 @@ namespace FamiStudio
                         var channel = song.Channels[ChannelType.Dpcm];
                         for (int p = 0; p < song.Length; p++)
                         {
-                            var pattern = channel.PatternInstances[p];
+                            foreach (var pattern in new[] { channel.PatternInstances[p], channel.PatternInstances[p]?.LoopVariant })
                             if (pattern != null)
                             {
                                 foreach (var note in pattern.Notes.Values)
@@ -2013,7 +2014,7 @@ namespace FamiStudio
                 {
                     foreach (var channel in song.Channels)
                     {
-                        var pattern = channel.PatternInstances[p];
+                        foreach (var pattern in new[] { channel.PatternInstances[p], channel.PatternInstances[p]?.LoopVariant })
                         if (pattern != null)
                         {
                             foreach (var note in pattern.Notes.Values)
