@@ -38,8 +38,10 @@ static class UiSmoke
         var native = (IntPtr)Field(window, "window");
         glfwHideWindow(native);
         glfwSetWindowSize(native, 1280, 900);
-        app.Initialize(window, null);
+        app.Initialize(window, args.Length > 3 ? Path.GetFullPath(args[3]) : null);
         window.RunEventLoop();
+        bool initialStereo = app.SelectedSong.Channels[0].StereoEnabled;
+        int initialPan = app.SelectedSong.Channels[0].Pan;
         Invoke(window.ProjectExplorer, "EditSongProperties", app.Project.Songs[0], false);
         Capture(window, Path.Combine(output, language + "-song.ppm"));
         var dialog = (PropertyDialog)window.TopDialog;
@@ -61,9 +63,9 @@ static class UiSmoke
                 throw new Exception("Live mixer did not apply while playing.");
         }
         dialog.Close(DialogResult.Cancel);
-        if (app.SelectedSong.Channels[0].StereoEnabled || app.SelectedSong.Channels[0].Pan != 50) throw new Exception("Cancel did not restore mixer.");
+        if (app.SelectedSong.Channels[0].StereoEnabled != initialStereo || app.SelectedSong.Channels[0].Pan != initialPan) throw new Exception("Cancel did not restore mixer.");
         app.StopSong();
-        Invoke(window.Sequencer, "EditPatternCustomSettings", Point.Empty, 0);
+        Invoke(window.Sequencer, "EditPatternCustomSettings", Point.Empty, args.Length > 3 ? 2 : 0);
         Capture(window, Path.Combine(output, language + "-pattern.ppm"));
         window.TopDialog.Close(DialogResult.Cancel);
         var projectDialog = new ProjectPropertiesDialog(window, app.Project);
