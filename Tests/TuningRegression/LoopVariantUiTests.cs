@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Reflection;
 using FamiStudio;
@@ -76,4 +76,3 @@ static class LoopVariantUiTests
         app.StartEditChannel(0, 0);
     }
 }
-
