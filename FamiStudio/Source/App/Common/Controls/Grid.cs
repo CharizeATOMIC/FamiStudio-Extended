@@ -101,6 +101,8 @@ namespace FamiStudio
             Debug.Assert(columnDescs.Length <= 8); // We use a byte for masks.
 
             columns = columnDescs;
+            if (columns.Any(c => c.Type == ColumnType.NumericUpDown))
+                rowHeight = DpiScaling.ScaleForWindow(28);
             numRows = rows;
             numItemRows = hasHeader ? numRows - 1 : numRows;
             numHeaderRows = hasHeader ? 1 : 0;
@@ -518,11 +520,11 @@ namespace FamiStudio
                                 }
                                 case ColumnType.NumericUpDown:
                                 {
-                                    var increment = 0;
-                                    if (e.X <= (left + columnOffsets[col + 0] + rowHeight)) increment = -1;
-                                    if (e.X >= (left + columnOffsets[col + 1] - rowHeight)) increment =  1;
-                                    data[row, col] = Utils.Clamp((int)data[row, col] + increment, colDesc.MinValue, colDesc.MaxValue);
-                                    ValueChanged?.Invoke(this, row, col, data[row, col]);
+                                    int button = GetNumericButton(e.X, col);
+                                    if (button == 0)
+                                        EnterNumericValue(row, col);
+                                    else
+                                        SetNumericValue(row, col, (int)data[row, col] + button * (ModifierKeys.IsShiftDown ? 10 : 1));
                                     break;
                                 }
                             }
@@ -552,6 +554,37 @@ namespace FamiStudio
             UpdateHover(e);
         }
 
+        private int NumericButtonWidth(int col) => Math.Min(DpiScaling.ScaleForWindow(32), columnWidths[col] / 3);
+
+        private int GetNumericButton(int x, int col)
+        {
+            int localX = x - columnOffsets[col];
+            int buttonWidth = NumericButtonWidth(col);
+            return localX < buttonWidth ? -1 : localX >= columnWidths[col] - buttonWidth ? 1 : 0;
+        }
+
+        private void SetNumericValue(int row, int col, int value)
+        {
+            if (!IsCellOrColumnEnabled(row, col)) return;
+            value = Utils.Clamp(value, columns[col].MinValue, columns[col].MaxValue);
+            if (value == (int)data[row, col]) return;
+            data[row, col] = value;
+            ValueChanged?.Invoke(this, row, col, value);
+            MarkDirty();
+        }
+
+        private void EnterNumericValue(int row, int col)
+        {
+            if (!IsCellOrColumnEnabled(row, col)) return;
+            var desc = columns[col];
+            var location = WindowPosition + new Size(columnOffsets[col], (row - scroll + numHeaderRows + 1) * rowHeight);
+            var dialog = new ValueInputDialog(ParentWindow, location, desc.Name, (int)data[row, col], desc.MinValue, desc.MaxValue, false);
+            dialog.ShowDialogAsync(result =>
+            {
+                if (result == DialogResult.OK) SetNumericValue(row, col, (int)Math.Round(dialog.Value));
+            });
+        }
+
         private bool IsPointInButton(int x, int row, int col)
         {
             if (row < 0 || col < 0 || !IsCellOrColumnEnabled(row, col))
@@ -572,7 +605,8 @@ namespace FamiStudio
 
         protected void EnterSliderValue()
         {
-            if (FindColumnIndexByType(ColumnType.Slider, out var col))
+            var row = selectedRow;
+            if (row >= 0 && row < ItemCount && FindColumnIndexByType(ColumnType.Slider, out var col) && IsCellOrColumnEnabled(row, col))
             {
                 GetCellSliderData(selectedRow, col, out var min, out var max, out var fmt);
 
@@ -585,7 +619,8 @@ namespace FamiStudio
                 {
                     if (r == DialogResult.OK)
                     {
-                        data[selectedRow, col] = (int)Math.Round(dlg.Value / scale);
+                        data[row, col] = (int)Math.Round(dlg.Value / scale);
+                        ValueChanged?.Invoke(this, row, col, data[row, col]);
                         MarkDirty();
                     }
                 });
@@ -653,6 +688,11 @@ namespace FamiStudio
                         });
                         e.MarkHandled();
                     }
+                    else if (columns[col].Type == ColumnType.NumericUpDown)
+                    {
+                        App.ShowContextMenuAsync(new[] { new ContextMenuOption("Type", EnterValueContext, () => EnterNumericValue(row, col)) });
+                        e.MarkHandled();
+                    }
                     else if (hasAnyCheckBoxes)
                     {
                         App.ShowContextMenuAsync(new[]
@@ -682,7 +722,12 @@ namespace FamiStudio
 
             if (HasDialogFocus && !e.Handled)
             {
-                if (e.Key == Keys.Left || e.Key == Keys.Right)
+                if ((e.Key == Keys.Enter || e.Key == Keys.F2) && selectedRow >= 0 && selectedRow < ItemCount && FindColumnIndexByType(ColumnType.NumericUpDown, out var numericCol))
+                {
+                    EnterNumericValue(selectedRow, numericCol);
+                    e.Handled = true;
+                }
+                else if (e.Key == Keys.Left || e.Key == Keys.Right)
                 {
                     // Slider adjustment.
                     if (hasAnySliders)
@@ -974,9 +1019,12 @@ namespace FamiStudio
                                 if (!IsCellVisible(k, j)) break;
                                 if (cellEnabled)
                                 {
-                                    c.DrawTextureAtlasCentered(bmpUpDownMinus, 0, 0, rowHeight, rowHeight, 1, localForeColor);
-                                    c.DrawTextureAtlasCentered(bmpUpDownPlus, colWidth - rowHeight, 0, rowHeight, rowHeight, 1, localForeColor);
-                                    c.DrawText(val.ToString(), font, 0, 0, localForeColor, TextFlags.MiddleCenter, colWidth, rowHeight);
+                                    int buttonWidth = NumericButtonWidth(j);
+                                    c.FillAndDrawRectangle(0, 0, buttonWidth - 1, rowHeight - 1, Theme.DarkGreyColor5, Theme.MediumGreyColor1);
+                                    c.FillAndDrawRectangle(colWidth - buttonWidth, 0, colWidth - 1, rowHeight - 1, Theme.DarkGreyColor5, Theme.MediumGreyColor1);
+                                    c.DrawTextureAtlasCentered(bmpUpDownMinus, 0, 0, buttonWidth, rowHeight, 1, localForeColor);
+                                    c.DrawTextureAtlasCentered(bmpUpDownPlus, colWidth - buttonWidth, 0, buttonWidth, rowHeight, 1, localForeColor);
+                                    c.DrawText(val.ToString(), font, buttonWidth, 0, localForeColor, TextFlags.MiddleCenter, colWidth - buttonWidth * 2, rowHeight);
                                 }
                                 else
                                 {

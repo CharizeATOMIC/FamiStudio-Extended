@@ -1,0 +1,53 @@
+name: Tuning desktop builds
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            project: FamiStudio.csproj
+            native: NesSndEmu.dll
+          - os: ubuntu-latest
+            project: FamiStudio.Linux.csproj
+            native: libNesSndEmu.so
+          - os: macos-latest
+            project: FamiStudio.Mac.csproj
+            native: NesSndEmu.dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Configure native library
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cmake -S ThirdParty/NesSndEmu -B work/native -DCMAKE_BUILD_TYPE=Release '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            cmake -S ThirdParty/NesSndEmu -B work/native -A x64
+          else
+            cmake -S ThirdParty/NesSndEmu -B work/native -DCMAKE_BUILD_TYPE=Release
+          fi
+      - name: Build and install native library
+        shell: bash
+        run: |
+          cmake --build work/native --config Release --parallel 2
+          cmake --install work/native --config Release --prefix "$GITHUB_WORKSPACE/FamiStudio"
+      - name: Check native audio ABI
+        shell: bash
+        run: python3 Tests/check_native_mixer.py "FamiStudio/${{ matrix.native }}"
+      - name: Build desktop application
+        shell: bash
+        run: dotnet build "FamiStudio/${{ matrix.project }}" -c Release --nologo
+      - name: Run Windows playback and export regression
+        if: runner.os == 'Windows'
+        shell: bash
+        run: dotnet run --project Tests/TuningRegression -c Release -- work/tuning-tests

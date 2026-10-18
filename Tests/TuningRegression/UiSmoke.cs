@@ -26,6 +26,7 @@ static class UiSmoke
     {
         Init.InitializeBaseSystems(false);
         Settings.CheckUpdates = false; Settings.ShowTutorial = false; Settings.OpenLastProjectOnStart = false;
+        if (args.Length > 4) Settings.DpiScaling = int.Parse(args[4]);
         string language = args[1], output = Path.GetFullPath(args[2]); Directory.CreateDirectory(output);
         var strings = new IniFile();
         if (!strings.Load(Path.Combine(AppContext.BaseDirectory, "Localization", $"FamiStudio.{language}.ini"))) throw new Exception("Missing localization: " + language);
@@ -61,10 +62,17 @@ static class UiSmoke
             Invoke(page, "Grid_ValueChanged", mixGrid, 0, 2, 0);
             if (!app.IsPlaying || !app.SelectedSong.Channels[0].StereoEnabled || app.SelectedSong.Channels[0].Pan != 0)
                 throw new Exception("Live mixer did not apply while playing.");
+            mixGrid.UpdateSelectedRow(0);
+            Invoke(mixGrid, "EnterSliderValue");
+            NumericUiTests.SubmitPopup(window, "73");
+            if (!app.IsPlaying || app.SelectedSong.Channels[0].Pan != 73)
+                throw new Exception("Typed pan did not apply while playing.");
+            Console.WriteLine("PASS numeric UI: typed pan applies during playback");
         }
         dialog.Close(DialogResult.Cancel);
         if (app.SelectedSong.Channels[0].StereoEnabled != initialStereo || app.SelectedSong.Channels[0].Pan != initialPan) throw new Exception("Cancel did not restore mixer.");
         app.StopSong();
+        if (language == "zho") NumericUiTests.Run(window);
         Invoke(window.Sequencer, "EditPatternCustomSettings", Point.Empty, args.Length > 3 ? 2 : 0);
         Capture(window, Path.Combine(output, language + "-pattern.ppm"));
         window.TopDialog.Close(DialogResult.Cancel);
@@ -76,11 +84,12 @@ static class UiSmoke
         var properties = (System.Collections.IList)Field(expansion, "properties");
         var grid = (Grid)properties[0].GetType().GetField("control").GetValue(properties[0]);
         grid.UpdateData(0, 0, true); grid.UpdateData(0, 2, 2);
+        if (language == "zho") NumericUiTests.Expansion(window, grid, expansion);
         Capture(window, Path.Combine(output, language + "-expansion.ppm"));
         multi.Close(DialogResult.Cancel);
         Invoke(app, "ShutdownAudioPlayers", true);
         Invoke(window, "DestroyWindow");
         Init.ShutdownBaseSystems();
-        Console.WriteLine("PASS UI " + language);
+        Console.WriteLine("PASS UI " + language + " scale=" + Settings.DpiScaling);
     }
 }

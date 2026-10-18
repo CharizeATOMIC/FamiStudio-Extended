@@ -1,0 +1,98 @@
+FamiStudio Tuning: platform and upstream integration notes (revision 2)
+
+Maintenance assessment
+
+The three desktop versions share the tuning model, serialization, export code,
+property controls, translations and native C++ mixer. Routine feature fixes can
+therefore be made once and built for each desktop OS. Initial upstream adoption
+still needs a design review; this fork changes the project format, music stream,
+bundled drivers and native ABI. It is not a drop-in UI patch.
+
+Suggested review order:
+1. Song/pattern tuning and twelve-note temperament, with matching engine changes.
+2. Channel stereo/pan and its native mixer.
+3. Repeated expansion chips, if they fit the maintainers' desired product scope.
+
+Before upstream merge, maintainers should choose the official format version and
+opcode, review ROM/RAM/CPU budgets, and decide which optional features to accept.
+Format 1001 and the separate settings directory intentionally identify this fork;
+they should not silently become the upstream format/settings policy.
+
+Platform status in this local delivery
+
+Windows x64: application built, UI exercised, native library built with both
+MSBuild and the new CMake entry, native ABI tested, audio/export regression passed.
+Linux x64: Linux-specific C# project compiles on this Windows machine. Native Linux
+build, real audio-device playback, UI and packaging have NOT been run on Linux.
+macOS: Mac-specific C# project compiles on this Windows machine. Universal native
+build, real playback, UI, signing and notarization have NOT been run on a Mac.
+Android: not built/tested. The project targets ARMv7, ARM64 and x86_64 and has a
+separate mobile grid implementation. It needs NDK builds exposing the new ABI and
+touch-layout/input/device tests. Desktop validation does not establish Android support.
+
+Do not ship the old checked-in Linux/macOS/Android audio libraries with this fork:
+they do not contain the newly required emulator-context and stereo functions.
+The Windows package includes the rebuilt DLL used by the playback tests.
+
+Common desktop native build (CMake 3.16+, C++17 compiler)
+
+Windows:
+  cmake -S ThirdParty/NesSndEmu -B work/native -A x64
+  cmake --build work/native --config Release
+  cmake --install work/native --config Release --prefix <absolute-repo>/FamiStudio
+
+Linux:
+  sh ThirdParty/NesSndEmu/build_linux.sh
+
+macOS (x86_64 + arm64, macOS 11 deployment target):
+  sh ThirdParty/NesSndEmu/build_macos.sh
+
+Then test the newly built DLL/.so/.dylib, using Python 3 (standard library only):
+  python Tests/check_native_mixer.py FamiStudio/<native-library-filename>
+
+Build the corresponding managed project with .NET 8:
+  dotnet build FamiStudio/FamiStudio.csproj -c Release
+  dotnet build FamiStudio/FamiStudio.Linux.csproj -c Release
+  dotnet build FamiStudio/FamiStudio.Mac.csproj -c Release
+Run each on its intended OS, or use separate intermediate/output directories if
+compiling multiple project variants on one machine. Native filenames are
+NesSndEmu.dll, libNesSndEmu.so and NesSndEmu.dylib respectively.
+
+.github/workflows/tuning-desktop.yml provides a three-OS build matrix and native
+audio ABI smoke tests, plus the existing Windows playback/export suite. This
+workflow has been prepared locally and has NOT run on GitHub. It does not publish
+releases, sign packages or replace real-device UI/audio testing. Upstream can fold
+these steps into its existing release pipeline after validating them.
+
+The NSF/NES/FDS kernels are portable 6502 binaries shared by all desktop builds.
+After changing engine code, regenerate them with Tools/build_tuning_nsf.py and
+Tools/build_tuning_rom.py on the supported Windows assembler toolchain, then run
+the four-assembler comparisons before distributing desktop packages.
+
+User interaction changes in revision 2
+
+Numeric fields are taller and +/- targets wider. Reference Hz remains directly
+editable. Clicking the middle number in a cents/count table opens focused input;
+Enter commits, Escape cancels, values clamp to the allowed range. F2/Enter opens
+input for a selected numeric row. Shift-click +/- steps by ten. Ordinary numeric
+fields also support Shift-Up/Down and hold-to-repeat. Disabled cells ignore input.
+Right-click a pan slider to enter a number; the preview now updates immediately.
+Seven languages include the input hints. No song/pattern tabs were added.
+
+The UI harness dispatches pointer/key/character events to actual controls and
+checks callbacks, bounds, negative values, Cancel, disabled cells, live pan and
+expansion checkbox/quantity behavior, at 100% and 150% scale on Windows.
+
+NES verification
+
+Tests/NesTuning builds a minimal NROM cartridge using the actual exported music
+and the modified engine. An independent FCEUmm core executes CPU/PPU/APU code;
+the test checks the visible step progression, emitted audio frequencies and loop.
+It does not emulate the engine by reimplementing it in the test harness.
+This is emulator evidence, not physical NES/expansion-cartridge certification.
+The separate full regression suite covers expansion tuning in NSF execution.
+
+Reference documentation for the added build configuration:
+https://cmake.org/cmake/help/latest/variable/CMAKE_OSX_ARCHITECTURES.html
+https://github.com/actions/setup-dotnet
+https://github.com/actions/checkout

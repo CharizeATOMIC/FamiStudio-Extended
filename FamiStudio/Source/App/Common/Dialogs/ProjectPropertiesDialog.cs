@@ -141,8 +141,8 @@ namespace FamiStudio
                     page.ShowWarnings = true;
                     page.AddGrid(ExpansionLabel.Colon, new[] {
                         new ColumnDesc("", 0, ColumnType.CheckBox),
-                        new ColumnDesc(TuningStrings.ChipLabel, .7f),
-                        new ColumnDesc(TuningStrings.CountLabel, .3f, 1, 8) { VisibleWhenCheckedColumn = 0 }
+                        new ColumnDesc(TuningStrings.ChipLabel, .64f),
+                        new ColumnDesc(TuningStrings.CountLabel, .36f, 1, 8) { VisibleWhenCheckedColumn = 0 }
                     }, expansionData, numExpansions, ExpansionAudioTooltip + " " + TuningStrings.InstancesTooltip, GridOptions.NoHeader); // 0
                     page.AddNumericUpDown(N163ChannelsLabel.Colon, project.ExpansionNumN163Channels, 1, 8, 1, ExpansionNumChannelsTooltip); // 1
                     page.SetPropertyEnabled(1, project.UsesExpansionAudio(ExpansionType.N163));

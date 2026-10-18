@@ -18,7 +18,7 @@ There is also a separate, larger desktop experiment: per-song channel stereo/pan
 
 Would you be interested in reviewing the tuning portion first? Before proposing a PR, I would appreciate guidance on the desired UI, project-format versioning, stream opcode, memory budget and whether arbitrary twelve-note temperament is in scope. The prototype uses a deliberately separate project-format version (1001), which would need to be replaced with the versioning approach you prefer for an upstream contribution.
 
-The Windows build is tested locally. NES/FDS images build/export, but physical hardware verification and broader platform testing remain outstanding. I can provide focused changes and small reproduction projects after we agree on scope.
+The Windows build is tested locally. A small NROM cartridge boots the modified engine in an independent FCEUmm emulator, with captured audio verifying song/pattern reference changes, a cents offset and loop restoration. Physical hardware verification remains outstanding. The Linux and macOS C# projects compile, and a common CMake native build plus a three-OS CI configuration are included; actual Linux/macOS runtime testing and remote CI runs remain outstanding. Android is not validated. I can provide focused changes and small reproduction projects after we agree on scope.
 
 Thanks for FamiStudio and for considering the proposal.
 

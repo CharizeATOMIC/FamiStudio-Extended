@@ -29,6 +29,12 @@ namespace FamiStudio
             }
 
             dialog.Properties.Build();
+#if !FAMISTUDIO_MOBILE
+            dialog.DialogKeyDown += (_, e) =>
+            {
+                if (e.Key == Keys.Escape) { e.Handled = true; dialog.Close(DialogResult.Cancel); }
+            };
+#endif
         }
 
         private void Properties_PropertyWantsClose(int idx)
@@ -39,6 +45,7 @@ namespace FamiStudio
         public void ShowDialogAsync(Action<DialogResult> callback)
         {
             dialog.ShowDialogAsync(callback);
+            dialog.Properties.ConditionalSetTextBoxFocus();
         }
 
         private float GetValue()

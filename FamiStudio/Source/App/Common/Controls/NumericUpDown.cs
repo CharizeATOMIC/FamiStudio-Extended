@@ -35,7 +35,7 @@ namespace FamiStudio
             //Debug.Assert(val % increment == 0);
             //Debug.Assert(min % increment == 0);
             //Debug.Assert(max % increment == 0);
-            height = DpiScaling.ScaleForWindow(Platform.IsMobile ? 16 : 24);
+            height = DpiScaling.ScaleForWindow(Platform.IsMobile ? 24 : 28);
             allowMobileEdit = true;
             supportsDoubleClick = true;
             supportsLongPress = true;
@@ -102,8 +102,9 @@ namespace FamiStudio
 
         private Rectangle GetButtonRect(int idx)
         {
-            return idx == 0 ? new Rectangle(0, 0, width / 4, height - 1) :
-                              new Rectangle(width - width / 4 - 1, 0, width / 4, height - 1);
+            int buttonWidth = Math.Min(width / 3, Math.Max(DpiScaling.ScaleForWindow(32), width / 4));
+            return idx == 0 ? new Rectangle(0, 0, buttonWidth, height - 1) :
+                              new Rectangle(width - buttonWidth - 1, 0, buttonWidth, height - 1);
         }
 
         private int IsPointInButton(int x, int y)
@@ -150,12 +151,12 @@ namespace FamiStudio
         protected override void OnPointerDown(PointerEventArgs e)
         {
             var idx = IsPointInButton(e.X, e.Y);
-            if (idx >= 0)
+            if (idx >= 0 && e.Left)
             {
                 GetValueFromTextBox();
                 captureButton = idx;
                 captureDuration = 0;
-                Value += captureButton == 0 ? -inc : inc;
+                Value += (captureButton == 0 ? -inc : inc) * (ModifierKeys.IsShiftDown ? 10 : 1);
                 CapturePointer();
 
                 // Ticking will be enabled on Desktop for caret blink. Mobile needs it enabled manually.
@@ -187,7 +188,8 @@ namespace FamiStudio
         private void GetValueFromTextBox()
         {
             ClampNumber();
-            val = Utils.ParseFloatWithTrailingGarbage(text);
+            var value = Utils.ParseFloatWithTrailingGarbage(text);
+            if (SetAndMarkDirty(ref val, value)) ValueChanged?.Invoke(this, val);
         }
 
         private void SetTextBoxValue()
@@ -200,12 +202,13 @@ namespace FamiStudio
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            if (!e.Handled && (e.Key == Keys.Up || e.Key == Keys.Down))
+            if (enabled && !e.Handled && (e.Key == Keys.Up || e.Key == Keys.Down))
             {
                 GetValueFromTextBox();
                 var mult = e.Modifiers.IsShiftDown ? inc * 10 : inc * 1;
                 var sign = e.Key == Keys.Up ? 1 : -1;
                 Value += mult * sign;
+                e.Handled = true;
             }
         }
 
@@ -279,7 +282,8 @@ namespace FamiStudio
         {
             if (enabled && captureButton < 0 && e.ScrollY != 0 && e.X > GetButtonRect(0).Right && e.X < GetButtonRect(1).Left)
             {
-                Value += e.ScrollY > 0 ? inc : -inc;
+                GetValueFromTextBox();
+                Value += (e.ScrollY > 0 ? inc : -inc) * (ModifierKeys.IsShiftDown ? 10 : 1);
             }
 
             e.MarkHandled();

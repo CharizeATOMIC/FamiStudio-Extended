@@ -10,6 +10,7 @@ An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/Fa
 - Song and pattern properties append controls to their original scrollable page. Expansion checkboxes show a quantity stepper on the same row when enabled. Each expansion can have 1–8 copies, with a total limit of 64 channels. The base APU remains single.
 - Each song stores stereo enable and pan per channel. Pan is 0% left, 50% center, 100% right, using unity center gain. Playback and keyboard preview follow these values. Changes in the song dialog preview immediately; Cancel restores them. EPSM's instrument stereo remains active, with the song pan applied as a balance.
 - All seven existing languages include the new controls and messages: English, Chinese, German, Spanish, Portuguese, Russian and Korean.
+- Revision 2 enlarges numeric hit targets. Click a table's number to type cents or chip count; Enter accepts and Escape cancels. Shift-click steps by ten. Typed pan values preview during playback. Reference-Hz fields remain directly editable.
 
 ## Format and installation
 
@@ -75,13 +76,15 @@ dotnet run --project Tests/TuningRegression -c Release -- --demo work/examples
 python Tests/check_export_assemblers.py work/examples/SoundEngine
 ```
 
-The UI harness renders actual application dialogs in a hidden application window, without desktop screenshots or browser control. Repeat for `eng`, `deu`, `spa`, `por`, `rus`, `kor`. Linux and macOS project files include the managed changes and isolated settings paths, but this delivery builds and validates **Windows x64 only**. Rebuild the native audio library before testing other platforms; the upstream prebuilt libraries do not expose the new functions. Mobile is not a validated target.
+The UI harness renders actual application dialogs in a hidden application window, without desktop screenshots or browser control. Repeat for `eng`, `deu`, `spa`, `por`, `rus`, `kor`. The Chinese run also exercises actual pointer, key and character events, typed live pan and quantity editing. Append a saved project path and `150` to exercise 150% scaling.
+
+Windows x64 is the runtime-validated target. Linux and macOS managed projects also compile on Windows, but have not been run on those operating systems. A common CMake native build and three-OS CI configuration are included; see `PLATFORM_HANDOFF.txt` for commands, adoption steps and the exact verification boundary. The CI has not run remotely. Rebuild native audio libraries before using other platforms; the upstream prebuilt libraries do not expose the new functions. Android is not built or validated.
 
 ## Verification and limits
 
 The local regression suite passes 1,506 assertions. Coverage includes serialization, inheritance, cents quantization, every expansion's NSF pitch registers in PAL/NTSC modes, dual-region export, held notes, slides, vibrato, loop/track tuning resets, duplicate-chip stereo isolation, N163 wave allocation, keyboard preview, clipboard ownership, project merging and the 64-channel boundary. Ten upstream register-trace fixtures remain byte-identical. All four assemblers produce identical executable bytes for 32 engine configurations. All seven UI languages render; the UI test also exercises live playback changes and Cancel restoration.
 
-NSF behavior is executed in the bundled 6502 emulator and compared with editor register output. NES/FDS images are built and exported successfully, but have not been boot-tested on physical hardware. This is a locally tested development fork, not an upstream-reviewed release. Long sessions, every third-party NSF player and every operating system have not been validated.
+NSF behavior is executed in the bundled 6502 emulator and compared with editor register output. Revision 2 includes a simple NROM cartridge in `Tests/NesTuning`: actual exported music and the modified engine run in an independent FCEUmm CPU/PPU/APU emulator. Its captured audio verifies 440 Hz, 432 Hz, 450 Hz references, C +50 cents and loop restoration against the nearest hardware timer. See that directory's README for reproduction commands. NES/FDS images have not been tested on physical hardware. This is a locally tested development fork, not an upstream-reviewed release. Long sessions, every third-party NSF player and every operating system have not been validated.
 
 ## Contributing upstream
 

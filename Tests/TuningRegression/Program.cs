@@ -34,6 +34,7 @@ static class Program
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
         if (args.Length > 0 && args[0] == "--demo") { Demo.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--nes-demo") { NesDemo.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         Settings.SquareSmoothVibrato=false;
         string output=Path.GetFullPath(args.Length>0?args[0]:"test-output");Directory.CreateDirectory(output);
         var p=MakeProject();var song=p.Songs[0];

@@ -71,7 +71,8 @@ namespace FamiStudio
 
                 if (prop.type == PropertyType.TextBox || 
                     prop.type == PropertyType.ColoredTextBox || 
-                    prop.type == PropertyType.NumericUpDown)
+                    prop.type == PropertyType.NumericUpDown ||
+                    prop.type == PropertyType.NumericUpDownFloat)
                 {
                     (prop.control as TextBox).SelectAll();
                     prop.control.GrabDialogFocus();
