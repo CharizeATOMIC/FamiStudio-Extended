@@ -216,7 +216,10 @@
     <Compile Include="Source\Project\ProjectBuffer.cs" />
     <Compile Include="Source\Project\Song.cs" />
     <Compile Include="Source\Project\TuningSettings.cs" />
+    <Compile Include="Source\Project\ChipTuningSettings.cs" />
     <Compile Include="Source\App\Common\Dialogs\TuningProperties.cs" />
+    <Compile Include="Source\App\Common\Dialogs\ChipTuningDialog.cs" />
+    <Compile Include="Source\App\Common\Controls\ChipTuningCurve.cs" />
     <Compile Include="Source\Project\UndoRedo.cs" />
     <Compile Include="Source\App\Common\Cursors.cs" />
     <Compile Include="Source\App\Common\DpiScaling.cs" />

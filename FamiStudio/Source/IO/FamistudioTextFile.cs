@@ -81,6 +81,16 @@ namespace FamiStudio
 
             lines.Add(projectLine);
 
+            // Sparse absolute hardware curve points with their reference basis.
+            if (project.ChipTuning.HasAnyOffsets || project.ChipTuning.BasisReferenceHz != 440 || project.ChipTuning.BasisPal || project.ChipTuning.BasisN163Channels != 1)
+                lines.Add($"\tChipTuningBasis{GenerateAttribute("ReferenceHz", project.ChipTuning.BasisReferenceHz)}{GenerateAttribute("PAL", project.ChipTuning.BasisPal)}{GenerateAttribute("N163Channels", project.ChipTuning.BasisN163Channels)}");
+            for (int chip = 0; chip < ExpansionType.Count; chip++)
+                for (int note = 1; note <= ChipTuningSettings.NoteCount; note++)
+                {
+                    if (project.ChipTuning.HasOverride(chip, note))
+                        lines.Add($"\tChipTuning{GenerateAttribute("Chip", chip == ExpansionType.None ? "APU" : ExpansionType.InternalNames[chip])}{GenerateAttribute("Note", note)}{GenerateAttribute("Value", project.ChipTuning.GetValue(chip, note))}");
+                }
+
             // DPCM samples
             foreach (var sample in project.Samples)
             {
@@ -497,6 +507,17 @@ namespace FamiStudio
                                 Log.LogMessage(LogSeverity.Error, "The text file was created with an incompatible version of FamiStudio. The text format is only compatible with the current version.");
                                 return null;
                             }
+                            break;
+                        }
+                        case "ChipTuningBasis":
+                        {
+                            project.ChipTuning.ConfigureBasis(int.Parse(parameters["ReferenceHz"], CultureInfo.InvariantCulture), bool.Parse(parameters["PAL"]), int.Parse(parameters["N163Channels"], CultureInfo.InvariantCulture));
+                            break;
+                        }
+                        case "ChipTuning":
+                        {
+                            int chip = parameters["Chip"] == "APU" ? ExpansionType.None : ExpansionType.GetValueForInternalName(parameters["Chip"]);
+                            project.ChipTuning.SetValue(chip, int.Parse(parameters["Note"], CultureInfo.InvariantCulture), int.Parse(parameters["Value"], CultureInfo.InvariantCulture));
                             break;
                         }
                         case "DPCMSample":

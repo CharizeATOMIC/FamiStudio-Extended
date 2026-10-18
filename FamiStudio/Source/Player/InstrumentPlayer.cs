@@ -13,6 +13,7 @@ namespace FamiStudio
             public Note note;
             public int tuningHz;
             public int[] cents;
+            public ChipTuningSettings chipTuning;
             public int n163Channels;
             public Channel previewChannel;
         };
@@ -40,7 +41,7 @@ namespace FamiStudio
                 var position = FamiStudio.StaticInstance?.CurrentFrame ?? 0;
                 var pattern = selected == null ? -1 : selected.PatternIndexFromAbsoluteNoteIndex(position);
                 var tuning = selected?.GetTuning(pattern);
-                noteQueue.Enqueue(new PlayerNote() { channel = channel, note = note, tuningHz = selected?.GetTuningHz(pattern) ?? 440, cents = tuning?.Cents, n163Channels = selected?.Project.ExpansionNumN163Channels ?? 1, previewChannel = selected?.Channels[channel] });
+                noteQueue.Enqueue(new PlayerNote() { channel = channel, note = note, tuningHz = selected?.GetTuningHz(pattern) ?? 440, cents = tuning?.Cents, chipTuning = selected?.Project.ChipTuning, n163Channels = selected?.Project.ExpansionNumN163Channels ?? 1, previewChannel = selected?.Channels[channel] });
             }
         }
 
@@ -163,7 +164,7 @@ namespace FamiStudio
                     if (lastNote.note.IsMusical)
                     {
                         previewChannel = lastNote.previewChannel;
-                        channelStates[activeChannel].SetTuning(lastNote.tuningHz, lastNote.cents, lastNote.n163Channels);
+                        channelStates[activeChannel].SetTuning(lastNote.tuningHz, lastNote.cents, lastNote.n163Channels, lastNote.chipTuning);
                     }
                     channelStates[activeChannel].PlayNote(lastNote.note);
 

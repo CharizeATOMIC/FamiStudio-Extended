@@ -36,17 +36,26 @@ namespace FamiStudio
             return best;
         }
 
-        public static CustomTuningTables Get(int type, bool pal, int n163Channels, int referenceHz, int[] cents)
+        public static CustomTuningTables Get(int type, bool pal, int n163Channels, int referenceHz, int[] cents, ChipTuningSettings chipTuning = null)
         {
-            string key = $"{type}:{pal}:{n163Channels}:{referenceHz}:" + string.Join(",", cents);
+            int chip = ChannelType.GetExpansionTypeForChannelType(type);
+            bool hasCurve = NesApu.IsPitchedChannelType(type) && chipTuning?.HasOffsets(chip) == true;
+            string key = $"{type}:{pal}:{n163Channels}:{referenceHz}:" + (cents == null ? "legacy" : string.Join(",", cents)) + ":" + (hasCurve ? chipTuning.GetCacheKey(chip) : "");
             lock (cache)
             {
                 if (cache.TryGetValue(key, out var table)) return table;
                 table = new CustomTuningTables();
+                // Untouched curve points retain the upstream table exactly unless a
+                // song/pattern temperament has already requested custom quantization.
+                if (cents == null)
+                    Array.Copy(NesApu.GetNoteTableForChannelType(type, pal, n163Channels, referenceHz), table.Periods, table.Periods.Length);
                 double cpu = pal ? NesApu.FreqPal : NesApu.FreqNtsc;
                 for (int note = 1; note <= 96; note++)
                 {
-                    double f = referenceHz * Math.Pow(2, (note - 46) / 12.0 + cents[(note - 1) % 12] / 1200.0);
+                    bool hasOverride = hasCurve && chipTuning.HasOverride(chip, note);
+                    if (cents == null && !hasOverride) continue;
+                    double f = hasOverride ? chipTuning.GetFrequency(chip, note) * referenceHz / chipTuning.BasisReferenceHz : referenceHz * Math.Pow(2, (note - 46) / 12.0);
+                    f *= Math.Pow(2, (cents?[(note - 1) % 12] ?? 0) / 1200.0);
                     int period;
                     if (type >= ChannelType.N163Wave1 && type <= ChannelType.N163Wave8)
                     {

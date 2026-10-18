@@ -23,6 +23,7 @@ namespace FamiStudio
         private int captureMouse;
 
         public Color LineColor { get => lineColor; set => lineColor = value; }
+        public bool Horizontal { get => horizontal; set { if (SetAndMarkDirty(ref horizontal, value)) SetScroll(scrollValue); } }
         public int VirtualSize { get => virtualSize; set => SetAndMarkDirty(ref virtualSize, value); }
         public int ScrollBarThickness => scrollbarThickness;
 
@@ -42,15 +43,19 @@ namespace FamiStudio
 
         protected override void OnPointerDown(PointerEventArgs e)
         {
+            if (!enabled || !e.Left)
+                return;
+
             var coord = horizontal ? e.X : e.Y;
+            var pageSize = horizontal ? width : height;
             GetScrollBarParams(out var scrollBarPos1, out var scrollBarPos2);
             if (coord < scrollBarPos1)
             {
-                SetScroll(scrollValue - height);
+                SetScroll(scrollValue - pageSize);
             }
             else if (coord > scrollBarPos2)
             {
-                SetScroll(scrollValue + height);
+                SetScroll(scrollValue + pageSize);
             }
             else
             {
@@ -60,6 +65,9 @@ namespace FamiStudio
                 scrolling = true;
                 CapturePointer();
             }
+            // A horizontal scrollbar can be embedded in a mobile property page.
+            // Keep the parent TouchScrollContainer from panning the page as well.
+            e.MarkHandled();
         }
 
         protected override void OnPointerUp(PointerEventArgs e)
@@ -70,6 +78,7 @@ namespace FamiStudio
                 ReleasePointer();
                 UpdateScroll(horizontal ? e.X : e.Y);
                 MarkDirty();
+                e.MarkHandled();
             }
         }
 
@@ -78,6 +87,7 @@ namespace FamiStudio
             if (scrolling)
             {
                 UpdateScroll(horizontal ? e.X : e.Y);
+                e.MarkHandled();
             }
         }
 
@@ -97,7 +107,7 @@ namespace FamiStudio
 
         private void UpdateThickness()
         {
-            scrollbarThickness = DpiScaling.ScaleForWindow(Settings.ScrollBars >= 2 ? DefaultScrollBarThickness2 : DefaultScrollBarThickness1);
+            scrollbarThickness = DpiScaling.ScaleForWindow(Platform.IsMobile ? 20 : Settings.ScrollBars >= 2 ? DefaultScrollBarThickness2 : DefaultScrollBarThickness1);
         }
 
         private void GetScrollBarParams(out int pos1, out int pos2)

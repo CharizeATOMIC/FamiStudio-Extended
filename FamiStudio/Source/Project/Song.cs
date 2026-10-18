@@ -14,7 +14,7 @@ namespace FamiStudio
 
         private TuningSettings tuningSettings = new TuningSettings();
         public TuningSettings TuningSettings { get => tuningSettings; set { value.Validate(); tuningSettings = value.Clone(); } }
-        public bool UsesCustomTuning => tuningSettings.Override || patternCustomSettings.Take(songLength).Any(p => p.Tuning.Override);
+        public bool UsesCustomTuning => project.HasActiveChipTuning || tuningSettings.Override || patternCustomSettings.Take(songLength).Any(p => p.Tuning.Override);
         public TuningSettings GetTuning(int patternIndex = -1) => patternIndex >= 0 && patternIndex < songLength && patternCustomSettings[patternIndex].Tuning.Override ? patternCustomSettings[patternIndex].Tuning : tuningSettings.Override ? tuningSettings : null;
         public int GetTuningHz(int patternIndex = -1) => GetTuning(patternIndex)?.ReferenceHz ?? project.Tuning;
 

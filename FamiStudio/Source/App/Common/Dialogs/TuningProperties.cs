@@ -42,6 +42,8 @@ namespace FamiStudio
         public static LocalizedString OverrideLabel, ReferenceLabel, TemperamentLabel, NoteLabel, CentsLabel, TemperamentTooltip;
         public static LocalizedString MixerLabel, ChannelLabel, StereoLabel, PanLabel, MixerTooltip;
         public static LocalizedString InstancesLabel, ChipLabel, CountLabel, InstancesTooltip, ChannelLimitError, HardwareExportError, EngineExportError, FormatExportError;
+        public static LocalizedString CurveTitle, CurveZoomLabel, CurveUnitLabel, CurveValueLabel, CurveResetNote, CurveResetChip, CurveTooltip, CurveHelp, CurveMergeError;
+        public static LocalizedString CurveTimerUnit, CurvePeriodUnit, CurveFrequencyUnit, CurveFmUnit, CurveDefaultLabel, CurveBoundsLabel;
         static TuningStrings() { Localization.LocalizeStatic(typeof(TuningStrings)); }
     }
 

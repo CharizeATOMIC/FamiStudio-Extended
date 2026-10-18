@@ -324,6 +324,12 @@ namespace FamiStudio
             return properties.Count - 1;
         }
 
+        public int AddCustomControl(Control control)
+        {
+            properties.Add(new Property { type = PropertyType.Custom, control = control, flags = PropertyFlags.ForceFullWidth });
+            return properties.Count - 1;
+        }
+
         public int AddLabel(string label, string value, bool multiline = false, string tooltip = null)
         {
             properties.Add(
@@ -524,7 +530,9 @@ namespace FamiStudio
                 prop.type == PropertyType.Slider         ||
                 prop.type == PropertyType.ColoredTextBox ||
                 prop.type == PropertyType.Grid           ||
-                prop.type == PropertyType.Button);
+                prop.type == PropertyType.Button ||
+                prop.type == PropertyType.NumericUpDownFloat ||
+                prop.type == PropertyType.Custom);
 
             if (prop.label != null)
                 prop.label.Enabled = enabled;
@@ -636,6 +644,9 @@ namespace FamiStudio
                 case PropertyType.NumericUpDown:
                     (prop.control as NumericUpDown).Value = (int)value;
                     break;
+                case PropertyType.NumericUpDownFloat:
+                    (prop.control as NumericUpDown).Value = Convert.ToSingle(value);
+                    break;
             }
         }
     }
@@ -661,7 +672,8 @@ namespace FamiStudio
         ProgressBar,
         Radio,
         RadioList,
-        ImageBox
+        ImageBox,
+        Custom
     };
 
     public enum CommentType

@@ -87,6 +87,9 @@ static class UiSmoke
         if (language == "zho") NumericUiTests.Expansion(window, grid, expansion);
         Capture(window, Path.Combine(output, language + "-expansion.ppm"));
         multi.Close(DialogResult.Cancel);
+        CurveUiTests.Run(window, language, output, Capture);
+        if (language == "zho") CurveTouchUiTests.Run(window);
+        NsfMultiImportRegression.Ui(window, Path.Combine(output, "nsf"), (ok, message) => { if (!ok) throw new Exception(message); Console.WriteLine("PASS " + message); }, Capture);
         Invoke(app, "ShutdownAudioPlayers", true);
         Invoke(window, "DestroyWindow");
         Init.ShutdownBaseSystems();

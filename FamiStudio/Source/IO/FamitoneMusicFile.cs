@@ -1138,11 +1138,11 @@ namespace FamiStudio
             var count = project.ExpansionNumN163Channels;
             // Match the driver's built-in layout: PAL first, then NTSC in dual mode.
             var table = new List<ushort>();
-            table.AddRange(NesApu.GetNoteTableForChannelType(channelType, machine != MachineType.NTSC, count, song.GetTuningHz(patternIndex), tuning?.Cents));
+            table.AddRange(NesApu.GetNoteTableForChannelType(channelType, machine != MachineType.NTSC, count, song.GetTuningHz(patternIndex), tuning?.Cents, project.ChipTuning));
             if (machine == MachineType.Dual)
-                table.AddRange(NesApu.GetNoteTableForChannelType(channelType, false, count, song.GetTuningHz(patternIndex), tuning?.Cents));
+                table.AddRange(NesApu.GetNoteTableForChannelType(channelType, false, count, song.GetTuningHz(patternIndex), tuning?.Cents, project.ChipTuning));
             var fraction = new List<byte>();
-            byte[] GetFraction(bool pal) => tuning == null ? CustomTuningTables.ZeroFraction : CustomTuningTables.Get(channelType, pal, count, song.GetTuningHz(patternIndex), tuning.Cents).Fraction;
+            byte[] GetFraction(bool pal) => !NesApu.HasCustomNoteTable(channelType, tuning?.Cents, project.ChipTuning) ? CustomTuningTables.ZeroFraction : CustomTuningTables.Get(channelType, pal, count, song.GetTuningHz(patternIndex), tuning?.Cents, project.ChipTuning).Fraction;
             fraction.AddRange(GetFraction(machine != MachineType.NTSC));
             if (machine == MachineType.Dual) fraction.AddRange(GetFraction(false));
             var key = string.Join(",", table) + ":" + string.Join(",", fraction);
@@ -1576,8 +1576,8 @@ namespace FamiStudio
 
                             if (note.IsSlideNote)
                             {
-                                var noteTableNtsc = NesApu.GetNoteTableForChannelType(channel.Type, false, song.Project.ExpansionNumN163Channels, song.GetTuningHz(p), song.GetTuning(p)?.Cents);
-                                var noteTablePal = NesApu.GetNoteTableForChannelType(channel.Type, true, song.Project.ExpansionNumN163Channels, song.GetTuningHz(p), song.GetTuning(p)?.Cents);
+                                var noteTableNtsc = NesApu.GetNoteTableForChannelType(channel.Type, false, song.Project.ExpansionNumN163Channels, song.GetTuningHz(p), song.GetTuning(p)?.Cents, project.ChipTuning);
+                                var noteTablePal = NesApu.GetNoteTableForChannelType(channel.Type, true, song.Project.ExpansionNumN163Channels, song.GetTuningHz(p), song.GetTuning(p)?.Cents, project.ChipTuning);
 
                                 var found = true;
                                 found &= channel.ComputeSlideNoteParams(note, location, currentSpeed, noteTableNtsc, false, true, out _, out int stepSizeNtsc, out _);
@@ -2363,7 +2363,7 @@ namespace FamiStudio
             if (usesReleaseNotes)
                 flags.Add("Project uses release notes, you must set FAMISTUDIO_USE_RELEASE_NOTES = 1.");
             if (project.Songs.Any(s => s.UsesCustomTuning))
-                flags.Add("Song/pattern tuning requires FAMISTUDIO_USE_CUSTOM_TUNING = 1 and the tuning fork of the sound engine.");
+                flags.Add("Song/pattern tuning or project chip curves require FAMISTUDIO_USE_CUSTOM_TUNING = 1 and the tuning fork of the sound engine.");
             if (usesVolumeTrack)
                 flags.Add("Volume track is used, you must set FAMISTUDIO_USE_VOLUME_TRACK = 1.");
             if (usesVolumeSlide)

@@ -50,4 +50,7 @@ jobs:
       - name: Run Windows playback and export regression
         if: runner.os == 'Windows'
         shell: bash
-        run: dotnet run --project Tests/TuningRegression -c Release -- work/tuning-tests
+        run: |
+          dotnet run --project Tests/TuningRegression -c Release -- work/tuning-tests
+          dotnet run --project Tests/TuningRegression -c Release -- --chip-curves work/tuning-tests
+          dotnet run --project Tests/TuningRegression -c Release -- --nsf-multi work/nsf-multi-tests

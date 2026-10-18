@@ -1,4 +1,4 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 2)
+FamiStudio Tuning: platform and upstream integration notes (revision 3)
 
 Maintenance assessment
 
@@ -9,26 +9,102 @@ still needs a design review; this fork changes the project format, music stream,
 bundled drivers and native ABI. It is not a drop-in UI patch.
 
 Suggested review order:
-1. Song/pattern tuning and twelve-note temperament, with matching engine changes.
-2. Channel stereo/pan and its native mixer.
-3. Repeated expansion chips, if they fit the maintainers' desired product scope.
+1. Song/pattern tuning, twelve-note temperament and project chip curves, with the
+   optional engine table instruction and shared playback/export quantizer.
+2. Multiple NSF subsong selection and safe merging, an independent importer change.
+3. Channel stereo/pan and its native mixer.
+4. Repeated expansion chips, if they fit the maintainers' desired product scope.
 
 Before upstream merge, maintainers should choose the official format version and
 opcode, review ROM/RAM/CPU budgets, and decide which optional features to accept.
-Format 1001 and the separate settings directory intentionally identify this fork;
+Format 1002 and the separate settings directory intentionally identify this fork;
 they should not silently become the upstream format/settings policy.
+
+Revision 3 architecture and format
+
+Project.ChipTuning stores one 96-note curve for each of the eight chip types.
+ChipTuningSettings stores absolute integer hardware values. Graph dragging uses
+the FamiStudio default +/-50, clipped by hardware limits; manual entry can exceed
+this band within the selected hardware representation's limits. A sentinel marks
+unedited points.
+The curve retains its reference Hz, PAL/NTSC clock and N163 channel count; a fresh
+curve can adopt the project's basis, while active curves retain their saved basis.
+Playback derives pitch from the hardware value, scales by the effective reference
+Hz divided by the saved reference Hz, applies the twelve-note cents temperament,
+then quantizes for the playing region/chip. The curve itself is not cents-based.
+It is project-global; copies of a chip share the same curve and octave-specific
+points remain independent. Noise, DPCM and rhythm voices keep existing behavior.
+Default/reset curves retain the original audio path and unaffected table entries.
+
+Canonical units: APU/MMC5/VRC6 pulse timer, S5B actual tone period, FDS 12-bit
+frequency word, N163 full 18-bit frequency word, VRC7 F-number at the displayed
+default block, EPSM PSG period. VRC6 saw and EPSM FM derive their nearest registers
+from the same resulting pitch. VRC7 bounds keep the F-number in the displayed
+default block: 1..511 for block 0, 256..511 for higher blocks. This is a canonical
+table-representation constraint, narrower than the physical chip's full range.
+N163 words include the extra two frequency bits. The APU triangle retains
+the existing octave relationship to pulse.
+
+The editor shows the complete 96-key horizontal keyboard, with zoom and scrolling
+for detailed editing. Shared PianoRoll helpers draw the native key gradients,
+highlight colors and rotated key geometry. Names follow the existing editor's
+C0..B7 convention rather than changing channel-specific acoustic octave rules.
+Small arpeggio-like blocks use a -50/0/+50 axis relative to each note's default,
+making the unchanged curve flat; labels show absolute integer hardware values.
+Manual values outside this band keep their exact value and label, with only the
+drawn block clipped at the edge. The model, serialization
+and export do not restrict them to the drag band. The existing project-info page
+opens the editor. Accepting the child does not mutate the project until the parent
+dialog is accepted; project undo and
+player recreation are part of the same transaction. Song/pattern tabs are unchanged.
+
+Format 1002 reads official project formats through 19 and fork format 1001.
+Earlier readers cannot read 1002. Global curve conflicts reject a song merge before
+mutating its destination, because a per-note chip curve cannot be represented by
+a twelve-pitch-class song override. Empty destinations adopt the incoming curves;
+instrument-only imports remain allowed. Sparse text entries are, for example:
+  ChipTuningBasis ReferenceHz="440" PAL="False" N163Channels="1"
+  ChipTuning Chip="S5B" Note="46" Value="255"
+The base chip uses Chip="APU". Note IDs are 1..96. Values and the saved basis are
+preserved exactly in binary/text/undo; there is no conversion to floating offsets.
+
+The NSF/NSFe dialog selects several subsongs from one file, retaining individual
+capture durations and a cancellable batch. NsfFile.LoadSongs assembles a temporary
+project and returns no partial result on failure/cancellation. Imported song and
+resource names cannot silently alias; identical resources are shared only after
+the importer checks their data and sample mappings. This is the existing register
+capture approach, not a general source-instrument or game-engine decoder.
+
+All seven languages cover the new curve, import and validation controls/messages.
 
 Platform status in this local delivery
 
-Windows x64: application built, UI exercised, native library built with both
-MSBuild and the new CMake entry, native ABI tested, audio/export regression passed.
-Linux x64: Linux-specific C# project compiles on this Windows machine. Native Linux
+Windows x64: application built, all seven UI languages exercised at 100%, Chinese
+interaction tests also exercised at 150%; all 3,431 backend assertions passed.
+The 29 touch-event assertions passed in the desktop harness at both 100% and 150%;
+they verify shared gesture handling, not Android or physical touchscreen behavior.
+The native library was previously built with both MSBuild and the CMake entry and
+its ABI was tested. Revision 3 does not change native audio code or its ABI.
+Linux x64: final Linux-specific C# build passed with 29 warnings and zero errors
+on this Windows machine. Native Linux
 build, real audio-device playback, UI and packaging have NOT been run on Linux.
-macOS: Mac-specific C# project compiles on this Windows machine. Universal native
+macOS: final Mac-specific C# build passed with 28 warnings and zero errors on this
+Windows machine. Universal native
 build, real playback, UI, signing and notarization have NOT been run on a Mac.
-Android: not built/tested. The project targets ARMv7, ARM64 and x86_64 and has a
-separate mobile grid implementation. It needs NDK builds exposing the new ABI and
-touch-layout/input/device tests. Desktop validation does not establish Android support.
+Android: build attempt stops at NETSDK1139 because the available SDK is .NET 8
+without an Android workload; the project targets net9.0-android36.0. Install the
+matching .NET 9 Android workload and Android SDK/NDK before validating compilation.
+ARMv7, ARM64 and x86_64 native builds must expose the fork's new ABI. No Android
+APK or device runtime has been validated.
+
+Future mobile integration is prepared in shared code: the Android project includes
+the curve model/dialog/control; Mobile.PropertyPage already lays out custom controls
+and the existing mobile number/text input handles direct hardware-value entry.
+The curve has touch selection, long-press/double-tap input and pinch zoom. The
+horizontal scrollbar consumes its gesture to prevent parent vertical scrolling,
+with a larger mobile hit target. Test orientation/layout changes, gesture capture,
+small screens, keyboard input and real audio devices after the toolchain is ready.
+Desktop event tests do not establish Android support.
 
 Do not ship the old checked-in Linux/macOS/Android audio libraries with this fork:
 they do not contain the newly required emulator-context and stereo functions.
@@ -65,6 +141,8 @@ releases, sign packages or replace real-device UI/audio testing. Upstream can fo
 these steps into its existing release pipeline after validating them.
 
 The NSF/NES/FDS kernels are portable 6502 binaries shared by all desktop builds.
+Revision 3 chip curves reuse the existing $5f instruction and three table pointers;
+there is no new opcode, assembly change or embedded-driver rebuild for this addition.
 After changing engine code, regenerate them with Tools/build_tuning_nsf.py and
 Tools/build_tuning_rom.py on the supported Windows assembler toolchain, then run
 the four-assembler comparisons before distributing desktop packages.
@@ -83,6 +161,32 @@ The UI harness dispatches pointer/key/character events to actual controls and
 checks callbacks, bounds, negative values, Cancel, disabled cells, live pan and
 expansion checkbox/quantity behavior, at 100% and 150% scale on Windows.
 
+Revision 3 checks and reproduction
+
+Run these three commands from the repository root:
+  dotnet run --project Tests/TuningRegression -c Release -- work/regression
+  dotnet run --project Tests/TuningRegression -c Release -- --chip-curves work/regression
+  dotnet run --project Tests/TuningRegression -c Release -- --nsf-multi work/regression
+They cover 1,506 existing + 1,886 curve + 39 multi-subsong assertions = 3,431 total.
+The curve tests check exact integer register values for all eight chips at all
+96 notes in PAL and NTSC, preserve all 768 values and reference basis through
+binary/text/undo, load format 1001, check merge conflicts and region conversion,
+and execute all-expansion NSF pitch changes in PAL and NTSC. The import suite
+checks ordering, durations, duplicate titles, different/identical resources, DPCM
+mapping references, persisted projects, N163 channel counts and cancellation.
+
+UI: run --ui with each of eng, zho, deu, spa, por, rus and kor. The Chinese run
+includes graph dragging, black/white key selection, note-range boundaries,
+integer input beyond the default +/-50 drag band, hardware bounds, full-keyboard
+zoom/scroll, child/parent cancellation and NSF multi
+selection. Append a sample project path and 150 for the scaling check.
+Example:
+  dotnet run --project Tests/TuningRegression -c Release -- --ui zho work/ui sample.fms 150
+
+Ten original register fixtures and 32 four-assembler comparisons passed in earlier
+revisions. The unchanged engine/native code retains that earlier evidence; it
+does not replace current application and target-OS runtime checks.
+
 NES verification
 
 Tests/NesTuning builds a minimal NROM cartridge using the actual exported music
@@ -91,6 +195,17 @@ the test checks the visible step progression, emitted audio frequencies and loop
 It does not emulate the engine by reimplementing it in the test harness.
 This is emulator evidence, not physical NES/expansion-cartridge certification.
 The separate full regression suite covers expansion tuning in NSF execution.
+
+Publication boundary
+
+Public source packages must exclude newly extracted Gimmick! ROM/music/instrument
+data and newly derived FMS projects. The requested converter remains a separate
+one-off tool, not an application importer; its newly extracted data and generated
+assets are excluded from public test fixtures. Already tracked upstream demo
+songs, including Setup/DemoSongs/Gimmick.fms, remain unchanged.
+Tests/TuningRegression/Fixtures/format1001.fms contains the fork's own original
+tuning demo, not extracted game material. GitHub publication and the
+upstream proposal remain pending; no maintainer approval is implied.
 
 Reference documentation for the added build configuration:
 https://cmake.org/cmake/help/latest/variable/CMAKE_OSX_ARCHITECTURES.html

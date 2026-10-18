@@ -55,7 +55,29 @@ static class Demo
                 channel.GetOrCreatePattern(pattern).Notes[n * 20] = new Note((byte)(notes[instance == 0 ? n : 7 - n] - instance * 12)) { Instrument = harmony, Duration = 15, Volume = 9 };
         }
         Save(p, folder, "Two-VRC6-stereo");
+        SaveCurveDemo(folder);
         Console.WriteLine("PASS demo projects, audio, NSF and four engine formats");
+    }
+    static void SaveCurveDemo(string folder)
+    {
+        var p = new Project { Name = "Fixed hardware curves", Author = "FamiStudio Tuning", AutoSortSongs = false };
+        p.SetExpansionAudioMask(ExpansionType.S5BMask);
+        p.ChipTuning.SetValue(ExpansionType.None, 46, 260);
+        p.ChipTuning.SetValue(ExpansionType.S5B, 46, 246);
+        foreach (int chip in new[] { ExpansionType.None, ExpansionType.S5B })
+        {
+            var inst = p.CreateInstrument(chip, chip == 0 ? "Pulse" : "S5B tone");
+            var song = p.CreateSong(chip == 0 ? "APU timer 260" : "S5B period 246");
+            song.ChangeFamiStudioTempoGroove(new[] { 1 }, false);
+            song.SetDefaultPatternLength(120); song.SetBeatLength(30); song.SetLength(1); song.SetLoopPoint(-1);
+            song.GetChannelByType(chip == 0 ? ChannelType.Square1 : ChannelType.S5BSquare1)
+                .GetOrCreatePattern(0).Notes[0] = new Note(46) { Instrument = inst, Duration = 120 };
+        }
+        Save(p, folder, "Fixed-hardware-curves");
+        if (!new NsfFile().Save(p, FamiToneKernel.FamiStudio, Path.Combine(folder, "Fixed-hardware-curves.nsf"),
+            p.Songs.Select(s => s.Id).ToArray(), p.Name, p.Author, "", MachineType.NTSC, false))
+            throw new Exception("Fixed hardware curve demo NSF export failed.");
+        Console.WriteLine("PASS fixed hardware demo: APU timer 260, S5B period 246");
     }
     static void Save(Project project, string folder, string name)
     {

@@ -63,10 +63,10 @@ namespace FamiStudio
             Channel.GetShiftsForType(type, numN163Channels, out pitchShift, out slideShift);
         }
 
-        public void SetTuning(int reference, int[] cents, int n163Channels)
+        public void SetTuning(int reference, int[] cents, int n163Channels, ChipTuningSettings chipTuning = null)
         {
-            noteTable = NesApu.GetNoteTableForChannelType(channelType, palPlayback, n163Channels, reference, cents);
-            noteTableFraction = cents == null ? CustomTuningTables.ZeroFraction : CustomTuningTables.Get(channelType, palPlayback, n163Channels, reference, cents).Fraction;
+            noteTable = NesApu.GetNoteTableForChannelType(channelType, palPlayback, n163Channels, reference, cents, chipTuning);
+            noteTableFraction = !NesApu.HasCustomNoteTable(channelType, cents, chipTuning) ? CustomTuningTables.ZeroFraction : CustomTuningTables.Get(channelType, palPlayback, n163Channels, reference, cents, chipTuning).Fraction;
         }
 
         public void Advance(Song song, NoteLocation location, ref int famitrackerSpeed)
@@ -80,7 +80,7 @@ namespace FamiStudio
             }
 
             var tuning = song.GetTuning(location.PatternIndex);
-            SetTuning(song.GetTuningHz(location.PatternIndex), tuning?.Cents, song.Project.ExpansionNumN163Channels);
+            SetTuning(song.GetTuningHz(location.PatternIndex), tuning?.Cents, song.Project.ExpansionNumN163Channels, song.Project.ChipTuning);
             var channel = song.Channels[SongChannelIndex];
             var pattern = channel.PatternInstances[location.PatternIndex];
             var newNote = (Note)null;

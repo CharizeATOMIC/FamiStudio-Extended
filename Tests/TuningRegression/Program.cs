@@ -33,6 +33,9 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--gimmick-convert") { GimmickConversion.Run(args[1], args[2]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--chip-curves") { ChipCurveRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--nsf-multi") { NsfMultiImportRegression.Run(args[1], Check); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--demo") { Demo.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--nes-demo") { NesDemo.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         Settings.SquareSmoothVibrato=false;

@@ -128,10 +128,10 @@ namespace FamiStudio
             VideoRecording
         };
 
-        Color whiteKeyPressedColor         = Color.FromArgb( 70, Theme.BlackColor);
-        Color blackKeyPressedColor         = Color.FromArgb( 90, Theme.WhiteColor);
-        Color whiteKeyHoverColor           = Color.FromArgb( 40, Theme.BlackColor);
-        Color blackKeyHoverColor           = Color.FromArgb( 60, Theme.WhiteColor);
+        Color whiteKeyPressedColor         = GetKeyboardHighlight(false);
+        Color blackKeyPressedColor         = GetKeyboardHighlight(true);
+        Color whiteKeyHoverColor           = GetKeyboardHighlight(false, true);
+        Color blackKeyHoverColor           = GetKeyboardHighlight(true, true);
         Color selectionBgVisibleColor      = Color.FromArgb( 64, Theme.LightGreyColor1);
         Color selectionBgInvisibleColor    = Color.FromArgb( 16, Theme.LightGreyColor1);
         Color attackColor                  = Color.FromArgb(128, Theme.BlackColor);
@@ -463,6 +463,36 @@ namespace FamiStudio
         public bool IsActiveControl => App != null && App.ActiveControl == this;
 
         public static int DefaultPianoKeyWidth => DefaultNoteSizeY;
+
+        // Share the actual piano-roll palette and geometry with horizontal keyboards.
+        public static void FillKeyboardKey(CommandList c, float x0, float y0, float x1, float y1, bool black, bool horizontal)
+        {
+            c.FillRectangleGradient(x0, y0, x1, y1,
+                black ? Theme.DarkGreyColor4 : Theme.LightGreyColor1,
+                black ? Theme.DarkGreyColor5 : Theme.LightGreyColor2,
+                horizontal, horizontal ? y1 - y0 : x1 - x0);
+        }
+
+        public static Color GetKeyboardHighlight(bool black, bool hover = false) =>
+            Color.FromArgb(black ? (hover ? 60 : 90) : (hover ? 40 : 70), black ? Theme.WhiteColor : Theme.BlackColor);
+
+        public static RectangleF GetHorizontalKeyboardKey(int note, float semitoneWidth, float depth)
+        {
+            if (note < 1 || note > NumNotes) throw new ArgumentOutOfRangeException(nameof(note));
+            int octave = (note - 1) / 12, key = (note - 1) % 12;
+            float octaveX = octave * 12 * semitoneWidth;
+            bool black = key == 1 || key == 3 || key == 6 || key == 8 || key == 10;
+            if (black)
+            {
+                float blackWidth = semitoneWidth * DefaultBlackKeySizeY / DefaultNoteSizeY;
+                return new RectangleF(octaveX + (key + 1) * semitoneWidth - blackWidth, 0,
+                    blackWidth, depth * DefaultBlackKeySizeX / DefaultPianoSizeX);
+            }
+            float whiteWidth = semitoneWidth * DefaultWhiteKeySizeY / DefaultNoteSizeY;
+            float keyWidth = key > 4 ? (semitoneWidth * 12 - whiteWidth * 3) / 4 : whiteWidth;
+            float end = key <= 4 ? (key / 2 + 1) * whiteWidth : whiteWidth * 3 + ((key - 4) / 2 + 1) * keyWidth;
+            return new RectangleF(octaveX + end - keyWidth, 0, keyWidth, depth);
+        }
 
         public Instrument EditInstrument   => editInstrument;
         public Arpeggio   EditArpeggio     => editArpeggio;
@@ -1698,7 +1728,7 @@ namespace FamiStudio
 
             r.c.PushTranslation(0, headerAndEffectSizeY);
             r.c.PushClipRegion(0, 0, pianoSizeX, height - headerAndEffectSizeY - scrollThickness + 1);
-            r.c.FillRectangleGradient(0, 0, pianoSizeX, Height, Theme.LightGreyColor1, Theme.LightGreyColor2, false, pianoSizeX);
+            FillKeyboardKey(r.c, 0, 0, pianoSizeX, Height, false, false);
 
             var drawDpcmColorKeys = (editMode == EditionMode.Channel && Song.Channels[editChannel].Type == ChannelType.Dpcm) || editMode == EditionMode.DPCMMapping;
 
@@ -1743,7 +1773,10 @@ namespace FamiStudio
                         if (drawDpcmColorKeys && GetDPCMKeyColor(noteIdx + 1, out var color))
                             r.c.FillAndDrawRectangleGradient(GetKeyRectangle(i, j), Theme.Darken(color, 40), Theme.Darken(color, 20), Theme.BlackColor, false, blackKeySizeX);
                         else
-                            r.c.FillRectangleGradient(GetKeyRectangle(i, j), Theme.DarkGreyColor4, Theme.DarkGreyColor5, false, blackKeySizeX);
+                        {
+                            var keyRect = GetKeyRectangle(i, j);
+                            FillKeyboardKey(r.c, keyRect.Left, keyRect.Top, keyRect.Right, keyRect.Bottom, true, false);
+                        }
                     }
 
                     int y = octaveBaseY - j * noteSizeY;

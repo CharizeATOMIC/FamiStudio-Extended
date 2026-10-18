@@ -808,9 +808,14 @@ namespace FamiStudio
             }
         };
 
-        public static ushort[] GetNoteTableForChannelType(int channelType, bool pal, int numN163Channels, int tuning = 440, int[] cents = null)
+        public static bool IsPitchedChannelType(int channelType) => channelType != ChannelType.Noise && channelType != ChannelType.Dpcm && channelType != ChannelType.Mmc5Dpcm && channelType < ChannelType.EPSMrythm1;
+
+        public static bool HasCustomNoteTable(int channelType, int[] cents, ChipTuningSettings chipTuning = null) =>
+            IsPitchedChannelType(channelType) && (cents != null || chipTuning?.HasOffsets(ChannelType.GetExpansionTypeForChannelType(channelType)) == true);
+
+        public static ushort[] GetNoteTableForChannelType(int channelType, bool pal, int numN163Channels, int tuning = 440, int[] cents = null, ChipTuningSettings chipTuning = null)
         {
-            if (cents != null) return CustomTuningTables.Get(channelType, pal, numN163Channels, tuning, cents).Periods;
+            if (HasCustomNoteTable(channelType, cents, chipTuning)) return CustomTuningTables.Get(channelType, pal, numN163Channels, tuning, cents, chipTuning).Periods;
             var noteTableSet = GetOrCreateNoteTableSet(tuning);
 
             switch (channelType)

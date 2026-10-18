@@ -62,6 +62,8 @@ namespace FamiStudio
         private MultiPropertyDialog dialog;
         private Project project;
         private MixerProperties mixerProperties;
+        private ChipTuningSettings chipTuning;
+        public ChipTuningSettings ChipTuning => chipTuning;
         
         public PropertyPage InfoPage        => dialog.GetPropertyPage((int)ProjectSection.Info);
         public PropertyPage ExpansionPage   => dialog.GetPropertyPage((int)ProjectSection.Expansion);
@@ -97,6 +99,7 @@ namespace FamiStudio
             Localization.Localize(this);
 
             project = proj;
+            chipTuning = proj.ChipTuning.Clone();
 
             dialog = new MultiPropertyDialog(win, DialogTitle, 550, true);
 
@@ -123,6 +126,15 @@ namespace FamiStudio
                     page.AddDropDownList(TempoModeLabel.Colon, TempoType.Names, TempoType.Names[project.TempoMode], TempoModeTooltip); // 3
                     page.AddDropDownList(MachineLabel.Colon, Localization.ToStringArray(MachineType.LocalizedNames, MachineType.CountNoDual), MachineType.LocalizedNames[project.PalMode ? MachineType.PAL : MachineType.NTSC], AuthoringMachineTooltip); // 4
                     page.AddNumericUpDown(TuningLabel, project.Tuning, 300, 580, 1, TuningTooltip); // 5
+                    page.AddButton(null, TuningStrings.CurveTitle, TuningStrings.CurveTooltip); // 6
+                    page.PropertyClicked += (p, click, index, row, column) =>
+                    {
+                        if (index != 6) return;
+                        var working = chipTuning.Clone();
+                        if (!working.HasAnyOffsets) working.ConfigureBasis(Tuning, Machine == MachineType.PAL, NumN163Channels);
+                        var editor = new ChipTuningDialog(dialog.ParentWindow, working);
+                        editor.ShowDialogAsync(result => { if (result == DialogResult.OK) chipTuning = editor.Settings.Clone(); });
+                    };
                     page.SetPropertyEnabled(4, project.UsesFamiStudioTempo);
                     page.PropertyChanged += Info_PropertyChanged;
                     break;

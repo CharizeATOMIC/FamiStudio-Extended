@@ -3555,7 +3555,7 @@ namespace FamiStudio
                     var changedExpansion = newExpansionMask != project.ExpansionAudioMask;
                     var changedNumChannels = numN163Channels != project.ExpansionNumN163Channels;
                     var changedAuthoringMachine = palAuthoring != project.PalMode;
-                    var changedTuning = tuning != project.Tuning;
+                    var changedTuning = tuning != project.Tuning || !project.ChipTuning.ContentEquals(dlg.ChipTuning);
                     var instanceCounts = dlg.InstanceCounts;
                     var changedInstances = Enumerable.Range(0, ExpansionType.Count).Any(i => instanceCounts[i] != project.GetExpansionInstances(i));
                     var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => Project.IsChannelActive(t, newExpansionMask, numN163Channels)).Sum(t => instanceCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
@@ -3577,6 +3577,7 @@ namespace FamiStudio
                     project.Author = dlg.Author;
                     project.Copyright = dlg.Copyright;
                     project.Tuning = tuning;
+                    project.ChipTuning = dlg.ChipTuning;
 
                     project.SoundEngineUsesDpcmBankSwitching = dlg.DPCMBankswitching;
                     project.SoundEngineUsesExtendedDpcm = dlg.DPCMExtendedRange;

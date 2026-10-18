@@ -1388,19 +1388,28 @@ namespace FamiStudio
         private int GetNumNamcoChannels(string filename, int songIndex, int numFrames)
         {
             var tmpNsf = NotSoFatso.NsfOpen(filename);
-
-            NotSoFatso.NsfSetTrack(tmpNsf, songIndex);
-
             int numNamcoChannels = 1;
-            for (int i = 0; i < numFrames; i++)
+            if (tmpNsf == IntPtr.Zero)
+                return numNamcoChannels;
+            try
             {
-                var playCalled = NotSoFatso.NsfRunFrame(tmpNsf);
-                if (playCalled != 0)
-                    numNamcoChannels = Math.Max(numNamcoChannels, NotSoFatso.NsfGetState(tmpNsf, ChannelType.N163Wave1, NotSoFatso.STATE_N163NUMCHANNELS, 0));
+                NotSoFatso.NsfSetTrack(tmpNsf, songIndex);
+                for (int i = 0; i < numFrames; i++)
+                {
+                    if ((i & 31) == 0)
+                    {
+                        Log.ReportProgress(progressStart);
+                        if (Log.ShouldAbortOperation) break;
+                    }
+                    var playCalled = NotSoFatso.NsfRunFrame(tmpNsf);
+                    if (playCalled != 0)
+                        numNamcoChannels = Math.Max(numNamcoChannels, NotSoFatso.NsfGetState(tmpNsf, ChannelType.N163Wave1, NotSoFatso.STATE_N163NUMCHANNELS, 0));
+                }
             }
-
-            NotSoFatso.NsfClose(tmpNsf);
-
+            finally
+            {
+                NotSoFatso.NsfClose(tmpNsf);
+            }
             return numNamcoChannels;
         }
 
@@ -1419,7 +1428,143 @@ namespace FamiStudio
             return mask;
         }
 
+        // Import into temporary projects, then merge only after each capture succeeds. Import-generated
+        // names such as "Sample 1" and "FDS 1" are not identities and must never alias across tracks.
+        public Project LoadSongs(string filename, int[] songIndices, int[] durations, int patternLength, int startFrame, bool removeIntroSilence, bool reverseDpcm, bool preserveDpcmPad, bool importDmcVal, int tuning = 440)
+        {
+            if (songIndices == null || durations == null || songIndices.Length == 0 || songIndices.Length != durations.Length)
+                return null;
+            if (patternLength < 4 || patternLength > Pattern.MaxLength || startFrame < 0 || startFrame >= Pattern.MaxLength)
+                return null;
+
+            var names = GetSongNamesAndDurations(filename, out _);
+            if (names == null || songIndices.Any(i => i < 0 || i >= names.Length) || durations.Any(d => d <= 0 || d > 600))
+                return null;
+
+            Project result = null;
+            var imported = new HashSet<int>();
+            for (int i = 0; i < songIndices.Length; i++)
+            {
+                if (Log.ShouldAbortOperation)
+                    return null;
+                if (!imported.Add(songIndices[i]))
+                    continue;
+
+                var reader = new NsfFile { progressStart = (float)i / songIndices.Length, progressScale = 1.0f / songIndices.Length };
+                var next = reader.Load(filename, songIndices[i], durations[i], patternLength, startFrame, removeIntroSilence, reverseDpcm, preserveDpcmPad, importDmcVal, tuning);
+                if (next == null || Log.ShouldAbortOperation)
+                    return null;
+
+                if (result == null)
+                {
+                    result = next;
+                    result.AutoSortSongs = false;
+                }
+                else
+                {
+                    var n163Channels = Math.Max(result.ExpansionNumN163Channels, next.ExpansionNumN163Channels);
+                    result.SetExpansionAudioMask(result.ExpansionAudioMask, n163Channels);
+                    next.SetExpansionAudioMask(next.ExpansionAudioMask, n163Channels);
+
+                    foreach (var s in next.Songs)
+                        s.Name = UniqueImportName(s.Name, name => result.GetSong(name) != null || next.Songs.Any(other => other != s && other.Name == name));
+                    foreach (var s in next.Samples)
+                        s.Name = UniqueImportName(s.Name, name => result.GetSample(name) != null || next.Samples.Any(other => other != s && other.Name == name));
+                    foreach (var instrument in next.Instruments)
+                        instrument.Name = UniqueImportName(instrument.Name, name => result.GetInstrument(name) != null || next.Instruments.Any(other => other != instrument && other.Name == name));
+
+                    if (!result.MergeProject(next))
+                        return null;
+                }
+            }
+
+            DeduplicateImportedResources(result);
+            result.ValidateIntegrity();
+            Log.ReportProgress(1.0f);
+            return Log.ShouldAbortOperation ? null : result;
+        }
+
+        private static string UniqueImportName(string original, Func<string, bool> exists)
+        {
+            var name = original;
+            for (int suffix = 2; exists(name); suffix++)
+                name = $"{original} ({suffix})";
+            return name;
+        }
+
+        private static void DeduplicateImportedResources(Project imported)
+        {
+            var samples = new Dictionary<uint, List<DPCMSample>>();
+            foreach (var sample in imported.Samples.ToArray())
+            {
+                var crc = sample.ComputeCRC();
+                if (!samples.TryGetValue(crc, out var candidates))
+                    samples.Add(crc, candidates = new List<DPCMSample>());
+                var same = candidates.FirstOrDefault(s => s.ProcessedData.AsSpan().SequenceEqual(sample.ProcessedData));
+                if (same == null)
+                    candidates.Add(sample);
+                else
+                {
+                    imported.ReplaceSampleInAllMappings(sample, same);
+                    imported.DeleteSample(sample);
+                }
+            }
+
+            var instruments = new Dictionary<uint, List<Instrument>>();
+            foreach (var instrument in imported.Instruments.ToArray())
+            {
+                var crc = instrument.ComputeCRC();
+                if (!instruments.TryGetValue(crc, out var candidates))
+                    instruments.Add(crc, candidates = new List<Instrument>());
+                // Instrument CRC intentionally excludes sample IDs. Equal mapping keys and settings
+                // can therefore still refer to different DPCM bytes; compare the canonical samples too.
+                var same = candidates.FirstOrDefault(other => SameImportedSampleMappings(instrument, other));
+                if (same == null)
+                    candidates.Add(instrument);
+                else
+                {
+                    imported.ReplaceInstrument(instrument, same);
+                    imported.DeleteInstrument(instrument);
+                }
+            }
+        }
+
+        private static bool SameImportedSampleMappings(Instrument a, Instrument b)
+        {
+            if (a.SamplesMapping == null || b.SamplesMapping == null)
+                return a.SamplesMapping == b.SamplesMapping;
+            return a.SamplesMapping.Count == b.SamplesMapping.Count && a.SamplesMapping.All(kv =>
+                b.SamplesMapping.TryGetValue(kv.Key, out var other) && ReferenceEquals(kv.Value.Sample, other.Sample));
+        }
+
+        private float progressStart;
+        private float progressScale = 1.0f;
+
         public Project Load(string filename, int songIndex, int duration, int patternLength, int startFrame, bool removeIntroSilence, bool reverseDpcm, bool preserveDpcmPad, bool importDmcVal, int tuning = 440)
+        {
+            // Keep GUI/batch limits out of the existing single-song CLI. Its pattern
+            // length may be 1..3 and its starting timeline frame may span patterns.
+            // The importer reserves the last pattern, so a capture must start before it.
+            if (duration <= 0 || patternLength < 1 || patternLength > Pattern.MaxLength || startFrame < 0 ||
+                startFrame >= (long)(Song.MaxLength - 1) * patternLength || tuning < 300 || tuning > 580)
+                return null;
+
+            sampleIdsInitialSet.Clear();
+            try
+            {
+                return LoadInternal(filename, songIndex, duration, patternLength, startFrame, removeIntroSilence, reverseDpcm, preserveDpcmPad, importDmcVal, tuning);
+            }
+            finally
+            {
+                if (nsf != IntPtr.Zero)
+                {
+                    NotSoFatso.NsfClose(nsf);
+                    nsf = IntPtr.Zero;
+                }
+            }
+        }
+
+        private Project LoadInternal(string filename, int songIndex, int duration, int patternLength, int startFrame, bool removeIntroSilence, bool reverseDpcm, bool preserveDpcmPad, bool importDmcVal, int tuning)
         {
             nsf = NotSoFatso.NsfOpen(filename);
 
@@ -1431,14 +1576,18 @@ namespace FamiStudio
 
             var trackCount = NotSoFatso.NsfGetTrackCount(nsf);
 
-            if (songIndex < 0 || songIndex > trackCount)
+            if (songIndex < 0 || songIndex >= trackCount)
                 return null;
 
             preserveDpcmPadding = preserveDpcmPad;
             importDmcValues = importDmcVal;
 
             var palSource = (NotSoFatso.NsfIsPal(nsf) & 1) == 1;
-            var numFrames = (int)MathF.Round(duration * (palSource ? 50.006982f : 60.098814f));
+            var roundedFrames = MathF.Round(duration * (palSource ? 50.006982f : 60.098814f));
+            // Compare as double: converting int.MaxValue to float rounds it up to 2^31.
+            if (!float.IsFinite(roundedFrames) || (double)roundedFrames > int.MaxValue)
+                return null;
+            var numFrames = (int)roundedFrames;
             var clockSpeed = NotSoFatso.NsfGetClockSpeed(nsf);
 
             // Clock speed sanity check.
@@ -1463,7 +1612,6 @@ namespace FamiStudio
             if (expansionMask != (expansionMask & ExpansionType.AllMask))
             {
                 Log.LogMessage(LogSeverity.Error, "NSF uses unknown or unsupported expansion chips, aborting.");
-                NotSoFatso.NsfClose(nsf);
                 return null;
             }
 
@@ -1491,6 +1639,12 @@ namespace FamiStudio
 
             for (int i = 0; i < numFrames; i++)
             {
+                if ((i & 31) == 0)
+                {
+                    Log.ReportProgress(progressStart + progressScale * i / numFrames);
+                    if (Log.ShouldAbortOperation)
+                        return null;
+                }
                 p = f / song.PatternLength;
                 n = f % song.PatternLength;
 
@@ -1506,7 +1660,6 @@ namespace FamiStudio
                     if (++waitFrameCount == 1000)
                     {
                         Log.LogMessage(LogSeverity.Error, "NSF did not call PLAY after 1000 frames, aborting.");
-                        NotSoFatso.NsfClose(nsf);
                         return null;
                     }
                 }
@@ -1530,8 +1683,6 @@ namespace FamiStudio
             }
 
             song.SetLength(p + 1);
-
-            NotSoFatso.NsfClose(nsf);
 
             var factors = Utils.GetFactors(song.PatternLength, FamiStudioTempoUtils.MaxNoteLength);
             if (factors.Length > 0)

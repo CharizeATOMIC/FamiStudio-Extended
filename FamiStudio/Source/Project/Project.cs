@@ -31,8 +31,9 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1001;
+        public const int Version = 1002;
         public const int TuningFormatVersion = 1001;
+        public const int ChipTuningFormatVersion = 1002;
         public const int MaxMappedSampleSize = 0x40000;
         public const int MaxDPCMBanks = 64;
         public const int MaxSampleAddress = 255 * 64;
@@ -73,6 +74,7 @@ namespace FamiStudio
             return layout.ToArray();
         }
         private int tuning = 440;
+        private ChipTuningSettings chipTuning = new ChipTuningSettings();
         private bool sortSongs = true;
         private bool sortInstruments = true;
         private bool sortSamples = true;
@@ -121,6 +123,8 @@ namespace FamiStudio
         public int N163WaveRAMSize => 128 - 8 * expansionNumN163Channels;
 
         public int Tuning { get => tuning; set => tuning = value; }
+        public ChipTuningSettings ChipTuning { get => chipTuning; set { if (value == null) throw new ArgumentNullException(nameof(value)); value.Validate(); chipTuning = value.Clone(); } }
+        public bool HasActiveChipTuning => GetActiveExpansions().Any(chipTuning.HasOffsets);
 
         public bool UsesAnyExpansionAudio       => (expansionMask != ExpansionType.NoneMask);
         public bool UsesSingleExpansionAudio    => (Utils.NumberOfSetBits(expansionMask) == 1);
@@ -1603,9 +1607,19 @@ namespace FamiStudio
                     return false;
                 }
 
+                // A global per-note curve cannot be represented by the song's twelve
+                // pitch-class offsets. Refuse an incompatible merge before changing IDs
+                // or channel layouts instead of silently changing either song's pitch.
+                if (songs.Count > 0 && otherProject.GetActiveExpansions().Any(chip => !chipTuning.ChipEquals(otherProject.chipTuning, chip)))
+                {
+                    Log.LogMessage(LogSeverity.Error, TuningStrings.CurveMergeError);
+                    return false;
+                }
+
                 var mergedCounts = expansionInstances.Zip(otherProject.expansionInstances, Math.Max).ToArray();
                 var mergedChannelCount = Enumerable.Range(0, ChannelType.Count).Where(IsChannelActive).Sum(t => mergedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
                 if (mergedChannelCount > 64) { Log.LogMessage(LogSeverity.Error, TuningStrings.ChannelLimitError); return false; }
+                if (songs.Count == 0) ChipTuning = otherProject.ChipTuning;
                 SetExpansionInstances(mergedCounts);
                 otherProject.SetExpansionAudioMask(expansionMask, expansionNumN163Channels, instances: mergedCounts);
                 if (tuning != otherProject.tuning)
@@ -2612,6 +2626,10 @@ namespace FamiStudio
             {
                 buffer.Serialize(ref tuning);
             }
+            if (buffer.Version >= ChipTuningFormatVersion)
+                chipTuning.Serialize(buffer);
+            else if (buffer.IsReading)
+                chipTuning = new ChipTuningSettings();
 
             // At version 16 (FamiStudio 4.2.0) we added little folders in the project explorer and
             // some sound-engine specific options.
