@@ -151,7 +151,7 @@ namespace FamiStudio
             Console.WriteLine($"  -wav-export-rate:<rate> : Sample rate of the exported wave : 11025, 22050, 44100 or 48000 (default:44100).");
             Console.WriteLine($"  -wav-export-duration:<duration> : Duration in second, 0 plays song once and stop (default:0).");
             Console.WriteLine($"  -wav-export-loop:<count> : Number of times to play the song (default:1).");
-            Console.WriteLine($"  -wav-export-channels:<mask> : Channel mask in hexadecimal, bit zero in channel 0 and so on (default:ff).");
+            Console.WriteLine($"  -wav-export-channels:<mask> : 64-bit channel mask in hexadecimal, bit zero is channel 0 (default:ffffffffffffffff).");
             Console.WriteLine($"  -wav-export-separate-channels : Export each channels to separate file (default:off).");
             Console.WriteLine($"  -wav-export-separate-intro : Export the intro of the song seperately from the looping section (default:off).");
             Console.WriteLine($"");
@@ -316,7 +316,7 @@ namespace FamiStudio
             var sampleRate = ParseOption($"{extension}-export-rate", 44100);
             var loopCount  = ParseOption($"{extension}-export-loop", 1);
             var duration   = ParseOption($"{extension}-export-duration", 0);
-            var mask       = ParseOption($"{extension}-export-channels", 0xffffff, true);
+            var mask       = unchecked((long)Convert.ToUInt64(ParseOption($"{extension}-export-channels", "ffffffffffffffff"), 16));
             var separate   = HasOption($"{extension}-export-separate-channels");
             var intro      = HasOption($"{extension}-export-separate-intro");
             var bitrate    = ParseOption($"{extension}-export-bitrate", 192);
@@ -330,14 +330,6 @@ namespace FamiStudio
             // TODO : Add a stereo flag on the command line.
             var stereo = project.OutputsStereoAudio;
             var pan = (float[])null;
-
-            if (stereo)
-            {
-                var channelCount = project.GetActiveChannelCount(); 
-                pan = new float[channelCount];
-                for (int i = 0; i < channelCount; i++)
-                    pan[i] = 0.5f;
-            }
 
             if (song != null)
             {

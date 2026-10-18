@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
@@ -180,6 +180,7 @@ namespace FamiStudio
 
             audioStream?.Stop();
             audioStream = null;
+            base.Shutdown();
         }
 
         public void ConnectOscilloscope(IOscilloscope osc)

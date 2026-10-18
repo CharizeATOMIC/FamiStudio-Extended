@@ -15,6 +15,10 @@ namespace FamiStudio
             var project = song.Project;
             var introDuration = separateIntro ? GetIntroDuration(song, sampleRate, log, allowAbort) : 0;
             var outputsStereo = song.Project.OutputsStereoAudio;
+            var hasSongPan = song.Channels.Any(c => c.StereoEnabled);
+            // A matching export mix uses exactly the same renderer as monitoring.
+            if (pan != null && delay == 0 && pan.Length == song.Channels.Length &&
+                song.Channels.Select((c, i) => Math.Abs(pan[i] - c.EffectivePan / 100.0f) < 0.0001f).All(v => v)) pan = null;
             var delayInSamples = (int)(sampleRate * (delay / 1000.0f));
 
             if (Log.ShouldAbortOperation)
@@ -94,7 +98,7 @@ namespace FamiStudio
                     // Optimization : If the project already outputs stereo and
                     // we don't have any panning/delay to do, we can simply take 
                     // the raw result of the emulation.
-                    if (delay == 0 && centerPan && outputsStereo)
+                    if (delay == 0 && centerPan && outputsStereo && (!hasSongPan || pan == null))
                     {
                         var player = new WavPlayer(sampleRate, project.PalMode, outputsStereo, loopCount, channelMask, 0, NesApu.TND_MODE_SEPARATE);
                         samples = player.GetSongSamples(song, duration, log, allowAbort);
@@ -104,7 +108,7 @@ namespace FamiStudio
                     {
                         Log.LogMessageConditional(log, LogSeverity.Info, $"Exporting channels individually due to custom panning or delay, this will take longer...");
 
-                        var channelSamples = GetIndividualChannelSamples(song, outputsStereo, channelMask, sampleRate, loopCount, project.PalMode, duration, log, allowAbort);
+                        var channelSamples = GetIndividualChannelSamples(song, outputsStereo, channelMask, sampleRate, loopCount, project.PalMode, duration, log, allowAbort, pan == null);
                         if (channelSamples == null)
                             return;
 
@@ -136,7 +140,7 @@ namespace FamiStudio
                             {
                                 if (channelSamples[j] != null)
                                 {
-                                    var p = pan[j];
+                                    var p = pan == null ? 0.5f : pan[j];
 
                                     var sl = 1.0f - Utils.Clamp( 2.0f * (p - 0.5f), 0.0f, 1.0f);
                                     var sr = 1.0f - Utils.Clamp(-2.0f * (p - 0.5f), 0.0f, 1.0f);
@@ -180,8 +184,7 @@ namespace FamiStudio
                     {
                         for (int i = 0; i < samples.Length; i++)
                         {
-                            if (i % 2 == 0)
-                                samples[i] = (short)((stereoSamples[i * 2] + stereoSamples[i * 2 + 1]) / 2);
+                            samples[i] = (short)((stereoSamples[i * 2] + stereoSamples[i * 2 + 1]) / 2);
                         }
                     }
 
@@ -218,7 +221,7 @@ namespace FamiStudio
             System.GC.Collect();
         }
 
-        private static short[][] GetIndividualChannelSamples(Song song, bool outputsStereo, long channelMask, int sampleRate, int loopCount, bool pal, int duration, bool log, bool allowAbort)
+        private static short[][] GetIndividualChannelSamples(Song song, bool outputsStereo, long channelMask, int sampleRate, int loopCount, bool pal, int duration, bool log, bool allowAbort, bool applySongPan = true)
         {
             // Get all the samples for all channels.
             var channelSamples = new short[song.Channels.Length][];
@@ -230,6 +233,7 @@ namespace FamiStudio
                 if ((channelBit & channelMask) != 0)
                 {
                     var player = new WavPlayer(sampleRate, pal, outputsStereo, loopCount, channelBit, threadIndex, NesApu.TND_MODE_SEPARATE);
+                    player.ApplySongPan = applySongPan;
                     channelSamples[channelIdx] = player.GetSongSamples(song, duration, false, allowAbort); // Cannot log, we are not on main thread.
 
                     if (Log.ShouldAbortOperation)

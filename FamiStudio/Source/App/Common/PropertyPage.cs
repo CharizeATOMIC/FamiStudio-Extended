@@ -709,6 +709,8 @@ namespace FamiStudio
         public Func<double, string> Formatter = DefaultFormat;
         public int MinValue;
         public int MaxValue;
+        // Optional checkbox column that controls whether this cell is displayed.
+        public int VisibleWhenCheckedColumn = -1;
 
         private static string DefaultFormat(double v) => v.ToString();
 

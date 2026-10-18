@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -15,6 +15,7 @@ namespace FamiStudio
         private int maxPatternIdx = -1;
 
         private int firstPropIdx             = -1;
+        private int tempoPropertyEnd;
         private int famitrackerTempoPropIdx  = -1;
         private int famitrackerSpeedPropIdx  = -1;
         private int notesPerBeatPropIdx      = -1;
@@ -25,6 +26,7 @@ namespace FamiStudio
         private int groovePropIdx            = -1;
         private int groovePadPropIdx         = -1;
 
+        private TuningProperties tuningProperties;
         private int originalNoteLength;
 
         private TempoInfo[] tempoList;
@@ -138,7 +140,6 @@ namespace FamiStudio
                 framesPerNotePropIdx   = props.AddLabel(FramesPerNoteLabel.Colon, noteLength.ToString(), false, FramesPerNoteTooltip); // 3
 
                 props.ShowWarnings = true;
-                props.BeginAdvancedProperties();
                 groovePropIdx    = props.AddDropDownList(GrooveLabel.Colon, grooveStrings, grooveStrings[grooveIndex], GrooveTooltip); // 4
                 groovePadPropIdx = props.AddDropDownList(GroovePaddingLabel.Colon, GroovePaddingType.Names, GroovePaddingType.Names[song.GroovePaddingMode], GroovePaddingTooltip); // 5
 
@@ -146,6 +147,13 @@ namespace FamiStudio
 
                 UpdateWarnings();
             }
+            tempoPropertyEnd = props.PropertyCount;
+            AddTuningProperties();
+        }
+
+        private void AddTuningProperties()
+        {
+            tuningProperties = new TuningProperties(props, patternIdx < 0 ? song.TuningSettings : song.GetPatternCustomSettings(patternIdx).Tuning, patternIdx < 0 ? song.Project.Tuning : song.GetTuningHz(), patternIdx < 0 ? null : song.GetTuning()?.Cents);
         }
 
         private void Props_PropertyChanged(PropertyPage props, int propIdx, int rowIdx, int colIdx, object value)
@@ -276,7 +284,7 @@ namespace FamiStudio
 
         public void EnableProperties(bool enabled)
         {
-            for (var i = firstPropIdx; i < props.PropertyCount; i++)
+            for (var i = firstPropIdx; i < tempoPropertyEnd; i++)
                 props.SetPropertyEnabled(i, enabled);
         }
 
@@ -304,6 +312,12 @@ namespace FamiStudio
 
         private void FinishApply(Action callback)
         {
+            if (tuningProperties != null)
+            {
+                var tuning = tuningProperties.GetSettings();
+                if (patternIdx < 0) song.TuningSettings = tuning;
+                else for (int i = minPatternIdx; i <= maxPatternIdx; i++) song.GetPatternCustomSettings(i).Tuning = tuning.Clone();
+            }
             song.DeleteNotesPastMaxInstanceLength();
             song.InvalidateCumulativePatternCache();
             song.Project.ValidateIntegrity();

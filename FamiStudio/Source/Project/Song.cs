@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -11,6 +11,12 @@ namespace FamiStudio
         public const int MaxLength       = 256;
         public const int NativeTempoNTSC = 150;
         public const int NativeTempoPAL  = 125;
+
+        private TuningSettings tuningSettings = new TuningSettings();
+        public TuningSettings TuningSettings { get => tuningSettings; set { value.Validate(); tuningSettings = value.Clone(); } }
+        public bool UsesCustomTuning => tuningSettings.Override || patternCustomSettings.Take(songLength).Any(p => p.Tuning.Override);
+        public TuningSettings GetTuning(int patternIndex = -1) => patternIndex >= 0 && patternIndex < songLength && patternCustomSettings[patternIndex].Tuning.Override ? patternCustomSettings[patternIndex].Tuning : tuningSettings.Override ? tuningSettings : null;
+        public int GetTuningHz(int patternIndex = -1) => GetTuning(patternIndex)?.ReferenceHz ?? project.Tuning;
 
         private int id;
         private Project project;
@@ -107,41 +113,12 @@ namespace FamiStudio
 
         public void CreateChannels(bool preserve = false, int oldExpansionMask = 0, int oldN163Channels = 0)
         {
-            var channelCount = project.GetActiveChannelCount();
             var oldChannels = channels;
-
-            channels = new Channel[channelCount];
-
-            // Optionally map the old channel to the new channels.
-            if (preserve)
+            channels = project.GetChannelLayout().Select(slot =>
             {
-                for (int i = 0; i < ChannelType.Count; i++)
-                {
-                    var oldActive = Project.IsChannelActive(i, oldExpansionMask, oldN163Channels);
-                    var newActive = project.IsChannelActive(i);
-
-                    if (oldActive && newActive)
-                    {
-                        var oldIdx = Channel.ChannelTypeToIndex(i, oldExpansionMask, oldN163Channels);
-                        var newIdx = Channel.ChannelTypeToIndex(i, project.ExpansionAudioMask, project.ExpansionNumN163Channels);
-
-                        channels[newIdx] = oldChannels[oldIdx];
-                    }
-                }
-            }
-
-            // Create the new ones.
-            for (int i = 0; i < ChannelType.Count; i++)
-            {
-                if (project.IsChannelActive(i))
-                {
-                    var idx = Channel.ChannelTypeToIndex(i, project.ExpansionAudioMask, project.ExpansionNumN163Channels);
-                    if (channels[idx] == null)
-                    {
-                        channels[idx] = new Channel(this, i, songLength);
-                    }
-                }
-            }
+                var old = preserve ? oldChannels?.FirstOrDefault(c => c.Type == slot.Type && c.ChipInstance == slot.Instance) : null;
+                return old ?? new Channel(this, slot.Type, songLength) { ChipInstance = slot.Instance };
+            }).ToArray();
         }
 
         public void MakePatternsWithDifferentLengthsUnique()
@@ -280,7 +257,9 @@ namespace FamiStudio
         {
             Debug.Assert(customPatternLength > 0 && customPatternLength < Pattern.MaxLength);
 
+            var tuning = patternCustomSettings[patternIdx].Tuning;
             patternCustomSettings[patternIdx].Clear();
+            patternCustomSettings[patternIdx].Tuning = tuning;
             patternCustomSettings[patternIdx].useCustomSettings = true;
 
             if (project.UsesFamiTrackerTempo)
@@ -356,11 +335,11 @@ namespace FamiStudio
             return patternStartNote[patternIdx] + note;
         }
 
-        public Channel GetChannelByType(int type)
+        public Channel GetChannelByType(int type, int instance = 0)
         {
             lock (songLock)
             {
-                return channels[Channel.ChannelTypeToIndex(type, project.ExpansionAudioMask, project.ExpansionNumN163Channels)];
+                return Array.Find(channels, c => c.Type == type && c.ChipInstance == instance);
             }
         }
 
@@ -1326,6 +1305,7 @@ namespace FamiStudio
                             var customSettings = GetPatternCustomSettings(srcPatIdx);
                             SetPatternCustomSettings(i, customSettings.patternLength, customSettings.beatLength, customSettings.groove, customSettings.groovePaddingMode);
                         }
+                        GetPatternCustomSettings(i).Tuning = GetPatternCustomSettings(srcPatIdx).Tuning.Clone();
 
                         if (++srcPatIdx >= originalLength)
                         {
@@ -1415,6 +1395,12 @@ namespace FamiStudio
                     buffer.Serialize(ref folderName);
                 }
 
+                if (buffer.Version >= Project.TuningFormatVersion)
+                {
+                    tuningSettings.Serialize(buffer);
+                    for (int i = 0; i < songLength; i++) patternCustomSettings[i].Tuning.Serialize(buffer);
+                }
+
                 if (buffer.IsReading)
                 {
                     CreateChannels();
@@ -1447,6 +1433,7 @@ namespace FamiStudio
 
         public class PatternCustomSetting
         {
+            public TuningSettings Tuning = new TuningSettings();
             public bool useCustomSettings;
             public int patternLength;
             public int noteLength;
@@ -1456,6 +1443,7 @@ namespace FamiStudio
 
             public void Clear()
             {
+                Tuning = new TuningSettings();
                 useCustomSettings = false;
                 patternLength = 0;
                 noteLength = 0;
@@ -1467,6 +1455,7 @@ namespace FamiStudio
             public PatternCustomSetting Clone()
             {
                 var clone = new PatternCustomSetting();
+                clone.Tuning = Tuning.Clone();
                 clone.useCustomSettings = useCustomSettings;
                 clone.patternLength = patternLength;
                 clone.noteLength = noteLength;

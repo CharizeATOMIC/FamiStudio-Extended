@@ -1623,6 +1623,9 @@ namespace FamiStudio
 
         public void Save(Project originalProject, string filename, int songId, int instrumentMode, int[] instrumentMapping, bool volumeAsVelocity, bool slideToPitchWheel, int pitchWheelRange)
         {
+            if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return; }
+            if (originalProject.GetSong(songId).UsesCustomTuning) { Log.LogMessage(LogSeverity.Error, TuningStrings.FormatExportError); return; }
+
             if (originalProject.UsesFamiTrackerTempo)
             {
                 Log.LogMessage(LogSeverity.Error, "MIDI export is only available for projects using FamiStudio tempo. Aborting.");

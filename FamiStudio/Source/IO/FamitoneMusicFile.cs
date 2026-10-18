@@ -1129,6 +1129,38 @@ namespace FamiStudio
             EnvPeriod = 16
         }
 
+        readonly Dictionary<string, string> tuningTableNames = new Dictionary<string, string>();
+        readonly List<string> tuningTableLines = new List<string>();
+
+        string GetTuningTable(Song song, int patternIndex, int channelType)
+        {
+            var tuning = song.GetTuning(patternIndex);
+            var count = project.ExpansionNumN163Channels;
+            // Match the driver's built-in layout: PAL first, then NTSC in dual mode.
+            var table = new List<ushort>();
+            table.AddRange(NesApu.GetNoteTableForChannelType(channelType, machine != MachineType.NTSC, count, song.GetTuningHz(patternIndex), tuning?.Cents));
+            if (machine == MachineType.Dual)
+                table.AddRange(NesApu.GetNoteTableForChannelType(channelType, false, count, song.GetTuningHz(patternIndex), tuning?.Cents));
+            var fraction = new List<byte>();
+            byte[] GetFraction(bool pal) => tuning == null ? CustomTuningTables.ZeroFraction : CustomTuningTables.Get(channelType, pal, count, song.GetTuningHz(patternIndex), tuning.Cents).Fraction;
+            fraction.AddRange(GetFraction(machine != MachineType.NTSC));
+            if (machine == MachineType.Dual) fraction.AddRange(GetFraction(false));
+            var key = string.Join(",", table) + ":" + string.Join(",", fraction);
+            if (tuningTableNames.TryGetValue(key, out var name)) return name;
+            name = $"{llp}custom_tuning_{tuningTableNames.Count}";
+            tuningTableNames.Add(key, name);
+            for (int half = 0; half < 2; half++)
+            {
+                tuningTableLines.Add(name + (half == 0 ? "_lsb:" : "_msb:"));
+                for (int i = 0; i < table.Count; i += 16)
+                    tuningTableLines.Add("\t" + db + " " + string.Join(",", table.Skip(i).Take(16).Select(v => $"{hexp}{((v >> (half * 8)) & 255):x2}")));
+            }
+            tuningTableLines.Add(name + "_fraction:");
+            for (int i = 0; i < fraction.Count; i += 16)
+                tuningTableLines.Add("\t" + db + " " + string.Join(",", fraction.Skip(i).Take(16).Select(v => $"{hexp}{v:x2}")));
+            return name;
+        }
+
         private List<string> GetSongData(Song song, int songIdx, int speedChannel)
         {
             var emptyPattern = new Pattern(-1, song, 0, "");
@@ -1209,6 +1241,18 @@ namespace FamiStudio
                         // note may have overridden it. TODO: Actually check if thats the case!
                         if (channel.UsesArpeggios)
                             channelData.Add($"{hexp}{OpcodeClearArpEnvOverride:x2}+");
+                    }
+
+                    if (song.UsesCustomTuning && channel.SupportsEffect(Note.EffectFinePitch))
+                    {
+                        var table = GetTuningTable(song, p, channel.Type);
+                        channelData.Add($"{hexp}5f+");
+                        channelData.Add($"{lo}({table}_lsb)");
+                        channelData.Add($"{hi}({table}_lsb)");
+                        channelData.Add($"{lo}({table}_msb)");
+                        channelData.Add($"{hi}({table}_msb)");
+                        channelData.Add($"{lo}({table}_fraction)");
+                        channelData.Add($"{hi}({table}_fraction)");
                     }
 
                     if (isSpeedChannel && project.UsesFamiStudioTempo)
@@ -1532,8 +1576,8 @@ namespace FamiStudio
 
                             if (note.IsSlideNote)
                             {
-                                var noteTableNtsc = NesApu.GetNoteTableForChannelType(channel.Type, false, song.Project.ExpansionNumN163Channels, song.Project.Tuning);
-                                var noteTablePal = NesApu.GetNoteTableForChannelType(channel.Type, true, song.Project.ExpansionNumN163Channels, song.Project.Tuning);
+                                var noteTableNtsc = NesApu.GetNoteTableForChannelType(channel.Type, false, song.Project.ExpansionNumN163Channels, song.GetTuningHz(p), song.GetTuning(p)?.Cents);
+                                var noteTablePal = NesApu.GetNoteTableForChannelType(channel.Type, true, song.Project.ExpansionNumN163Channels, song.GetTuningHz(p), song.GetTuning(p)?.Cents);
 
                                 var found = true;
                                 found &= channel.ComputeSlideNoteParams(note, location, currentSpeed, noteTableNtsc, false, true, out _, out int stepSizeNtsc, out _);
@@ -1704,7 +1748,7 @@ namespace FamiStudio
                 {
                     if (concattedChannelData[i] == concattedChannelData[j])
                     {
-                        uniqueChannels[j].Insert(0, $"{ll}song{songIdx}ch{i}:");
+                        uniqueChannels[j].Insert(0, $"{llp}song{songIdx}ch{i}:");
                         isUnique = false;
                         break;
                     }
@@ -2318,6 +2362,8 @@ namespace FamiStudio
                 flags.Add("Project uses delayed notes or cuts, you must set FAMISTUDIO_USE_FAMITRACKER_DELAYED_NOTES_OR_CUTS = 1.");
             if (usesReleaseNotes)
                 flags.Add("Project uses release notes, you must set FAMISTUDIO_USE_RELEASE_NOTES = 1.");
+            if (project.Songs.Any(s => s.UsesCustomTuning))
+                flags.Add("Song/pattern tuning requires FAMISTUDIO_USE_CUSTOM_TUNING = 1 and the tuning fork of the sound engine.");
             if (usesVolumeTrack)
                 flags.Add("Volume track is used, you must set FAMISTUDIO_USE_VOLUME_TRACK = 1.");
             if (usesVolumeSlide)
@@ -2354,7 +2400,16 @@ namespace FamiStudio
 
         public bool Save(Project originalProject, int[] songIds, int format, int maxDpcmBankSize, bool separateSongs, string filename, string dmcFilename, int dmcExportMode, bool exportUnusedMappings, string includeFilename, int machine)
         {
+            if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+
             this.machine = machine;
+            tuningTableNames.Clear();
+            tuningTableLines.Clear();
+            if (kernel != FamiToneKernel.FamiStudio && originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesCustomTuning))
+            {
+                Log.LogMessage(LogSeverity.Error, TuningStrings.EngineExportError);
+                return false;
+            }
 
             SetupProject(originalProject, songIds, dmcExportMode);
             SetupFormat(format, separateSongs);
@@ -2384,6 +2439,7 @@ namespace FamiStudio
                     Log.LogMessage(LogSeverity.Info, $"Song '{project.Songs[i].Name}' size: {songSize} bytes.");
             }
             
+            lines.AddRange(tuningTableLines);
             var usedFlags = kernel == FamiToneKernel.FamiStudio ? GetRequiredFlags() : new List<string>();
             var pattern = @"FAMISTUDIO_\S+\s*=\s*[1-8]";
 

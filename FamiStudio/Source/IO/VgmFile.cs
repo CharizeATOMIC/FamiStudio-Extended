@@ -76,6 +76,7 @@ namespace FamiStudio
         };
         public unsafe static void Save(Song song, string filename, string trackTitle, string gameName, string system, string composer, string releaseDate, string VGMby, string notes, bool smoothLoop)
         {   //This is a mess, works somehow tho
+            if (song.Project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return; }
             var project = song.Project.DeepClone();
             song = project.GetSong(song.Id);
             var regPlayer = new RegisterPlayer(project.PalMode, project.OutputsStereoAudio);

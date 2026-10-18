@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,7 +30,9 @@ namespace FamiStudio
         // Version 17 = FamiStudio 4.3.0 (Tuning)
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
-        public const int Version = 19;
+        // Fork format: deliberately outside the upstream sequence.
+        public const int Version = 1001;
+        public const int TuningFormatVersion = 1001;
         public const int MaxMappedSampleSize = 0x40000;
         public const int MaxDPCMBanks = 64;
         public const int MaxSampleAddress = 255 * 64;
@@ -48,6 +50,28 @@ namespace FamiStudio
         private int tempoMode = TempoType.FamiStudio;
         private int expansionMask = ExpansionType.NoneMask;
         private int expansionNumN163Channels = 1; // For N163 only.
+        private int[] expansionInstances = Enumerable.Repeat(1, ExpansionType.Count).ToArray();
+        public int GetExpansionInstances(int expansion) => expansionInstances[expansion];
+        public bool HasVirtualChips => GetActiveExpansions().Any(e => e != 0 && expansionInstances[e] > 1);
+        public void SetExpansionInstances(int[] counts)
+        {
+            if (counts == null || counts.Length != ExpansionType.Count || counts[0] != 1 || counts.Any(n => n < 1 || n > 8))
+                throw new ArgumentException("Chip instance counts must be 1..8 (APU: 1).");
+            var old = expansionInstances;
+            expansionInstances = (int[])counts.Clone();
+            if (GetActiveChannelCount() > 64) { expansionInstances = old; throw new ArgumentException("At most 64 channels are supported."); }
+            foreach (var song in songs) song.CreateChannels(true);
+        }
+        public (int Type, int Instance)[] GetChannelLayout()
+        {
+            var layout = new List<(int, int)>();
+            for (int type = 0; type < ChannelType.Count; type++) if (IsChannelActive(type)) layout.Add((type, 0));
+            for (int expansion = 1; expansion < ExpansionType.Count; expansion++)
+                for (int instance = 1; instance < expansionInstances[expansion]; instance++)
+                    for (int type = 0; type < ChannelType.Count; type++)
+                        if (IsChannelActive(type) && ChannelType.GetExpansionTypeForChannelType(type) == expansion) layout.Add((type, instance));
+            return layout.ToArray();
+        }
         private int tuning = 440;
         private bool sortSongs = true;
         private bool sortInstruments = true;
@@ -110,7 +134,7 @@ namespace FamiStudio
         public bool UsesS5BExpansion   => (expansionMask & ExpansionType.S5BMask) != 0;
         public bool UsesEPSMExpansion  => (expansionMask & ExpansionType.EPSMMask) != 0;
 
-        public bool OutputsStereoAudio => UsesEPSMExpansion;
+        public bool OutputsStereoAudio => UsesEPSMExpansion || Songs.Any(s => s.Channels.Any(c => c.StereoEnabled));
         public bool HasAnyFolders => folders.Count > 0;
 
         public string Filename  { get => filename;  set => filename = value; }
@@ -1009,8 +1033,13 @@ namespace FamiStudio
             folders.AddRange(foldersForType);
         }
 
-        public void SetExpansionAudioMask(int newExpansionMask, int numChannels = 1, bool resizeN163RAM = true)
+        public void SetExpansionAudioMask(int newExpansionMask, int numChannels = 1, bool resizeN163RAM = true, int[] instances = null)
         {
+            var proposedCounts = instances ?? expansionInstances;
+            if (proposedCounts.Length != ExpansionType.Count || proposedCounts[0] != 1 || proposedCounts.Any(n => n < 1 || n > 8) || numChannels < 0 || numChannels > 8)
+                throw new ArgumentException("Invalid chip configuration.");
+            var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => IsChannelActive(t, newExpansionMask, numChannels)).Sum(t => proposedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
+            if (channelCount > 64) throw new ArgumentException("At most 64 channels are supported.");
             if ((newExpansionMask & ExpansionType.N163Mask) != 0 && numChannels == 0)
                 newExpansionMask &= ~ExpansionType.N163Mask;
 
@@ -1018,6 +1047,7 @@ namespace FamiStudio
             var oldNumN163Channels = expansionNumN163Channels;
 
             expansionMask = newExpansionMask;
+            expansionInstances = (int[])proposedCounts.Clone();
             expansionNumN163Channels = (newExpansionMask & ExpansionType.N163Mask) != 0 ? numChannels : 1;
 
             foreach (var song in songs)
@@ -1048,16 +1078,13 @@ namespace FamiStudio
         {
             int channelCount = 0;
             for (int i = 0; i < ChannelType.Count; i++)
-                if (IsChannelActive(i)) channelCount++;
+                if (IsChannelActive(i)) channelCount += expansionInstances[ChannelType.GetExpansionTypeForChannelType(i)];
             return channelCount;
         }
 
         public int[] GetActiveChannelList()
         {
-            var activeChannels = new List<int>();
-            for (int i = 0; i < ChannelType.Count; i++)
-                if (IsChannelActive(i)) activeChannels.Add(i);
-            return activeChannels.ToArray();
+            return GetChannelLayout().Select(c => c.Type).ToArray();
         }
 
         public bool IsChannelActive(int channelType)
@@ -1576,7 +1603,14 @@ namespace FamiStudio
                     return false;
                 }
 
-                otherProject.SetExpansionAudioMask(expansionMask, expansionNumN163Channels);
+                var mergedCounts = expansionInstances.Zip(otherProject.expansionInstances, Math.Max).ToArray();
+                var mergedChannelCount = Enumerable.Range(0, ChannelType.Count).Where(IsChannelActive).Sum(t => mergedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
+                if (mergedChannelCount > 64) { Log.LogMessage(LogSeverity.Error, TuningStrings.ChannelLimitError); return false; }
+                SetExpansionInstances(mergedCounts);
+                otherProject.SetExpansionAudioMask(expansionMask, expansionNumN163Channels, instances: mergedCounts);
+                if (tuning != otherProject.tuning)
+                    foreach (var imported in otherProject.Songs)
+                        if (!imported.TuningSettings.Override) imported.TuningSettings = new TuningSettings { Override = true, ReferenceHz = otherProject.tuning };
             }
 
             // Change all the IDs in the source project.
@@ -2003,7 +2037,7 @@ namespace FamiStudio
             }
         };
 
-        public unsafe bool AutoAssignN163WavePositions(out Dictionary<int, int> wavePositions)
+        public unsafe bool AutoAssignN163WavePositions(out Dictionary<int, int> wavePositions, int chipInstance = 0)
         {
             if (!UsesN163Expansion)
             {
@@ -2040,7 +2074,7 @@ namespace FamiStudio
                     // This is a bit overkill, but is very simple.
                     for (var i = 0; i < expansionNumN163Channels; i++)
                     {
-                        var channel = song.GetChannelByType(ChannelType.N163Wave1 + i);
+                        var channel = song.GetChannelByType(ChannelType.N163Wave1 + i, chipInstance);
 
                         // TODO : This ignores FamiTracker delayed cuts, so it may generate sub-optimal results when they are used.
                         for (var it = channel.GetSparseNoteIterator(song.StartLocation, song.EndLocation, NoteFilter.Musical); !it.Done; it.Next())
@@ -2566,6 +2600,13 @@ namespace FamiStudio
                 famiTone2SfxExportConfig.Serialize(buffer);
             }
 
+            if (buffer.Version >= TuningFormatVersion)
+            {
+                buffer.Serialize(ref expansionInstances);
+                if (buffer.IsReading && (expansionInstances.Length != ExpansionType.Count || expansionInstances[0] != 1 || expansionInstances.Any(n => n < 1 || n > 8) || GetActiveChannelCount() > 64))
+                    throw new ArgumentException("Invalid chip instance layout.");
+            }
+
             // At version 17 (FamiStudio 4.3.0) we added support for tuning frequency (ex: A = 440Hz).
             if (buffer.Version >= 17)
             {
@@ -2691,6 +2732,8 @@ namespace FamiStudio
     {
         private int  songId;
         private int  channelType;
+        private int  chipInstance;
+        public int ChipInstance { get => chipInstance; set => chipInstance = value; }
         private bool enabled;
         private int  panning;
         private int  transpose;
@@ -2707,6 +2750,7 @@ namespace FamiStudio
         {
             buffer.Serialize(ref songId);
             buffer.Serialize(ref channelType);
+            if (buffer.Version >= Project.TuningFormatVersion) buffer.Serialize(ref chipInstance);
             buffer.Serialize(ref enabled);
             buffer.Serialize(ref panning);
             buffer.Serialize(ref transpose);

@@ -163,7 +163,13 @@ namespace FamiStudio
 
         public bool IsCellEnabled(int row, int col)
         {
-            return cellDisabled == null || !cellDisabled[row, col];
+            return IsCellVisible(row, col) && (cellDisabled == null || !cellDisabled[row, col]);
+        }
+
+        private bool IsCellVisible(int row, int col)
+        {
+            var check = columns[col].VisibleWhenCheckedColumn;
+            return check < 0 || data[row, check] is bool on && on;
         }
 
         public bool IsCellOrColumnEnabled(int row, int col)
@@ -965,6 +971,7 @@ namespace FamiStudio
                             }
                             case ColumnType.NumericUpDown:
                             {
+                                if (!IsCellVisible(k, j)) break;
                                 if (cellEnabled)
                                 {
                                     c.DrawTextureAtlasCentered(bmpUpDownMinus, 0, 0, rowHeight, rowHeight, 1, localForeColor);

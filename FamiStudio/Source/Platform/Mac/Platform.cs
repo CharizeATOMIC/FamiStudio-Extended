@@ -15,7 +15,7 @@ namespace FamiStudio
 {
     public static partial class Platform
     {
-        public static string SettingsDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support/FamiStudio");
+        public static string SettingsDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support/FamiStudio-Tuning");
         public static string UserProjectsDirectory => null;
         public static float DoubleClickTime => MacUtils.DoubleClickInterval;
 

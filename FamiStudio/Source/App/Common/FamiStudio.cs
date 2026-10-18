@@ -1550,7 +1550,7 @@ namespace FamiStudio
                 projectFile = System.IO.Path.GetFileName(project.Filename);
 
             var version = Utils.SplitVersionNumber(Platform.ApplicationVersion, out var betaNumber);
-            var title = $"FamiStudio {version} - {projectFile}";
+            var title = $"FamiStudio Tuning {version} - {projectFile}";
 
             if (betaNumber > 0)
                 title += $" - BETA {betaNumber} - DEVELOPMENT VERSION DO NOT DISTRIBUTE!";
@@ -2584,8 +2584,20 @@ namespace FamiStudio
             PianoRoll.MarkDirty();
         }
 
+        public void RefreshSongMixer(Song target, bool rebuild)
+        {
+            if (!rebuild || target != song) return;
+            var playing = IsPlaying;
+            var position = songPlayer?.PlayPosition ?? 0;
+            ShutdownAudioPlayers(true);
+            InitializeAudioPlayers();
+            SeekSong(position);
+            if (playing) PlaySong();
+        }
+
         private void ProjectExplorer_SongModified(Song song)
         {
+            if (songStream != null && songStream.Stereo != project.OutputsStereoAudio) { ShutdownAudioPlayers(true); InitializeAudioPlayers(); }
             Sequencer.SongModified();
             PianoRoll.SongModified();
             MarkEverythingDirty();

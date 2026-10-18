@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -17,15 +18,32 @@ namespace FamiStudio
 
     public interface IPlayerInterface
     {
-        void NotifyInstrumentLoaded(Instrument instrument, long channelTypeMask);
+        void NotifyInstrumentLoaded(Instrument instrument, long channelTypeMask, int nativeApu);
         void NotifyRegisterWrite(int apuIndex, int reg, int data, int metadata = 0);
-        int GetN163AutoWavePosition(Instrument instrument);
-        ChannelState GetChannelByType(int type); // Use sparingly, kind of hacky.
+        int GetN163AutoWavePosition(Instrument instrument, int nativeApu = -1);
+        ChannelState GetChannelByType(int type, int nativeApu = -1); // Use sparingly, kind of hacky.
     }
 
     public class BasePlayer : IPlayerInterface
     {
         protected int apuIndex;
+        readonly List<int> instanceApus = new List<int>();
+        void ReleaseExtraApus()
+        {
+            foreach (var apu in instanceApus) if (apu != apuIndex) { NesApu.CurrentSample[apu] = null; NesApu.Destroy(apu); }
+            instanceApus.Clear();
+        }
+        int GetInstanceApu(int instance)
+        {
+            if (instanceApus.Count == 0) instanceApus.Add(apuIndex);
+            while (instanceApus.Count <= instance)
+            {
+                var apu = NesApu.Create();
+                if (apu < 0) throw new InvalidOperationException("No free audio emulation contexts.");
+                instanceApus.Add(apu);
+            }
+            return instanceApus[instance];
+        }
         protected NesApu.DmcReadDelegate dmcCallback;
         protected int sampleRate;
         protected int loopCount = 0;
@@ -41,12 +59,13 @@ namespace FamiStudio
         protected bool seeking = false;
         protected bool beat = false;
         protected bool stereo = false;
+        public bool ApplySongPan { get; set; } = true;
         protected bool accurateSeek = false;
         protected bool forceReadRegisterValues = false;
         protected volatile bool reachedEnd = false;
         protected int  tndMode = NesApu.TND_MODE_SINGLE;
         protected int  beatIndex = -1;
-        protected Dictionary<int, int> n163AutoWavPosMap;
+        readonly Dictionary<int, Dictionary<int, int>> n163AutoWavPosMaps = new();
         protected Song song;
         protected ChannelState[] channelStates;
         protected LoopMode loopMode = LoopMode.Song;
@@ -79,6 +98,7 @@ namespace FamiStudio
 
         public virtual void Shutdown()
         {
+            ReleaseExtraApus();
         }
 
         public long ChannelMask
@@ -238,12 +258,12 @@ namespace FamiStudio
             }
         }
 
-        protected void EnableChannelType(int channelType, bool enable)
+        protected void EnableChannelType(int channelType, bool enable, int nativeApu = -1)
         {
             var exp = ChannelType.GetExpansionTypeForChannelType(channelType);
             var idx = ChannelType.GetExpansionChannelIndexForChannelType(channelType);
 
-            NesApu.EnableChannel(apuIndex, exp, idx, enable ? 1 : 0);
+            NesApu.EnableChannel(nativeApu < 0 ? apuIndex : nativeApu, exp, idx, enable ? 1 : 0);
         }
 
         protected void InitAndResetApu(Project project)
@@ -258,18 +278,28 @@ namespace FamiStudio
                     Settings.ExpansionMixerSettings[i];
             }
 
-            NesApu.InitAndReset(
-                apuIndex, 
-                sampleRate, 
-                Settings.GlobalVolumeDb,
-                project.OverrideBassCutoffHz ? project.BassCutoffHz : Settings.BassCutoffHz, 
-                expMixerSettings,
-                palPlayback, 
-                Settings.N163Mix,
-                tndMode, 
-                project.ExpansionAudioMask, 
-                project.ExpansionNumN163Channels, 
-                dmcCallback);
+            if (instanceApus.Count == 0) instanceApus.Add(apuIndex);
+            for (int instance = 0; instance < instanceApus.Count; instance++)
+            {
+                var nativeApu = instanceApus[instance];
+                var channels = song == null ? Array.Empty<Channel>() : song.Channels.Where(c => c.ChipInstance == instance).ToArray();
+                var panChannels = ApplySongPan && channels.Any(c => c.StereoEnabled) ? channels : Array.Empty<Channel>();
+                NesApu.ConfigureOutput(nativeApu, stereo ? 1 : 0, panChannels.Length,
+                    panChannels.Select(c => c.Expansion).ToArray(), panChannels.Select(c => c.ExpansionChannelIndex).ToArray(), panChannels.Select(c => c.EffectivePan).ToArray());
+                NesApu.InitAndReset(
+                    nativeApu,
+                    sampleRate,
+                    Settings.GlobalVolumeDb,
+                    project.OverrideBassCutoffHz ? project.BassCutoffHz : Settings.BassCutoffHz,
+                    expMixerSettings,
+                    palPlayback,
+                    Settings.N163Mix,
+                    tndMode,
+                    project.ExpansionAudioMask,
+                    project.ExpansionNumN163Channels,
+                    dmcCallback);
+                for (int type = 0; type < ChannelType.Count; type++) if (project.IsChannelActive(type)) EnableChannelType(type, false, nativeApu);
+            }
         }
 
         protected void UpdateChannelsMuting()
@@ -278,7 +308,7 @@ namespace FamiStudio
             {
                 var state = channelStates[i];
 
-                EnableChannelType(state.InnerChannelType, (channelMask & (1L << i)) != 0);
+                EnableChannelType(state.InnerChannelType, (channelMask & (1L << i)) != 0, state.NativeApuIndex);
             }
         }
 
@@ -286,14 +316,20 @@ namespace FamiStudio
         {
             Debug.Assert(s.Project.OutputsStereoAudio == stereo);
 
+            ReleaseExtraApus();
             song = s;
-            song.Project.AutoAssignN163WavePositions(out n163AutoWavPosMap);
+            n163AutoWavPosMaps.Clear();
+            for (int instance = 0; instance < song.Project.GetExpansionInstances(ExpansionType.N163); instance++)
+            {
+                song.Project.AutoAssignN163WavePositions(out var positions, instance);
+                n163AutoWavPosMaps[instance] = positions;
+            }
             famitrackerTempo = song.UsesFamiTrackerTempo;
             famitrackerSpeed = song.FamitrackerSpeed;
             playLocation = NoteLocation.Invalid; // This means "before the first frame".
             frameNumber = 0;
             famitrackerTempoCounter = 0;
-            channelStates = CreateChannelStates(song.Project, apuIndex, song.Project.Tuning, palPlayback, song.Project.ExpansionNumN163Channels);
+            channelStates = CreateChannelStates(song.Project, apuIndex, song.GetTuningHz(), palPlayback, song.Project.ExpansionNumN163Channels);
             reachedEnd = false;
             playbackRateCounter = 1;
             tempoEnvelopeCounter = 0;
@@ -411,13 +447,13 @@ namespace FamiStudio
         {
             seeking = true;
             if (!accurateSeek)
-                NesApu.StartSeeking(apuIndex);
+                foreach (var apu in instanceApus) NesApu.StartSeeking(apu);
         }
 
         protected void StopSeeking()
         {
             if (!accurateSeek)
-                NesApu.StopSeeking(apuIndex);
+                foreach (var apu in instanceApus) NesApu.StopSeeking(apu);
             seeking = false;
         }
 
@@ -600,46 +636,53 @@ namespace FamiStudio
 
         protected ChannelState[] CreateChannelStates(Project project, int apuIdx, int tuning, bool pal, int expNumChannels)
         {
-            var channelCount = project.GetActiveChannelCount();
-            var states = new ChannelState[channelCount];
-
-            int idx = 0;
-            for (int i = 0; i < ChannelType.Count; i++)
+            var layout = project.GetChannelLayout();
+            var states = new ChannelState[layout.Length];
+            for (int i = 0; i < layout.Length; i++)
             {
-                if (project.IsChannelActive(i))
-                {
-                    var state = CreateChannelState(apuIdx, i, expNumChannels, tuning, pal);
-                    states[idx++] = state;
-                }
+                var native = apuIdx == NesApu.APU_INSTRUMENT ? apuIdx : GetInstanceApu(layout[i].Instance);
+                states[i] = CreateChannelState(native, layout[i].Type, expNumChannels, tuning, pal);
+                states[i].SongChannelIndex = i;
             }
-
             return states;
         }
 
         protected virtual void BeginFrame()
         {
-            NesApu.ResetTriggers(apuIndex);
+            foreach (var apu in instanceApus) NesApu.ResetTriggers(apu);
         }
 
         private unsafe void EndSeekFrame()
         {
             Debug.Assert(accurateSeek);
 
-            NesApu.EndFrame(apuIndex);
-            NesApu.ReadSamples(apuIndex, IntPtr.Zero, NesApu.SamplesAvailable(apuIndex));
+            foreach (var apu in instanceApus) { NesApu.EndFrame(apu); NesApu.ReadSamples(apu, IntPtr.Zero, NesApu.SamplesAvailable(apu)); }
         }
 
         protected virtual unsafe short[] EndFrame()
         {
-            NesApu.EndFrame(apuIndex);
-            
-            var numTotalSamples = NesApu.SamplesAvailable(apuIndex);
-            var samples = new short[numTotalSamples * (stereo ? 2 : 1)];
-
-            fixed (short* ptr = &samples[0])
+            short[] samples = null;
+            int[] mixed = null;
+            for (int instance = 0; instance < instanceApus.Count; instance++)
             {
-                NesApu.ReadSamples(apuIndex, new IntPtr(ptr), numTotalSamples);
+                var apu = instanceApus[instance];
+                if (song != null)
+                {
+                    int stem = 0;
+                    foreach (var c in song.Channels) if (c.ChipInstance == instance) NesApu.SetPan(apu, stem++, c.EffectivePan);
+                }
+                NesApu.EndFrame(apu);
+                var count = NesApu.SamplesAvailable(apu);
+                var part = new short[count * (stereo ? 2 : 1)];
+                fixed (short* ptr = part) NesApu.ReadSamples(apu, new IntPtr(ptr), count);
+                if (samples == null) { samples = part; if (instanceApus.Count > 1) mixed = part.Select(v => (int)v).ToArray(); }
+                else
+                {
+                    if (part.Length != samples.Length) throw new InvalidOperationException("Chip audio clocks lost synchronization.");
+                    for (int i = 0; i < part.Length; i++) mixed[i] += part[i];
+                }
             }
+            if (mixed != null) for (int i = 0; i < samples.Length; i++) samples[i] = (short)Utils.Clamp(mixed[i], short.MinValue, short.MaxValue);
 
             ReadBackRegisterValues();
 
@@ -655,11 +698,11 @@ namespace FamiStudio
             }
         }
 
-        public void NotifyInstrumentLoaded(Instrument instrument, long channelTypeMask)
+        public void NotifyInstrumentLoaded(Instrument instrument, long channelTypeMask, int nativeApu)
         {
             foreach (var channelState in channelStates)
             {
-                if (((1L << channelState.InnerChannelType) & channelTypeMask) != 0)
+                if (channelState.NativeApuIndex == nativeApu && ((1L << channelState.InnerChannelType) & channelTypeMask) != 0)
                 {
                     channelState.IntrumentLoadedNotify(instrument);
                 }
@@ -670,18 +713,20 @@ namespace FamiStudio
         {
         }
 
-        public virtual ChannelState GetChannelByType(int type)
+        public virtual ChannelState GetChannelByType(int type, int nativeApu = -1)
         {
-            return Array.Find(channelStates, c => c.InnerChannelType == type);
+            return Array.Find(channelStates, c => c.InnerChannelType == type && (nativeApu < 0 || c.NativeApuIndex == nativeApu));
         }
 
-        public int GetN163AutoWavePosition(Instrument instrument)
+        public int GetN163AutoWavePosition(Instrument instrument, int nativeApu = -1)
         {
             Debug.Assert(instrument != null && instrument.IsN163 && instrument.N163WaveAutoPos);
 
-            // Cant be NULL on instrument player thread, its fine, lets all put them at 0.
+            // Instrument preview plays one voice, so all its waves may start at zero.
             var pos = 0;
-            n163AutoWavPosMap?.TryGetValue(instrument.Id, out pos);
+            var instance = nativeApu < 0 ? 0 : instanceApus.IndexOf(nativeApu);
+            if (n163AutoWavPosMaps.TryGetValue(instance, out var positions))
+                positions?.TryGetValue(instrument.Id, out pos);
 
             return pos;
         }
@@ -698,7 +743,7 @@ namespace FamiStudio
                     // register viewer, such as instrument colors, etc.
                     foreach (var state in channelStates)
                     {
-                        state.AddRegisterValuesExtraData(registerValues);
+                        if (state.NativeApuIndex == apuIndex) state.AddRegisterValuesExtraData(registerValues);
                     }
                 }
             }

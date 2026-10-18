@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
@@ -47,7 +47,7 @@ namespace FamiStudio
                     waveLength = 256 - instrument.N163WaveSize;
 
                     if (instrument.N163WaveAutoPos)
-                        wavePos = player.GetN163AutoWavePosition(instrument) / 2;
+                        wavePos = player.GetN163AutoWavePosition(instrument, apuIdx) / 2;
                     else
                         wavePos = instrument.N163WavePos / 2;
 
@@ -121,7 +121,7 @@ namespace FamiStudio
                 var volume = GetVolume();
 
                 // We clamp our periods to 16-bit for convenience, expand to 18-bit.
-                period <<= 2;
+                period = (period << 2) | GetPeriodFraction();
 
                 WriteN163Register(NesApu.N163_REG_FREQ_LO  + regOffset, (period >> 0) & 0xff);
                 WriteN163Register(NesApu.N163_REG_FREQ_MID + regOffset, (period >> 8) & 0xff);

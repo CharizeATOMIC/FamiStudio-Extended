@@ -67,6 +67,15 @@ namespace FamiStudio
         public const int APU_INSTRUMENT     = 1;
         public const int APU_WAV_EXPORT     = 2;
 
+        [DllImport(NesSndEmuDll, EntryPoint = "NesApuCreate", CallingConvention = CallingConvention.StdCall)]
+        public extern static int Create();
+        [DllImport(NesSndEmuDll, EntryPoint = "NesApuDestroy", CallingConvention = CallingConvention.StdCall)]
+        public extern static void Destroy(int index);
+        [DllImport(NesSndEmuDll, EntryPoint = "NesApuConfigureOutput", CallingConvention = CallingConvention.StdCall)]
+        public extern static void ConfigureOutput(int index, int stereo, int count, int[] expansions, int[] channels, int[] pans);
+        [DllImport(NesSndEmuDll, EntryPoint = "NesApuSetPan", CallingConvention = CallingConvention.StdCall)]
+        public extern static void SetPan(int index, int stem, int pan);
+
         public const int NUM_WAV_EXPORT_APU = 8;
 
         public const int APU_EXPANSION_NONE    = 0;
@@ -312,7 +321,7 @@ namespace FamiStudio
             };  
         };
 
-        private static Dictionary<int, NoteTableSet> NoteTables = new Dictionary<int, NoteTableSet>();
+        private static Dictionary<string, NoteTableSet> NoteTables = new Dictionary<string, NoteTableSet>();
 
         public static int ExpansionToMask(int exp)
         {
@@ -419,10 +428,11 @@ namespace FamiStudio
 
         private static NoteTableSet GetOrCreateNoteTableSet(int tuning)
         {
+            var key = tuning.ToString();
             // TODO : Use TLS to avoid blocking?
             lock (NoteTables)
             {
-                if (NoteTables.TryGetValue(tuning, out var noteTableSet))
+                if (NoteTables.TryGetValue(key, out var noteTableSet))
                 {
                     return noteTableSet;
                 }
@@ -461,7 +471,9 @@ namespace FamiStudio
                     DumpNoteTableSetToFile(noteTableSet, $"NoteTables{tuning}.txt");
                 #endif
 
-                NoteTables.Add(tuning, noteTableSet);
+                // Avoid unbounded growth during interactive tuning edits.
+                if (NoteTables.Count >= 256) NoteTables.Clear();
+                NoteTables.Add(key, noteTableSet);
                 return noteTableSet;
             }
         }
@@ -796,8 +808,9 @@ namespace FamiStudio
             }
         };
 
-        public static ushort[] GetNoteTableForChannelType(int channelType, bool pal, int numN163Channels, int tuning = 440)
+        public static ushort[] GetNoteTableForChannelType(int channelType, bool pal, int numN163Channels, int tuning = 440, int[] cents = null)
         {
+            if (cents != null) return CustomTuningTables.Get(channelType, pal, numN163Channels, tuning, cents).Periods;
             var noteTableSet = GetOrCreateNoteTableSet(tuning);
 
             switch (channelType)
@@ -879,7 +892,7 @@ namespace FamiStudio
             return NesApu.MaximumPeriod11Bit;
         }
 
-        public static byte[][] CurrentSample = new byte[2 + NUM_WAV_EXPORT_APU][];
+        public static byte[][] CurrentSample = new byte[650][];
 
         public static int DmcReadCallback(IntPtr data, int addr)
         {

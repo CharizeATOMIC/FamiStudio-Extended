@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 
 namespace FamiStudio
@@ -99,7 +99,7 @@ namespace FamiStudio
 
                 var period = GetPeriod();
                 var octave = GetOctave(ref period);
-                var periodLo = (byte)(period << 2) & 0xff;
+                var periodLo = ((period << 2) | GetPeriodFraction()) & 0xff;
                 var periodHi = (byte)(((octave & 0x7) << 3) | ((period >> 6) & 7));
                 var volume = GetVolume();
 

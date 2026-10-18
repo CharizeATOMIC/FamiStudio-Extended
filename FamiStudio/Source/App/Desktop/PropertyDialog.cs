@@ -11,6 +11,7 @@ namespace FamiStudio
         private bool topAlign = false;
         private bool center = false;
         private bool advancedPropertiesVisible = false;
+        private int scrollHeight;
 
         private int margin     = DpiScaling.ScaleForWindow(8);
         private int buttonSize = DpiScaling.ScaleForWindow(36);
@@ -25,11 +26,12 @@ namespace FamiStudio
         private LocalizedString CancelTooltip;
         private LocalizedString ToggleAdvancedTooltip;
 
-        public PropertyDialog(FamiStudioWindow win, string title, int width, bool canAccept = true, bool canCancel = true) : base(win, title)
+        public PropertyDialog(FamiStudioWindow win, string title, int width, bool canAccept = true, bool canCancel = true, int scroll = 0) : base(win, title)
         {
             Localization.Localize(this);
 
             width = DpiScaling.ScaleForWindow(width);
+            scrollHeight = DpiScaling.ScaleForWindow(scroll);
             Move(0, 0, width, width);
             Init();
 
@@ -52,11 +54,11 @@ namespace FamiStudio
 
         private void Init()
         {
-            propertyContainer = new Container();
+            propertyContainer = scrollHeight > 0 ? new ScrollContainer() : new Container();
             propertyContainer.Move(margin, margin + titleBarSizeY, Width - margin * 2, 100); // Height not known yet.
-            propertyContainer.SetupClipRegion(false);
+            if (scrollHeight == 0) propertyContainer.SetupClipRegion(false);
 
-            propertyPage = new PropertyPage(propertyContainer, propertyContainer.Width);
+            propertyPage = new PropertyPage(propertyContainer, propertyContainer.Width - (propertyContainer is ScrollContainer sc ? sc.ScrollBarSpacing : 0));
             propertyPage.PropertyWantsClose += PropertyPage_PropertyWantsClose;
 
             buttonYes = new Button("Yes", null);
@@ -128,10 +130,17 @@ namespace FamiStudio
 
         private void UpdateLayout()
         {
-            propertyContainer.Resize(propertyContainer.Width, propertyPage.LayoutHeight);
+            var pageHeight = propertyPage.LayoutHeight;
+            if (propertyContainer is ScrollContainer sc)
+            {
+                pageHeight = System.Math.Min(pageHeight, System.Math.Min(scrollHeight, ParentContainer.Height - buttonSize - titleBarSizeY - margin * 6));
+                sc.VirtualSizeY = propertyPage.LayoutHeight;
+                sc.ScrollY = Utils.Clamp(sc.ScrollY, 0, System.Math.Max(0, propertyPage.LayoutHeight - pageHeight));
+            }
+            propertyContainer.Resize(propertyContainer.Width, pageHeight);
             Resize(width, propertyContainer.Bottom + buttonNo.Height + margin * 2); 
 
-            var buttonY = propertyPage.LayoutHeight + margin * 2 + titleBarSizeY;
+            var buttonY = pageHeight + margin * 2 + titleBarSizeY;
 
             if (buttonNo.Visible)
             {

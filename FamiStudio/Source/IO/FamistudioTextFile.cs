@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -45,6 +45,7 @@ namespace FamiStudio
             if (project.Author    != "")    projectLine += GenerateAttribute("Author", project.Author);
             if (project.Copyright != "")    projectLine += GenerateAttribute("Copyright", project.Copyright);
             if (project.PalMode)            projectLine += GenerateAttribute("PAL", true);
+            if (project.HasVirtualChips) projectLine += GenerateAttribute("ChipInstances", string.Join(",", Enumerable.Range(0, ExpansionType.Count).Select(project.GetExpansionInstances)));
             if (project.Tuning    != 440)   projectLine += GenerateAttribute("Tuning", project.Tuning);
 
             if (project.UsesAnyExpansionAudio)
@@ -244,7 +245,15 @@ namespace FamiStudio
                     songStr += $"{GenerateAttribute("PatternLength", song.PatternLength / song.NoteLength)}{GenerateAttribute("BeatLength", song.BeatLength / song.NoteLength)}{GenerateAttribute("NoteLength", song.NoteLength)}{GenerateAttribute("Groove", string.Join("-", song.Groove))}{GenerateAttribute("GroovePaddingMode", GroovePaddingType.Names[song.GroovePaddingMode])}";
                 }
 
+                if (song.TuningSettings.Override)
+                    songStr += GenerateAttribute("Tuning", song.TuningSettings.ReferenceHz) + GenerateAttribute("Cents", string.Join(",", song.TuningSettings.Cents));
                 lines.Add(songStr);
+                for (int i = 0; i < song.Length; i++)
+                {
+                    var tuning = song.GetPatternCustomSettings(i).Tuning;
+                    if (tuning.Override)
+                        lines.Add($"\t\tPatternTuning{GenerateAttribute("Time", i)}{GenerateAttribute("Tuning", tuning.ReferenceHz)}{GenerateAttribute("Cents", string.Join(",", tuning.Cents))}");
+                }
 
                 for (int i = 0; i < song.Length; i++)
                 {
@@ -270,7 +279,7 @@ namespace FamiStudio
 
                 foreach (var channel in song.Channels)
                 {
-                    lines.Add($"\t\tChannel{GenerateAttribute("Type", ChannelType.InternalNames[channel.Type])}");
+                    lines.Add($"\t\tChannel{GenerateAttribute("Type", ChannelType.InternalNames[channel.Type])}{GenerateAttribute("Instance", channel.ChipInstance)}{GenerateAttribute("Stereo", channel.StereoEnabled)}{GenerateAttribute("Pan", channel.Pan)}");
 
                     foreach (var pattern in channel.Patterns)
                     {
@@ -438,6 +447,7 @@ namespace FamiStudio
                             if (parameters.TryGetValue("Copyright", out var copyright)) project.Copyright = copyright;
                             if (parameters.TryGetValue("TempoMode", out var tempoMode)) project.TempoMode = TempoType.GetValueForName(tempoMode);
                             if (parameters.TryGetValue("PAL", out var pal)) project.PalMode = bool.Parse(pal);
+                            if (parameters.TryGetValue("ChipInstances", out var chipInstances)) project.SetExpansionInstances(chipInstances.Split(',').Select(int.Parse).ToArray());
                             if (parameters.TryGetValue("Tuning", out var tuning)) project.Tuning = int.Parse(tuning);
                             if (parameters.TryGetValue("Expansions", out var expansions))
                             {
@@ -648,6 +658,8 @@ namespace FamiStudio
                         {
                             song = project.CreateSong(parameters["Name"]);
                             song.SetLength(int.Parse(parameters["Length"]));
+                            if (parameters.TryGetValue("Tuning", out var tuningHz))
+                                song.TuningSettings = new TuningSettings { Override = true, ReferenceHz = int.Parse(tuningHz), Cents = parameters["Cents"].Split(',').Select(int.Parse).ToArray() };
                             song.SetBeatLength(int.Parse(parameters["BeatLength"]));
                             song.SetLoopPoint(int.Parse(parameters["LoopPoint"]));
 
@@ -683,6 +695,15 @@ namespace FamiStudio
                             }
                             break;
                         }
+                        case "PatternTuning":
+                        {
+                            var index = int.Parse(parameters["Time"]);
+                            if (index < 0 || index >= song.Length) throw new FormatException("Pattern tuning index outside song.");
+                            var tuning = new TuningSettings { Override = true, ReferenceHz = int.Parse(parameters["Tuning"]), Cents = parameters["Cents"].Split(',').Select(int.Parse).ToArray() };
+                            tuning.Validate();
+                            song.GetPatternCustomSettings(index).Tuning = tuning;
+                            break;
+                        }
                         case "PatternCustomSettings":
                         {
                             if (project.UsesFamiTrackerTempo)
@@ -715,7 +736,11 @@ namespace FamiStudio
                         case "Channel":
                         {
                             var channelType = ChannelType.GetValueForInternalName(parameters["Type"]);
-                            channel = song.GetChannelByType(channelType);
+                            var instance = parameters.TryGetValue("Instance", out var instanceText) ? int.Parse(instanceText) : 0;
+                            channel = song.GetChannelByType(channelType, instance);
+                            if (channel == null) throw new FormatException("Unknown chip instance.");
+                            if (parameters.TryGetValue("Stereo", out var stereoText)) channel.StereoEnabled = bool.Parse(stereoText);
+                            if (parameters.TryGetValue("Pan", out var panText)) channel.Pan = int.Parse(panText);
                             break;
                         }
                         case "Pattern":

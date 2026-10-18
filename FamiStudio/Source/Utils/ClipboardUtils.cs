@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -69,10 +69,12 @@ namespace FamiStudio
                 {
                     var patId = pat.Id;
                     var patChannel = pat.ChannelType;
+                    var patInstance = pat.ChipInstance;
                     var patCrc = pat.ComputeCRC();
                     var patName = pat.Name;
                     serializer.Serialize(ref patId);
                     serializer.Serialize(ref patChannel);
+                    serializer.Serialize(ref patInstance);
                     serializer.Serialize(ref patCrc);
                     serializer.Serialize(ref patName);
                 }
@@ -98,18 +100,20 @@ namespace FamiStudio
                 serializer.Serialize(ref songId);
                 serializer.RemapId(songId, song.Id);
 
-                var patternList = new List<(int, int, uint, string)>();
+                var patternList = new List<(int, int, uint, string, int)>();
                 for (int i = 0; i < numPatterns; i++)
                 {
                     var patId = 0;
                     var patChannel = 0;
+                    var patInstance = 0;
                     var patCrc = 0u;
                     var patName = "";
                     serializer.Serialize(ref patId);
                     serializer.Serialize(ref patChannel);
+                    serializer.Serialize(ref patInstance);
                     serializer.Serialize(ref patCrc);
                     serializer.Serialize(ref patName);
-                    patternList.Add((patId, patChannel, patCrc, patName));
+                    patternList.Add((patId, patChannel, patCrc, patName, patInstance));
                 }
 
                 var dummyPattern = new Pattern();
@@ -121,10 +125,12 @@ namespace FamiStudio
                     var patChannel = patternList[i].Item2;
                     var patCrc     = patternList[i].Item3;
                     var patName    = patternList[i].Item4;
+                    var patInstance = patternList[i].Item5;
+                    var targetChannel = song.GetChannelByType(patChannel, patInstance) ?? song.GetChannelByType(patChannel);
 
-                    if (serializer.Project.IsChannelActive(patChannel))
+                    if (targetChannel != null)
                     {
-                        var existingPattern = song.GetChannelByType(patChannel).GetPattern(patName);
+                        var existingPattern = targetChannel.GetPattern(patName);
                         var crcMatch = existingPattern == null || patCrc == existingPattern.ComputeCRC();
 
                         if (existingPattern != null && (checkOnly || importFlags.HasFlag(ClipboardImportFlags.MatchByName) || crcMatch))
@@ -141,7 +147,7 @@ namespace FamiStudio
                         {
                             if (!checkOnly)
                             {
-                                var channel = song.GetChannelByType(patChannel);
+                                var channel = targetChannel;
 
                                 if (existingPattern != null)
                                 {
@@ -152,6 +158,7 @@ namespace FamiStudio
                                 serializer.RemapId(patId, pattern.Id);
                                 pattern.Serialize(serializer);
                                 pattern.Name = patName;
+                                pattern.ChipInstance = channel.ChipInstance;
                             }
                             else
                             {
@@ -326,7 +333,7 @@ namespace FamiStudio
             int numInstruments = 0;
             serializer.Serialize(ref numInstruments);
 
-            var instrumentList = new List<(int, int, uint, string)>();
+                var instrumentList = new List<(int, int, uint, string)>();
             for (int i = 0; i < numInstruments; i++)
             {
                 var instId = 0;
@@ -694,6 +701,7 @@ namespace FamiStudio
                     serializer.Serialize(ref customSettings[i].groove);
                     serializer.Serialize(ref customSettings[i].groovePaddingMode);
                     serializer.Serialize(ref customSettings[i].beatLength);
+                    customSettings[i].Tuning.Serialize(serializer);
                 }
             }
 
@@ -757,6 +765,7 @@ namespace FamiStudio
                     serializer.Serialize(ref customSettings[i].groove);
                     serializer.Serialize(ref customSettings[i].groovePaddingMode);
                     serializer.Serialize(ref customSettings[i].beatLength);
+                    customSettings[i].Tuning.Serialize(serializer);
                 }
             }
             else

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 
 namespace FamiStudio
@@ -40,7 +40,7 @@ namespace FamiStudio
                             (1L << ChannelType.Vrc7Fm3) |
                             (1L << ChannelType.Vrc7Fm4) |
                             (1L << ChannelType.Vrc7Fm5) |
-                            (1L << ChannelType.Vrc7Fm6));
+                            (1L << ChannelType.Vrc7Fm6), apuIdx);
 
                         for (byte i = 0; i < 8; i++)
                             WriteVrc7Register(i, instrument.Vrc7PatchRegs[i]);

@@ -382,6 +382,10 @@ FAMISTUDIO_USE_ARPEGGIO          = 1
     FAMISTUDIO_USE_VOLUME_SLIDES = 0
 .endif
 
+.ifndef FAMISTUDIO_USE_CUSTOM_TUNING
+    FAMISTUDIO_USE_CUSTOM_TUNING = 0
+.endif
+
 .ifndef FAMISTUDIO_USE_PITCH_TRACK
     FAMISTUDIO_USE_PITCH_TRACK = 0
 .endif
@@ -828,6 +832,15 @@ famistudio_env_addr_lo:           .ds FAMISTUDIO_NUM_ENVELOPES
 famistudio_env_addr_hi:           .ds FAMISTUDIO_NUM_ENVELOPES
 famistudio_env_ptr:               .ds FAMISTUDIO_NUM_ENVELOPES
 
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+famistudio_tuning_lsb_lo: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+famistudio_tuning_lsb_hi: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+famistudio_tuning_msb_lo: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+famistudio_tuning_msb_hi: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+famistudio_tuning_fraction_lo: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+famistudio_tuning_fraction_hi: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+.endif
+
 famistudio_pitch_env_value_lo:    .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
 famistudio_pitch_env_value_hi:    .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
 famistudio_pitch_env_repeat:      .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
@@ -1030,6 +1043,13 @@ famistudio_r1:   .ds 1
 famistudio_r2:   .ds 1
 famistudio_r3:   .ds 1
 
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+famistudio_tuning_lsb: .ds 2
+famistudio_tuning_msb: .ds 2
+famistudio_tuning_fraction_ptr: .ds 2
+famistudio_tuning_fraction: .ds 1
+famistudio_tuning_delta: .ds 2
+.endif
 famistudio_ptr0: .ds 2
 famistudio_ptr1: .ds 2
 .if FAMISTUDIO_EXP_EPSM | FAMISTUDIO_EXP_FDS | FAMISTUDIO_EXP_S5B
@@ -1494,6 +1514,10 @@ famistudio_music_stop::
     lda #>famistudio_dummy_pitch_envelope
     sta famistudio_pitch_env_addr_hi,x
     lda #0
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+    sta famistudio_tuning_lsb_hi,x ; Zero means use the built-in table.
+    sta famistudio_tuning_msb_hi,x
+.endif
     sta famistudio_pitch_env_repeat,x
     sta famistudio_pitch_env_value_lo,x
     sta famistudio_pitch_env_value_hi,x
@@ -1869,7 +1893,7 @@ famistudio_music_pause::
 ; [out] famistudio_ptr1 : Final note pitch.
 ;======================================================================================================================
 
-.macro famistudio_get_note_pitch_macro pitch_env_offset, pitch_shift, note_table_lsb, note_table_msb, ?.pos, ?.no_slide
+.macro famistudio_get_note_pitch_macro pitch_env_offset, pitch_shift, note_table_lsb, note_table_msb, ?.pos, ?.no_slide, ?.builtin_tuning, ?.tuning_done
 
     .local .pitch
     .local .tmp_ror
@@ -1957,6 +1981,41 @@ famistudio_music_pause::
     .endif
     .endif
 
+    ; X already includes the PAL/NTSC offset, where appropriate.
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+    lda #0
+    sta *famistudio_tuning_fraction
+    lda famistudio_tuning_lsb_hi+pitch_env_offset,y
+    beq .builtin_tuning
+    sta *famistudio_tuning_lsb+1
+    lda famistudio_tuning_lsb_lo+pitch_env_offset,y
+    sta *famistudio_tuning_lsb+0
+    lda famistudio_tuning_msb_hi+pitch_env_offset,y
+    sta *famistudio_tuning_msb+1
+    lda famistudio_tuning_msb_lo+pitch_env_offset,y
+    sta *famistudio_tuning_msb+0
+    lda famistudio_tuning_fraction_lo+pitch_env_offset,y
+    sta *famistudio_tuning_fraction_ptr
+    lda famistudio_tuning_fraction_hi+pitch_env_offset,y
+    sta *famistudio_tuning_fraction_ptr+1
+    tya
+    pha
+    txa
+    tay
+    lda [*famistudio_tuning_fraction_ptr],y
+    sta *famistudio_tuning_fraction
+    clc
+    lda [*famistudio_tuning_lsb],y
+    adc *.pitch+0
+    sta *.pitch+0
+    lda [*famistudio_tuning_msb],y
+    adc *.pitch+1
+    sta *.pitch+1
+    pla
+    tay
+    jmp .tuning_done
+.builtin_tuning:
+.endif
     ; Finally, add note pitch.
     clc
     lda note_table_lsb,x
@@ -1965,6 +2024,9 @@ famistudio_music_pause::
     lda note_table_msb,x
     adc *.pitch+1
     sta *.pitch+1
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+.tuning_done:
+.endif
 
 .endm
 
@@ -3091,6 +3153,11 @@ famistudio_update_epsm_fm_channel_sound:
     rol *.pitch+1
     asl *.pitch+0
     rol *.pitch+1
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+    lda *.pitch+0
+    ora *famistudio_tuning_fraction
+    sta *.pitch+0
+.endif
 
     txa ; x holds the 3 bit octave information. octave = log2(pitch_hi)
     asl
@@ -3559,6 +3626,11 @@ famistudio_update_n163_channel_sound:
     asl *.pitch+0
     rol *.pitch+1
     rol *.pitch_hi 
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+    lda *.pitch+0
+    ora *famistudio_tuning_fraction
+    sta *.pitch+0
+.endif
 
     ; Write pitch
     lda famistudio_n163_freq_table_lo,y
@@ -6141,6 +6213,32 @@ famistudio_advance_channel:
     jmp .famistudio_update_channel_instrument_change
 .endif
 
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+.opcode_tuning:
+    lda famistudio_channel_to_pitch_env,x
+    tax
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_tuning_lsb_lo,x
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_tuning_lsb_hi,x
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_tuning_msb_lo,x
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_tuning_msb_hi,x
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_tuning_fraction_lo,x
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_tuning_fraction_hi,x
+    ldx *.chan_idx
+    jmp .famistudio_update_channel_read_byte
+.endif
+
 .if FAMISTUDIO_USE_PITCH_TRACK
 .opcode_fine_pitch:
     lda famistudio_channel_to_pitch_env,x
@@ -6309,6 +6407,22 @@ famistudio_advance_channel:
 .endif
 
 .opcode_slide:
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+    txa
+    pha
+    lda famistudio_channel_to_pitch_env,x
+    tax
+    lda famistudio_tuning_lsb_lo,x
+    sta *famistudio_tuning_lsb
+    lda famistudio_tuning_lsb_hi,x
+    sta *famistudio_tuning_lsb+1
+    lda famistudio_tuning_msb_lo,x
+    sta *famistudio_tuning_msb
+    lda famistudio_tuning_msb_hi,x
+    sta *famistudio_tuning_msb+1
+    pla
+    tax
+.endif
 .if FAMISTUDIO_USE_NOISE_SLIDE_NOTES
     cpx #3
     beq .noise_slide
@@ -6333,6 +6447,30 @@ famistudio_advance_channel:
 .endif
     stx *.tmp_slide_idx ; X contained the slide index.    
     tax
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+    lda *famistudio_tuning_lsb+1
+    beq .slide_builtin_tuning
+    tya
+    pha
+    lda [*famistudio_tuning_lsb],y
+    sta *famistudio_tuning_delta
+    lda [*famistudio_tuning_msb],y
+    sta *famistudio_tuning_delta+1
+    txa
+    tay
+    sec
+    lda *famistudio_tuning_delta
+    sbc [*famistudio_tuning_lsb],y
+    sta *.slide_delta_lo
+    lda *famistudio_tuning_delta+1
+    sbc [*famistudio_tuning_msb],y
+    sta *famistudio_tuning_delta+1
+    pla
+    tay
+    lda *famistudio_tuning_delta+1
+    jmp .slide_tuning_done
+.slide_builtin_tuning:
+.endif
 .ifdef FAMISTUDIO_EXP_NOTE_START
     lda *.chan_idx
 .if FAMISTUDIO_EXP_EPSM
@@ -6368,6 +6506,9 @@ famistudio_advance_channel:
     lda famistudio_exp_note_table_msb,y
     sbc famistudio_exp_note_table_msb,x
 .note_table_done:
+.endif
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+.slide_tuning_done:
 .endif
     ldx *.tmp_slide_idx ; slide index.
     sta famistudio_slide_pitch_hi,x
@@ -6554,6 +6695,22 @@ famistudio_advance_channel:
     .db <(.opcode_invalid)                      ; 0x5e
 .endif
 .endif
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+.if FAMISTUDIO_EXP_NONE
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+        .db <(.opcode_invalid)
+.endif
+    .db <(.opcode_tuning) ; $5f
+.endif
+
 
 .famistudio_opcode_jmp_hi:
     .db >(.opcode_extended_note)                ; 0x40
@@ -6687,6 +6844,22 @@ famistudio_advance_channel:
     .db >(.opcode_invalid)                      ; 0x5e
 .endif
 .endif
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+.if FAMISTUDIO_EXP_NONE
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+        .db >(.opcode_invalid)
+.endif
+    .db >(.opcode_tuning) ; $5f
+.endif
+
 
 ;======================================================================================================================
 ; FAMISTUDIO_SAMPLE_STOP (internal)

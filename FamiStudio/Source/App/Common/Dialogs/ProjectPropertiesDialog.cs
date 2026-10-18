@@ -76,6 +76,15 @@ namespace FamiStudio
 
         public MixerProperties MixerProperties => mixerProperties;
 
+        public int[] InstanceCounts
+        {
+            get
+            {
+                var counts = new int[ExpansionType.Count]; counts[0] = 1;
+                for (int i = 1; i < counts.Length; i++) counts[i] = ExpansionPage.GetPropertyValue<int>(0, i - 1, 2);
+                return counts;
+            }
+        }
         public int ExpansionMask   => GetSelectedExpansionMask();
         public int NumN163Channels => ExpansionPage.GetPropertyValue<int>(1);
 
@@ -94,7 +103,7 @@ namespace FamiStudio
             for (int i = 0; i < (int)ProjectSection.Max; i++)
             {
                 var section = (ProjectSection)i;
-                var scroll = i == (int)ProjectSection.Mixer ? 300 : 0;
+                var scroll = i == (int)ProjectSection.Mixer || i == (int)ProjectSection.Expansion ? 380 : 0;
                 var page = dialog.AddPropertyPage(SectionNames[i], "ProjectProperties" + section.ToString(), scroll);
                 CreatePropertyPage(page, section);
             }
@@ -121,16 +130,20 @@ namespace FamiStudio
                 case ProjectSection.Expansion:
                 {
                     var numExpansions = ExpansionType.End - ExpansionType.Start + 1;
-                    var expNames = new string[numExpansions];
-                    var expBools = new bool[numExpansions];
+                    var expansionData = new object[numExpansions, 3];
                     for (int i = ExpansionType.Start; i <= ExpansionType.End; i++)
                     {
-                        expNames[i - ExpansionType.Start] = ExpansionType.GetLocalizedName(i);
-                        expBools[i - ExpansionType.Start] = project.UsesExpansionAudio(i);
+                        expansionData[i - ExpansionType.Start, 0] = project.UsesExpansionAudio(i);
+                        expansionData[i - ExpansionType.Start, 1] = ExpansionType.GetLocalizedName(i);
+                        expansionData[i - ExpansionType.Start, 2] = project.GetExpansionInstances(i);
                     }
 
                     page.ShowWarnings = true;
-                    page.AddCheckBoxList(ExpansionLabel.Colon, expNames, expBools, ExpansionAudioTooltip); // 0
+                    page.AddGrid(ExpansionLabel.Colon, new[] {
+                        new ColumnDesc("", 0, ColumnType.CheckBox),
+                        new ColumnDesc(TuningStrings.ChipLabel, .7f),
+                        new ColumnDesc(TuningStrings.CountLabel, .3f, 1, 8) { VisibleWhenCheckedColumn = 0 }
+                    }, expansionData, numExpansions, ExpansionAudioTooltip + " " + TuningStrings.InstancesTooltip, GridOptions.NoHeader); // 0
                     page.AddNumericUpDown(N163ChannelsLabel.Colon, project.ExpansionNumN163Channels, 1, 8, 1, ExpansionNumChannelsTooltip); // 1
                     page.SetPropertyEnabled(1, project.UsesExpansionAudio(ExpansionType.N163));
                     page.PropertyChanged += Expansion_PropertyChanged;
@@ -162,12 +175,11 @@ namespace FamiStudio
 
         private int GetSelectedExpansionMask()
         {
-            var selectedExpansions = ExpansionPage.GetPropertyValue<bool[]>(0);
             var mask = 0;
 
-            for (int i = 0; i < selectedExpansions.Length; i++)
+            for (int i = 0; i <= ExpansionType.End - ExpansionType.Start; i++)
             {
-                if (selectedExpansions[i])
+                if (ExpansionPage.GetPropertyValue<bool>(0, i, 0))
                 {
                     mask |= ExpansionType.GetMaskFromValue(ExpansionType.Start + i);
                 }

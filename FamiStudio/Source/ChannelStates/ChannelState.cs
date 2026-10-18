@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 
@@ -31,6 +31,7 @@ namespace FamiStudio
         protected bool resetPhase = false;
         protected bool forceInstrumentReload = false;
         protected ushort[] noteTable = null;
+        protected byte[] noteTableFraction = CustomTuningTables.ZeroFraction;
         protected bool palPlayback = false;
         protected bool instrumentPlayer = false;
         protected int maximumPeriod = NesApu.MaximumPeriod11Bit;
@@ -44,6 +45,8 @@ namespace FamiStudio
         protected byte noteValueBeforeSlide = 0;
         protected IPlayerInterface player;
 
+        public int SongChannelIndex;
+        public int NativeApuIndex => apuIdx;
         public int InnerChannelType => channelType; 
 
         public ChannelState(IPlayerInterface play, int apu, int type, int tuning, bool pal = false, int numN163Channels = 1)
@@ -60,6 +63,12 @@ namespace FamiStudio
             Channel.GetShiftsForType(type, numN163Channels, out pitchShift, out slideShift);
         }
 
+        public void SetTuning(int reference, int[] cents, int n163Channels)
+        {
+            noteTable = NesApu.GetNoteTableForChannelType(channelType, palPlayback, n163Channels, reference, cents);
+            noteTableFraction = cents == null ? CustomTuningTables.ZeroFraction : CustomTuningTables.Get(channelType, palPlayback, n163Channels, reference, cents).Fraction;
+        }
+
         public void Advance(Song song, NoteLocation location, ref int famitrackerSpeed)
         {
             // When advancing row, if there was a delayed note, play it immediately. That's how FamiTracker does it.
@@ -70,7 +79,9 @@ namespace FamiStudio
                 delayedNoteCounter = 0;
             }
 
-            var channel = song.GetChannelByType(channelType);
+            var tuning = song.GetTuning(location.PatternIndex);
+            SetTuning(song.GetTuningHz(location.PatternIndex), tuning?.Cents, song.Project.ExpansionNumN163Channels);
+            var channel = song.Channels[SongChannelIndex];
             var pattern = channel.PatternInstances[location.PatternIndex];
             var newNote = (Note)null;
 
@@ -602,6 +613,12 @@ namespace FamiStudio
         }
 
         // TODO : We should not reference settings from here.
+        protected int GetPeriodFraction()
+        {
+            var index = note.Value + envelopeValues[EnvelopeType.Arpeggio];
+            return noteTableFraction[Utils.Clamp(index, 0, noteTableFraction.Length - 1)];
+        }
+
         protected int GetPeriod()
         {
             var noteVal = note.Value + envelopeValues[EnvelopeType.Arpeggio];

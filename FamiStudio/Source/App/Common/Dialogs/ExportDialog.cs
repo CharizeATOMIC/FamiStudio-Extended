@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
@@ -409,12 +409,12 @@ namespace FamiStudio
             {
                 var j = 0;
                 var type = channelTypes[i];
-                var saved = channelData.Find(c => c.SongId == song.Id && c.ChannelType == type);
+                var saved = channelData.Find(c => c.SongId == song.Id && c.ChannelType == type && c.ChipInstance == song.Channels[i].ChipInstance);
                 var exists = saved != null;
 
                 data[i, j++] = exists ? saved.Enabled : (!anyChannelActive || channelActives[i] || songHasData);
-                data[i, j++] = ChannelType.GetLocalizedNameWithExpansion(type);
-                data[i, j++] = exists ? saved.Panning : 50;
+                data[i, j++] = song.Channels[i].NameWithExpansion;
+                data[i, j++] = exists ? saved.Panning : song.Channels[i].EffectivePan;
 
                 if (tranpose) data[i, j++] = 0;
                 if (trigger)  data[i, j++] = exists ? saved.Trigger == 0 ? EmulationOption.Value : PeakSpeedOption.Value : channelTypes[i] != ChannelType.Dpcm && channelTypes[i] != ChannelType.Noise && !ChannelType.IsEPSMRythmChannel(channelTypes[i]) ? EmulationOption.Value : PeakSpeedOption.Value;
@@ -793,7 +793,7 @@ namespace FamiStudio
                 var trigger   = props.GetPropertyValue<string>(18, rowIdx, 4) == PeakSpeedOption ? 1 : 0;
                 var song      = project.Songs[props.GetSelectedIndex(1)];
 
-                var found  = videoChannelSettings.Find(s => s.SongId == song.Id && s.ChannelType == type);         
+                var found  = videoChannelSettings.Find(s => s.SongId == song.Id && s.ChannelType == type && s.ChipInstance == song.Channels[rowIdx].ChipInstance);
                 if (found != null)
                 {
                     found.Enabled   = isEnabled;
@@ -807,6 +807,7 @@ namespace FamiStudio
                     {
                         SongId      = song.Id,
                         ChannelType = type,
+                        ChipInstance = song.Channels[rowIdx].ChipInstance,
                         Enabled     = isEnabled,
                         Panning     = panning,
                         Transpose   = transpose,
@@ -857,7 +858,7 @@ namespace FamiStudio
                 var panning = props.GetPropertyValue<int>(11, rowIdx, 2);
                 var song    = project.Songs[props.GetSelectedIndex(0)];
 
-                var found  = audioChannelSettings.Find(s => s.SongId == song.Id && s.ChannelType == type);         
+                var found  = audioChannelSettings.Find(s => s.SongId == song.Id && s.ChannelType == type && s.ChipInstance == song.Channels[rowIdx].ChipInstance);
                 if (found != null)
                 {
                     found.Enabled = enabled;
@@ -869,6 +870,7 @@ namespace FamiStudio
                     {
                         SongId      = song.Id,
                         ChannelType = type,
+                        ChipInstance = song.Channels[rowIdx].ChipInstance,
                         Enabled     = enabled,
                         Panning     = panning
                     });
@@ -1035,13 +1037,14 @@ namespace FamiStudio
                         pan[i] = panning / 100.0f;
 
                         var type  = channelTypes[i]; 
-                        var saved = audioChannelSettings.Find(c => c.SongId == song.Id && c.ChannelType == type);
+                        var saved = audioChannelSettings.Find(c => c.SongId == song.Id && c.ChannelType == type && c.ChipInstance == song.Channels[i].ChipInstance);
                         if (saved == null)
                         {
                             audioChannelSettings.Add(new ChannelExportSettings 
                             { 
                                 SongId = song.Id, 
                                 ChannelType = type, 
+                                ChipInstance = song.Channels[i].ChipInstance,
                                 Enabled = enabled, 
                                 Panning = panning 
                             });
@@ -1164,20 +1167,21 @@ namespace FamiStudio
                 var trigger   = props.GetPropertyValue<string>(18, i, 4) == EmulationOption;
 
                 if (enabled) settings.ChannelMask |= (1L << i);
-                settings.ChannelPan[i] = preview ? 0.5f : panning / 100.0f;
+                settings.ChannelPan[i] = preview ? project.GetSong(settings.SongId).Channels[i].EffectivePan / 100.0f : panning / 100.0f;
                 settings.ChannelTranspose[i] = transpose;
                 settings.EmuTriggers[i] = trigger;
 
                 if (!preview)
                 {
                     var type  = channelTypes[i]; 
-                    var saved = audioChannelSettings.Find(c => c.SongId == settings.SongId && c.ChannelType == type);
+                    var saved = videoChannelSettings.Find(c => c.SongId == settings.SongId && c.ChannelType == type && c.ChipInstance == project.GetSong(settings.SongId).Channels[i].ChipInstance);
                     if (saved == null)
                     {
                         videoChannelSettings.Add(new ChannelExportSettings 
                         { 
                             SongId = settings.SongId,
                             ChannelType = type, 
+                            ChipInstance = project.GetSong(settings.SongId).Channels[i].ChipInstance,
                             Enabled = enabled,
                             Panning = panning,
                             Transpose = transpose,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,19 +13,26 @@ namespace FamiStudio
         private PatternCumulativeCache[] patternCache = new PatternCumulativeCache[Song.MaxLength];
         private List<Pattern> patterns = new List<Pattern>();
         private int type;
+        private int chipInstance;
+        private bool stereoEnabled;
+        private int pan = 50;
+        public int ChipInstance { get => chipInstance; set => chipInstance = value; }
+        public bool StereoEnabled { get => stereoEnabled; set => stereoEnabled = value; }
+        public int Pan { get => pan; set => pan = Utils.Clamp(value, 0, 100); }
+        public int EffectivePan => stereoEnabled ? pan : 50;
 
         public int Type => type;
         public string Name => ChannelType.InternalNames[type];
-        public string LocalizedName => ChannelType.LocalizedNames[type];
-        public string ShortName => ChannelType.InternalNames[type];
-        public string NameWithExpansion => ChannelType.GetLocalizedNameWithExpansion(type);
+        public string LocalizedName => ChannelType.LocalizedNames[type] + (chipInstance == 0 ? "" : $" #{chipInstance + 1}");
+        public string ShortName => ChannelType.InternalNames[type] + (chipInstance == 0 ? "" : "_" + (chipInstance + 1));
+        public string NameWithExpansion => ChannelType.GetLocalizedNameWithExpansion(type) + (chipInstance == 0 ? "" : $" #{chipInstance + 1}");
         public Song Song => song;
         public Pattern[] PatternInstances => patternInstances;
         public List<Pattern> Patterns => patterns;
         public bool IsExpansionChannel => type >= ChannelType.ExpansionAudioStart;
         public int Expansion => ChannelType.GetExpansionTypeForChannelType(type);
         public int ExpansionChannelIndex => ChannelType.GetExpansionChannelIndexForChannelType(type);
-        public int Index => ChannelTypeToIndex(type, song.Project.ExpansionAudioMask, song.Project.ExpansionNumN163Channels);
+        public int Index => Array.IndexOf(song.Channels, this);
 
         public bool IsRegularChannel    => ChannelType.IsRegularChannel(type);
         public bool IsFdsChannel        => ChannelType.IsFdsChannel(type);
@@ -269,7 +276,7 @@ namespace FamiStudio
                 return null;
             }
 
-            var pat = new Pattern(song.Project.GenerateUniqueId(), song, type, name);
+            var pat = new Pattern(song.Project.GenerateUniqueId(), song, type, name) { ChipInstance = chipInstance };
             patterns.Add(pat);
             return pat;
         }
@@ -1522,6 +1529,13 @@ namespace FamiStudio
             if (buffer.Version >= 4)
                 buffer.Serialize(ref type);
 
+            if (buffer.Version >= Project.TuningFormatVersion)
+            {
+                buffer.Serialize(ref chipInstance);
+                buffer.Serialize(ref stereoEnabled);
+                buffer.Serialize(ref pan);
+                if (pan < 0 || pan > 100 || chipInstance < 0 || chipInstance > 7) throw new ArgumentException("Invalid channel mix settings.");
+            }
             buffer.InitializeList(ref patterns, patternCount);
             foreach (var pattern in patterns)
                 pattern.Serialize(buffer);

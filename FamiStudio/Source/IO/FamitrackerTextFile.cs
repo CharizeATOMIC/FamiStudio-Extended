@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -723,6 +723,9 @@ namespace FamiStudio
 
         public bool Save(Project originalProject, string filename, int[] songIds)
         {
+            if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+            if (originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesCustomTuning)) { Log.LogMessage(LogSeverity.Error, TuningStrings.FormatExportError); return false; }
+
             if (originalProject.UsesMultipleExpansionAudios)
             {
                 Log.LogMessage(LogSeverity.Error, $"Project uses multiple audio expansions. The original FamiTracker did not support this.");

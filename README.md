@@ -1,3 +1,7 @@
+# FamiStudio Tuning — independent desktop fork
+
+Per-song and pattern tuning, twelve-note cents offsets, live channel panning, and optional repeated expansion chips. Based on FamiStudio 4.5.3. See [fork features, builds and compatibility](FORK_README.md). This is not an official FamiStudio release. The original project introduction follows.
+
 # Welcome to the FamiStudio GitHub page
 This is the GitHub page of FamiStudio, which is intended for people wanting to view/download the source code or report bug fixes.
 

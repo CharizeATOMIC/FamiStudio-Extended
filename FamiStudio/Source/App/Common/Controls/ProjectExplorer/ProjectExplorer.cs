@@ -3556,11 +3556,15 @@ namespace FamiStudio
                     var changedNumChannels = numN163Channels != project.ExpansionNumN163Channels;
                     var changedAuthoringMachine = palAuthoring != project.PalMode;
                     var changedTuning = tuning != project.Tuning;
+                    var instanceCounts = dlg.InstanceCounts;
+                    var changedInstances = Enumerable.Range(0, ExpansionType.Count).Any(i => instanceCounts[i] != project.GetExpansionInstances(i));
+                    var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => Project.IsChannelActive(t, newExpansionMask, numN163Channels)).Sum(t => instanceCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
+                    if (channelCount > 64) { App.DisplayNotification(TuningStrings.ChannelLimitError, true); return; }
                     var changedExpMixer = dlg.MixerProperties.Changed;
 
                     var transFlags = TransactionFlags.None;
 
-                    if (changedExpansion)
+                    if (changedExpansion || changedInstances)
                         transFlags = TransactionFlags.RecreatePlayers | TransactionFlags.RecreateStreams; // Toggling EPSM will change mono/stereo and requires new audiostreams.
                     else if (changedAuthoringMachine || changedNumChannels || changedExpMixer || changedTuning)
                         transFlags = TransactionFlags.RecreatePlayers;
@@ -3578,10 +3582,10 @@ namespace FamiStudio
                     project.SoundEngineUsesExtendedDpcm = dlg.DPCMExtendedRange;
                     project.SoundEngineUsesExtendedInstruments = dlg.InstrumentExtendedRange;
 
-                    if (changedExpansion || changedNumChannels)
+                    if (changedExpansion || changedNumChannels || changedInstances)
                     {
                         App.SelectedInstrument = project.Instruments.Count > 0 ? project.Instruments[0] : null;
-                        project.SetExpansionAudioMask(newExpansionMask, numN163Channels);
+                        project.SetExpansionAudioMask(newExpansionMask, numN163Channels, instances: instanceCounts);
                         ProjectModified?.Invoke();
                         Reset();
                     }
@@ -3648,29 +3652,34 @@ namespace FamiStudio
 
         private void EditSongProperties(Song song, bool ctx = false)
         {
-            var dlg = new PropertyDialog(ParentWindow, SongPropertiesTitle, GetPropertiesDialogPosition(ctx), 320, true); 
+            var dlg = new PropertyDialog(ParentWindow, SongPropertiesTitle, 460, scroll: 660);
+            var props = dlg.Properties;
 
-            var tempoProperties = new TempoProperties(dlg.Properties, song);
+            var tempoProperties = new TempoProperties(props, song);
 
-            dlg.Properties.AddColoredTextBox(song.Name, song.Color); // 0
-            dlg.Properties.AddColorPicker(song.Color); // 1
-            dlg.Properties.AddNumericUpDown(SongLengthLabel.Colon, song.Length, 1, Song.MaxLength, 1, SongLengthTooltip); // 2
+            props.AddColoredTextBox(song.Name, song.Color); // 0
+            props.AddColorPicker(song.Color); // 1
+            props.AddNumericUpDown(SongLengthLabel.Colon, song.Length, 1, Song.MaxLength, 1, SongLengthTooltip); // 2
             tempoProperties.AddProperties();
-            dlg.Properties.Build();
+            var songMixer = new SongMixerProperties(props, song);
+            songMixer.PreviewChanged += rebuild => App.RefreshSongMixer(song, rebuild);
+            props.Build(true);
 
             dlg.ShowDialogAsync((r) =>
             {
+                songMixer.RestorePreview();
                 if (r == DialogResult.OK)
                 {
                     App.UndoRedoManager.BeginTransaction(TransactionScope.ProjectNoDPCMSamples, TransactionFlags.StopAudio);
                     App.SeekSong(0);
 
-                    var newName = dlg.Properties.GetPropertyValue<string>(0).Trim();
+                    var newName = props.GetPropertyValue<string>(0).Trim();
 
                     if (App.Project.RenameSong(song, newName))
                     {
-                        song.Color = dlg.Properties.GetPropertyValue<Color>(1);
-                        song.SetLength(dlg.Properties.GetPropertyValue<int>(2));
+                        songMixer.Apply();
+                        song.Color = props.GetPropertyValue<Color>(1);
+                        song.SetLength(props.GetPropertyValue<int>(2));
 
                         tempoProperties.ApplyAsync(ParentWindow, false, () =>
                         {

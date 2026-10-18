@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -68,6 +68,8 @@ namespace FamiStudio
 
         public bool Save(Project project, int[] songIds, int format, int machine, int kernel, string filename, string includeFilename)
         {
+            if (project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+
             if (!project.EnsureSongAssemblyNamesAreUnique())
             {
                 return false;

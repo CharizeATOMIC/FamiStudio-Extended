@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,6 +13,8 @@ namespace FamiStudio
         private string name;
         private Song song;
         private int channelType;
+        private int chipInstance;
+        public int ChipInstance { get => chipInstance; set => chipInstance = value; }
         private Color color;
         private SortedList<int, Note> notes = new SortedList<int, Note>();
 
@@ -20,7 +22,7 @@ namespace FamiStudio
         public int ChannelType => channelType;
         public Color Color { get => color; set => color = value; }
         public Song Song => song;
-        public Channel Channel => song.Channels[Channel.ChannelTypeToIndex(channelType, song.Project.ExpansionAudioMask, song.Project.ExpansionNumN163Channels)];
+        public Channel Channel => song.GetChannelByType(channelType, chipInstance);
         public SortedList<int, Note> Notes => notes;
 
         public Pattern()
@@ -153,7 +155,7 @@ namespace FamiStudio
 
         public int GetMaxInstanceLength()
         {
-            var channel = song.GetChannelByType(channelType);
+            var channel = song.GetChannelByType(channelType, chipInstance);
 
             var maxInstanceLength = -1;
             for (int i = 0; i < song.Length; i++)
@@ -172,7 +174,7 @@ namespace FamiStudio
 
         public Pattern ShallowClone(Channel newChannel = null)
         {
-            var channel = newChannel == null ? song.GetChannelByType(channelType) : newChannel;
+            var channel = newChannel == null ? song.GetChannelByType(channelType, chipInstance) : newChannel;
             var pattern = channel.CreatePattern();
             pattern.color = color;
 
@@ -472,6 +474,7 @@ namespace FamiStudio
             buffer.Serialize(ref id, true);
             buffer.Serialize(ref name);
             buffer.Serialize(ref channelType);
+            if (buffer.Version >= Project.TuningFormatVersion) buffer.Serialize(ref chipInstance);
             buffer.Serialize(ref color);
             buffer.Serialize(ref song);
 
@@ -539,7 +542,7 @@ namespace FamiStudio
                     InvalidateCumulativeCache();
 
                 // This can happen when pasting from an expansion to another. We wont find the channel.
-                if (buffer.Project.IsChannelActive(channelType))
+                if (buffer.Project.IsChannelActive(channelType) && Channel != null)
                     ClearNotesPastMaxInstanceLength();
 
                 if (!buffer.IsForUndoRedo)

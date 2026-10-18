@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Text;
@@ -14,7 +14,7 @@ namespace FamiStudio
     public static partial class Platform
     {
         public static string UserProjectsDirectory => null;
-        public static string SettingsDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FamiStudio");
+        public static string SettingsDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FamiStudio-Tuning");
         public static float DoubleClickTime => doubleClickTime;
 
         public const bool   DllStaticLib = false;
@@ -42,7 +42,7 @@ namespace FamiStudio
                 xaudio2Available = XAudio2Stream.TryDetectXAudio2();
             }
 
-            clipboardFormat = RegisterClipboardFormat("FamiStudio");
+            clipboardFormat = RegisterClipboardFormat("FamiStudio-Tuning-1001");
             doubleClickTime = GetDoubleClickTime() / 1000.0f;
 
 #if !DEBUG

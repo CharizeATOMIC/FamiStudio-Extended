@@ -52,3 +52,9 @@ FamiStudio/Properties/launchSettings.json
 *.noi
 *.rst
 *.sym
+
+# Local build and regression artifacts
+/work/
+/Tests/**/bin/
+/Tests/**/obj/
+/test-output/

@@ -106,6 +106,7 @@
     <Compile Include="Source\Player\BasePlayer.cs" />
     <Compile Include="Source\Player\InstrumentPlayer.cs" />
     <Compile Include="Source\Player\NesApu.cs" />
+    <Compile Include="Source\Player\CustomTuningTables.cs" />
     <Compile Include="Source\Player\OscilloscopeInterface.cs" />
     <Compile Include="Source\Player\RegisterInterpreter.cs" />
     <Compile Include="Source\Player\RegisterPlayer.cs" />
@@ -124,6 +125,8 @@
     <Compile Include="Source\Project\Project.cs" />
     <Compile Include="Source\Project\ProjectBuffer.cs" />
     <Compile Include="Source\Project\Song.cs" />
+    <Compile Include="Source\Project\TuningSettings.cs" />
+    <Compile Include="Source\App\Common\Dialogs\TuningProperties.cs" />
     <Compile Include="Source\Project\UndoRedo.cs" />
     <Compile Include="Source\App\Common\Cursors.cs" />
     <Compile Include="Source\App\Common\DpiScaling.cs" />

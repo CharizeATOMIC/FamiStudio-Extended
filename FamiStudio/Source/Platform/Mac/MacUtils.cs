@@ -299,7 +299,7 @@ namespace FamiStudio
             AudioObjectAddPropertyListener(kAudioObjectSystemObject, &outputDeviceAddress, audioDeviceChangeDelegate, IntPtr.Zero);
 
             doubleClickInterval = (float)SendFloat(clsNSEvent, selDoubleClickInterval);
-            famiStudioPasteboard = SendIntPtr(clsNSPasteboard, selPasteboardWithName, ToNSString("FamiStudio"));
+            famiStudioPasteboard = SendIntPtr(clsNSPasteboard, selPasteboardWithName, ToNSString("FamiStudio-Tuning1001"));
         }
 
         public static void InitializeWindow(IntPtr nsWin)

@@ -23,3 +23,7 @@ EXPORTS
 	NesApuGetChannelTrigger  @21
 	NesApuSetN163Mix         @22
 	NesApuBassFilter         @23
+NesApuCreate
+NesApuDestroy
+NesApuConfigureOutput
+NesApuSetPan

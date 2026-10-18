@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -2274,6 +2274,7 @@ namespace FamiStudio
                     {
                         song.ClearPatternCustomSettings(i);
                     }
+                    song.GetPatternCustomSettings(i).Tuning = song.GetPatternCustomSettings(srcIndex).Tuning.Clone();
                 }
 
                 // Clear everything where we are pasting.
@@ -2301,7 +2302,8 @@ namespace FamiStudio
 
                         if (pattern != null && (i + startPatternIndex) < song.Length && song.Project.IsChannelActive(pattern.ChannelType))
                         {
-                            var channelIdx = Channel.ChannelTypeToIndex(pattern.ChannelType, song.Project.ExpansionAudioMask, song.Project.ExpansionNumN163Channels);
+                            var channelIdx = pattern.Channel?.Index ?? -1;
+                            if (channelIdx < 0) continue;
                             pattern.RemoveUnsupportedChannelFeatures();
                             song.Channels[channelIdx].PatternInstances[i + startPatternIndex] = pattern;
                         }
@@ -2325,6 +2327,7 @@ namespace FamiStudio
                         {
                             Song.ClearPatternCustomSettings(i + selectionMin.PatternIndex);
                         }
+                        Song.GetPatternCustomSettings(i + startPatternIndex).Tuning = customSettings[i].Tuning.Clone();
                     }
                 }
 
@@ -2536,6 +2539,7 @@ namespace FamiStudio
                         {
                             Song.ClearPatternCustomSettings(nj);
                         }
+                        Song.GetPatternCustomSettings(nj).Tuning = settings.Tuning.Clone();
                     }
                 }
             }
@@ -3185,7 +3189,8 @@ namespace FamiStudio
         // Custom pattern.
         private void EditPatternCustomSettings(Point pt, int patternIdx)
         {
-            var dlg = new PropertyDialog(ParentWindow, CustomPatternTitle, new Point(left + pt.X, top + pt.Y), 300);
+            var dlg = new PropertyDialog(ParentWindow, CustomPatternTitle, 420, scroll: 620);
+            var props = dlg.Properties;
             var song = Song;
             var enabled = song.PatternHasCustomSettings(patternIdx);
 
@@ -3198,21 +3203,21 @@ namespace FamiStudio
                 maxPattern = selectionMax.PatternIndex;
             }
 
-            var tempoProperties = new TempoProperties(dlg.Properties, song, patternIdx, minPattern, maxPattern);
+            var tempoProperties = new TempoProperties(props, song, patternIdx, minPattern, maxPattern);
 
-            dlg.Properties.AddCheckBox(CustomPatternLabel.Colon, song.PatternHasCustomSettings(patternIdx), CustomPatternTooltip); // 0
+            props.AddCheckBox(CustomPatternLabel.Colon, song.PatternHasCustomSettings(patternIdx), CustomPatternTooltip); // 0
             tempoProperties.AddProperties();
             tempoProperties.EnableProperties(enabled);
-            dlg.Properties.PropertyChanged += PatternCustomSettings_PropertyChanged;
-            dlg.Properties.PropertiesUserData = tempoProperties;
-            dlg.Properties.Build();
+            props.PropertyChanged += PatternCustomSettings_PropertyChanged;
+            props.PropertiesUserData = tempoProperties;
+            props.Build(true);
 
             dlg.ShowDialogAsync((r) =>
             {
                 if (r == DialogResult.OK)
                 {
                     App.UndoRedoManager.BeginTransaction(TransactionScope.Song, song.Id);
-                    tempoProperties.ApplyAsync(ParentWindow, dlg.Properties.GetPropertyValue<bool>(0), () =>
+                    tempoProperties.ApplyAsync(ParentWindow, props.GetPropertyValue<bool>(0), () =>
                     {
                         App.UndoRedoManager.EndTransaction();
                         MarkDirty();

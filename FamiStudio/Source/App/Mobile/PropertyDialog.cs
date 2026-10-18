@@ -12,7 +12,7 @@ namespace FamiStudio
         private PropertyPage propertyPage;
         private TouchScrollContainer propertyContainer;
 
-        public PropertyDialog(FamiStudioWindow win, string text, int width, bool canAccept = true, bool canCancel = true) : base(win, text)
+        public PropertyDialog(FamiStudioWindow win, string text, int width, bool canAccept = true, bool canCancel = true, int scroll = 0) : base(win, text)
         {
             Init(text);
         }

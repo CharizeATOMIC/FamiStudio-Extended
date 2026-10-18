@@ -48,7 +48,7 @@ namespace FamiStudio
         // General section.
         public static int Version = SettingsVersion;
         public static string LanguageCode = "";
-        public static bool CheckUpdates = true;
+        public static bool CheckUpdates = false;
         public static bool ShowTutorial = true;
         public static bool ClearUndoRedoOnSave = true;
         public static bool RestoreViewOnUndoRedo = true;
@@ -418,7 +418,7 @@ namespace FamiStudio
 
             // General
             LanguageCode = ini.GetString("General", "Language", "");
-            CheckUpdates = ini.GetBool(Version < 2 ? "UI" : "General", "CheckUpdates", true ); // At version 2 (FamiStudio 3.0.0, changed section)
+            CheckUpdates = ini.GetBool(Version < 2 ? "UI" : "General", "CheckUpdates", false); // Fork releases are distributed separately from upstream.
             ShowTutorial = ini.GetBool(Version < 2 ? "UI" : "General", "ShowTutorial", true ); // At version 2 (FamiStudio 3.0.0, changed section)
             ClearUndoRedoOnSave = ini.GetBool("General", "ClearUndoRedoOnSave", true);
             RestoreViewOnUndoRedo = ini.GetBool("General", "RestoreViewOnUndoRedo", true);

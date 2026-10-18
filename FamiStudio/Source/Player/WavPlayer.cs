@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -29,6 +29,8 @@ namespace FamiStudio
                 
             samples = new List<short>();
 
+            try
+            {
             BeginPlaySong(song);
 
             while (PlaySongFrame() && samples.Count < maxSample)
@@ -51,6 +53,8 @@ namespace FamiStudio
                 samples.RemoveRange(maxSample, samples.Count - maxSample);
 
             return samples.ToArray();
+            }
+            finally { Shutdown(); }
         }
 
         protected override short[] EndFrame()

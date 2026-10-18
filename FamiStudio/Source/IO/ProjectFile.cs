@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.IO.Compression;
 
@@ -27,7 +27,7 @@ namespace FamiStudio
                     stream.Read(data, 0, 4);
                     int loadVersion = BitConverter.ToInt32(data, 0);
 
-                    if (loadVersion > Project.Version)
+                    if (loadVersion > Project.Version || (loadVersion > 19 && loadVersion < Project.TuningFormatVersion))
                     {
                         Log.LogMessage(LogSeverity.Error, $"File version ({loadVersion}) is more recent than this version of FamiStudio ({Project.Version}).");
                         return null;

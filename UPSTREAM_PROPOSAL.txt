@@ -1,0 +1,25 @@
+Title: Proposal: per-song / pattern tuning, with optional desktop channel panning
+
+Hi BleuBleu and the FamiStudio team,
+
+I enjoy using FamiStudio for chiptune composition. Project-level reference tuning is useful, and I would like to discuss extending it to individual songs and timeline pattern columns.
+
+There is a working local prototype based on 4.5.3. Its core behavior is:
+- Project reference -> song override -> pattern-column override.
+- An A4 reference plus twelve pitch-class offsets in cents, repeated across octaves.
+- Chip-specific quantization, including FM block/f-number selection.
+- Playback and FamiStudio engine/NSF export consume the same tuning tables.
+- Existing property dialogs receive additional controls; no extra song/pattern tabs.
+- All seven existing UI languages have strings for the additions.
+
+The engine extension is optional (FAMISTUDIO_USE_CUSTOM_TUNING). It uses a new stream instruction with table pointers and resets them on song initialization. The local tests compare NSF CPU-emulated pitch registers with editor output and verify held notes, slides, vibrato, loops and track switching. The four single-expansion assembler variants generate identical bytes over 32 configurations, and the ten upstream register-trace fixtures still match.
+
+There is also a separate, larger desktop experiment: per-song channel stereo/pan during playback, and a quantity beside each enabled expansion checkbox for additional copies of that chip. Extra copies are restricted to the editor/playback/audio outputs; hardware exports reject them. I understand this may be outside the intended hardware model and would be happy to keep it as a fork-only feature.
+
+Would you be interested in reviewing the tuning portion first? Before proposing a PR, I would appreciate guidance on the desired UI, project-format versioning, stream opcode, memory budget and whether arbitrary twelve-note temperament is in scope. The prototype uses a deliberately separate project-format version (1001), which would need to be replaced with the versioning approach you prefer for an upstream contribution.
+
+The Windows build is tested locally. NES/FDS images build/export, but physical hardware verification and broader platform testing remain outstanding. I can provide focused changes and small reproduction projects after we agree on scope.
+
+Thanks for FamiStudio and for considering the proposal.
+
+Publication note: add the actual public fork/branch and example links after GitHub publication. This text has not been posted. It does not imply prior maintainer approval.

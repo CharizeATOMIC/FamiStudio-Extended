@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 
 namespace FamiStudio
@@ -55,7 +55,7 @@ namespace FamiStudio
 
         public override void UpdateAPU()
         {
-            var lastChannel = player.GetChannelByType(instrumentPlayer ? InnerChannelType : ChannelType.EPSMSquare3) as ChannelStateEPSMSquare;
+            var lastChannel = player.GetChannelByType(instrumentPlayer ? InnerChannelType : ChannelType.EPSMSquare3, apuIdx) as ChannelStateEPSMSquare;
             var firstChannelIndex = instrumentPlayer ? channelIdx : 0;
             var lastChannelIndex  = instrumentPlayer ? channelIdx : 2;
 

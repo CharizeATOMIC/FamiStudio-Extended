@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
@@ -11,9 +11,14 @@ namespace FamiStudio
         {
             public int channel;
             public Note note;
+            public int tuningHz;
+            public int[] cents;
+            public int n163Channels;
+            public Channel previewChannel;
         };
 
         int activeChannel = -1;
+        Channel previewChannel;
         bool lastNoteWasRelease = false;
         DateTime lastReleaseTime = DateTime.Now;
         int playingNote = Note.NoteInvalid;
@@ -31,7 +36,11 @@ namespace FamiStudio
         {
             if (IsPlaying)
             {
-                noteQueue.Enqueue(new PlayerNote() { channel = channel, note = note });
+                var selected = FamiStudio.StaticInstance?.SelectedSong;
+                var position = FamiStudio.StaticInstance?.CurrentFrame ?? 0;
+                var pattern = selected == null ? -1 : selected.PatternIndexFromAbsoluteNoteIndex(position);
+                var tuning = selected?.GetTuning(pattern);
+                noteQueue.Enqueue(new PlayerNote() { channel = channel, note = note, tuningHz = selected?.GetTuningHz(pattern) ?? 440, cents = tuning?.Cents, n163Channels = selected?.Project.ExpansionNumN163Channels ?? 1, previewChannel = selected?.Channels[channel] });
             }
         }
 
@@ -111,6 +120,7 @@ namespace FamiStudio
         protected override FrameAudioData GetFrameAudioData()
         {
             var data = base.GetFrameAudioData();
+            ApplyPreviewPan(data.samples);
 
             // Read back trigger for oscilloscope.
             if (activeChannel >= 0)
@@ -150,6 +160,11 @@ namespace FamiStudio
                         channelStates[ChannelType.Dpcm].PlayNote(dacNote);
                     }
 
+                    if (lastNote.note.IsMusical)
+                    {
+                        previewChannel = lastNote.previewChannel;
+                        channelStates[activeChannel].SetTuning(lastNote.tuningHz, lastNote.cents, lastNote.n163Channels);
+                    }
                     channelStates[activeChannel].PlayNote(lastNote.note);
 
                     if (lastNote.note.IsRelease)
@@ -164,7 +179,7 @@ namespace FamiStudio
                 }
 
                 for (int i = 0; i < channelStates.Length; i++)
-                    EnableChannelType(channelStates[i].InnerChannelType, i == activeChannel);
+                    EnableChannelType(channelStates[i].InnerChannelType, activeChannel >= 0 && channelStates[i].InnerChannelType == channelStates[activeChannel].InnerChannelType);
             }
 
             if (lastNoteWasRelease &&
@@ -199,6 +214,20 @@ namespace FamiStudio
             EndFrame();
             
             return true;
+        }
+
+        void ApplyPreviewPan(short[] samples)
+        {
+            if (stereo && previewChannel != null)
+            {
+                float pan = previewChannel.EffectivePan / 100.0f;
+                float left = Math.Min(1, 2 * (1 - pan)), right = Math.Min(1, 2 * pan);
+                for (int i = 0; i < samples.Length; i += 2)
+                {
+                    samples[i] = (short)(samples[i] * left);
+                    samples[i + 1] = (short)(samples[i + 1] * right);
+                }
+            }
         }
 
         void EmulationThread(object o)
