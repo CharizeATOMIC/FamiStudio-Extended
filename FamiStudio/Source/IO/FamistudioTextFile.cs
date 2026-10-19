@@ -125,6 +125,9 @@ namespace FamiStudio
 
                 var instrumentLine = $"\tInstrument{GenerateAttribute("Name", instrument.Name)}{ConditionalGenerateAttribute("Color", instrument.Color.ToHexString(), !noColors)}{GenerateAttributeIfNonEmpty("Folder", instrument.FolderName)}";
 
+                if (instrument.ResetPhaseOnAttack) instrumentLine += GenerateAttribute("ResetPhaseOnAttack", true);
+                if (instrument.PitchClampToTimerByte) instrumentLine += GenerateAttribute("PitchClampToTimerByte", true);
+
                 if (instrument.IsExpansionInstrument)
                 {
                     instrumentLine += GenerateAttribute("Expansion", ExpansionType.InternalNames[instrument.Expansion]);
@@ -216,7 +219,10 @@ namespace FamiStudio
                 for (int i = 0; i < EnvelopeType.Count; i++)
                 {
                     var env = instrument.Envelopes[i];
-                    if (env != null && !env.IsEmpty(i))
+                    // Duty zero and a disabled duty macro have the same song-player
+                    // fallback semantics, but distinct editable lengths/loops and
+                    // instrument-preview behavior. Preserve both explicitly.
+                    if (env != null && (i == EnvelopeType.DutyCycle || !env.IsEmpty(i)))
                     {
                         var envelopeLine = $"\t\tEnvelope{GenerateAttribute("Type", EnvelopeType.InternalNames[i])}{GenerateAttribute("Length", env.Length)}";
 
@@ -376,7 +382,7 @@ namespace FamiStudio
 
         private static readonly Regex NameRegex = new Regex("^\\s*([^\"=\\s]+)\\s*(.*)\\s*$", RegexOptions.Compiled);
 
-        private static readonly Regex AttributeRegex = new Regex("([^\"=\\s]+)\\s*=\\s*\"((?:\"\"|[^\"])+)\"", RegexOptions.Compiled);
+        private static readonly Regex AttributeRegex = new Regex("([^\"=\\s]+)\\s*=\\s*\"((?:\"\"|[^\"])*)\"", RegexOptions.Compiled);
 
         private static string SplitLine(string line, ref Dictionary<string, string> parameters)
         {
@@ -543,6 +549,8 @@ namespace FamiStudio
                             if (parameters.TryGetValue("Expansion", out var instrumentExpStr))
                                 instrumentExp = ExpansionType.GetValueForInternalName(instrumentExpStr);
                             instrument = project.CreateInstrument(instrumentExp, parameters["Name"]);
+                            if (parameters.TryGetValue("ResetPhaseOnAttack", out var resetPhaseStr)) instrument.ResetPhaseOnAttack = bool.Parse(resetPhaseStr);
+                            if (parameters.TryGetValue("PitchClampToTimerByte", out var clampPitchStr)) instrument.PitchClampToTimerByte = bool.Parse(clampPitchStr);
                             if (parameters.TryGetValue("Folder", out var folderName) && project.CreateFolder(FolderType.Instrument, folderName) != null)
                                 instrument.FolderName = folderName;
                             if (parameters.TryGetValue("Color", out var hexColor))
@@ -671,7 +679,7 @@ namespace FamiStudio
                                 if (parameters.TryGetValue("Release",  out var releaseStr))   env.Release  = int.Parse(releaseStr);
                                 if (parameters.TryGetValue("Relative", out var relativeStr))  env.Relative = bool.Parse(relativeStr);
 
-                                var values = parameters["Values"].Split(',');
+                                var values = parameters["Values"].Length == 0 ? Array.Empty<string>() : parameters["Values"].Split(',');
                                 for (int j = 0; j < values.Length; j++)
                                     env.Values[j] = sbyte.Parse(values[j]);
                             }
@@ -705,7 +713,7 @@ namespace FamiStudio
                                 var groove = parameters["Groove"].Split('-').Select(Int32.Parse).ToArray();
                                 var groovePaddingMode = GroovePaddingType.GetValueForName(parameters["GroovePaddingMode"]);
 
-                                if (!FamiStudioTempoUtils.ValidateGroove(groove) || Utils.Min(groove) != noteLength || patternLength * noteLength > (Pattern.MaxLength / noteLength))
+                                if (!FamiStudioTempoUtils.ValidateGroove(groove) || Utils.Min(groove) != noteLength || patternLength <= 0 || patternLength > (Pattern.MaxLength / noteLength))
                                 {
                                     Log.LogMessage(LogSeverity.Error, "Invalid tempo settings.");
                                     return null;

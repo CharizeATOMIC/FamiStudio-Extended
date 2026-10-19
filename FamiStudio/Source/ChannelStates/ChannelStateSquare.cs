@@ -23,6 +23,12 @@ namespace FamiStudio
             }
             else if (note.IsMusical)
             {
+                // Instrument articulation belongs to the attack. Invalidating the
+                // cached high byte makes the normal write path reset phase once,
+                // including when the timer's high byte changes on this frame.
+                if (noteTriggered && note.Instrument?.ResetPhaseOnAttack == true)
+                    prevPeriodHi = 0x80;
+
                 var period = GetPeriod();
                 var volume = GetVolume();
 

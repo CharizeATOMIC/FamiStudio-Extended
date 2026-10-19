@@ -54,3 +54,14 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release -- work/tuning-tests
           dotnet run --project Tests/TuningRegression -c Release -- --chip-curves work/tuning-tests
           dotnet run --project Tests/TuningRegression -c Release -- --nsf-multi work/nsf-multi-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-envelopes work/noise-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --envelope-decay work/decay-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pattern-delay work/delay-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --loop-variant work/variant-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pattern-export work/export-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --legacy-export work/legacy-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --instrument-articulation work/articulation-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --articulation-playback work/articulation-playback-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --duty-envelope work/duty-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --text-tempo work/text-tempo-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --apu-instrument-export work/articulation-export-tests

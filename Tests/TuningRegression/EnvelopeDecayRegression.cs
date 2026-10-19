@@ -143,7 +143,7 @@ static class EnvelopeDecayRegression
         string path = Path.Combine(output, "envelope-decay.fms");
         Check(new ProjectFile().Save(p, path), "binary project saves");
         var loaded = new ProjectFile().Load(path);
-        Check(loaded.Songs[0].Channels[0].Patterns[0].Notes[3].EnvelopeDecay == 2, "format 1003 reads the effect back");
+        Check(loaded.Songs[0].Channels[0].Patterns[0].Notes[3].EnvelopeDecay == 2, "current format reads the effect back");
         Check(Volumes(Render(loaded)).SequenceEqual(Volumes(Render(p))), "binary round trip preserves actual playback levels");
         Check(!p.Songs[0].GetChannelByType(ChannelType.Dpcm).SupportsEffect(Note.EffectEnvelopeDecay), "DPCM does not expose software volume decay");
         var epsm = new Project(); epsm.SetExpansionAudioMask(ExpansionType.EPSMMask, 1); var epsmSong = epsm.CreateSong("Rhythm");

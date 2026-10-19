@@ -97,6 +97,8 @@ static class GimmickConversion
             Require(chip == ExpansionType.None || chip == ExpansionType.S5B, $"Unexpected instrument chip {chip}.");
             var instrument = project.CreateInstrument(chip, name);
             Require(instrument != null, $"Duplicate instrument name {name}.");
+            instrument.ResetPhaseOnAttack = Bool(source, "reset_phase_on_attack");
+            instrument.PitchClampToTimerByte = Bool(source, "pitch_clamp_to_timer_byte");
             instrument.FolderName = name.Split(' ')[0];
             Require(new[] { "Pulse", "Triangle", "Noise", "S5B" }.Contains(instrument.FolderName), $"Unexpected instrument family {name}.");
             foreach (var entry in source.GetProperty("envelopes").EnumerateObject())
@@ -158,7 +160,8 @@ static class GimmickConversion
             var song = project.CreateSong(source.GetProperty("name").GetString());
             int baseBeat = tempos.Length > 0 ? Int(tempos[0], "quarter_frames") : 16;
             int baseLength = tempos.Length > 0 ? baseBeat * Int(tempos[0], "inferred_beats_per_bar", 4) : 256;
-            song.ChangeFamiStudioTempoGroove(new[] { 1 }, false);
+            int baseGrid = tempos.Length > 0 ? tempos[0].GetProperty("constant_groove_preserving_all_frames")[0].GetInt32() : 1;
+            song.ChangeFamiStudioTempoGroove(new[] { baseGrid }, false);
             song.SetDefaultPatternLength(baseLength); song.SetBeatLength(baseBeat); song.SetLength(starts.Length - 1);
             for (int i = 0; i < starts.Length - 1; i++)
             {
@@ -183,6 +186,7 @@ static class GimmickConversion
             {
                 var result = Enumerable.Range(0, 8).Select(_ => new Pattern[song.Length]).ToArray();
                 var previousFine = new int[8];
+                var previousDuty = new int[8];
                 var previousVolume = Enumerable.Repeat(15, 8).ToArray();
                 var firstLoopNote = new bool[8];
                 if (repeat)
@@ -190,6 +194,8 @@ static class GimmickConversion
                     {
                         var tail = firstSource.LastOrDefault(n => Int(n, "channel") == c);
                         if (tail.ValueKind != JsonValueKind.Undefined) { previousFine[c] = Int(tail, "fine"); previousVolume[c] = Int(tail, "volume", 15); }
+                        foreach (var previous in firstSource.Where(n => Int(n, "channel") == c && n.TryGetProperty("duty_cycle", out _)))
+                            previousDuty[c] = Int(previous, "duty_cycle");
                     }
                 Pattern Ensure(int channel, int time, int delay)
                 {
@@ -232,12 +238,21 @@ static class GimmickConversion
                     if (n.TryGetProperty("volume", out var volume))
                     {
                         int v = volume.GetInt32();
-                        if (v != previousVolume[c] || entry) note.Volume = (byte)v;
+                        int tailVolume = entry ? Int(sourceNotes.Last(t => Int(t, "channel") == c), "volume", 15) : v;
+                        if (v != previousVolume[c] || tailVolume != v) note.Volume = (byte)v;
                         previousVolume[c] = v;
                     }
-                    if (n.TryGetProperty("duty_cycle", out var duty)) note.DutyCycle = (byte)duty.GetInt32();
+                    if (n.TryGetProperty("duty_cycle", out var duty))
+                    {
+                        int d = duty.GetInt32(), tailDuty = d;
+                        if (entry)
+                            foreach (var tail in sourceNotes.Where(t => Int(t, "channel") == c && t.TryGetProperty("duty_cycle", out _)))
+                                tailDuty = Int(tail, "duty_cycle");
+                        if (d != previousDuty[c] || tailDuty != d) note.DutyCycle = (byte)d;
+                        previousDuty[c] = d;
+                    }
                     if (Bool(n, "no_attack")) note.HasAttack = false;
-                    if (Bool(n, "reset_phase")) note.PhaseReset = 1;
+                    if (Bool(n, "reset_phase") && !(note.HasAttack && note.Instrument.ResetPhaseOnAttack)) note.PhaseReset = 1;
                     if (n.TryGetProperty("delta", out var delta)) note.DeltaCounter = (byte)delta.GetInt32();
                     pattern.Notes.Add(row, note);
                 }
@@ -341,6 +356,12 @@ static class GimmickConversion
                 }
             }
         }
+        int patternsBeforeSharing = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count));
+        int notesBeforeSharing = NoteCount(project);
+        foreach (var song in project.Songs)
+            song.MergeIdenticalPatterns();
+        int sharedPatternsRemoved = patternsBeforeSharing - project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count));
+        sourceNotes = NoteCount(project);
         project.ValidateIntegrity();
         string fms = Path.Combine(output, "Gimmick-Editable.fms"), text = Path.Combine(output, "Gimmick-Inspection.txt");
         Require(new ProjectFile().Save(project, fms), "FMS save failed.");
@@ -466,7 +487,12 @@ static class GimmickConversion
             songs = project.Songs.Count, source_instrument_variants = root.GetProperty("instruments").GetArrayLength(),
             instruments = project.Instruments.Count, dpcm_mappings = dpcmKeys.Count, samples = project.Samples.Count,
             notes = sourceNotes, first_pass_source_notes = firstPassSourceNotes, loop_variation_patterns = loopVariationPatterns, loop_stop_events = loopStopEvents, curve_entries = root.GetProperty("curves").GetArrayLength(), curve_unit = "absolute hardware period/register",
+            notes_before_identical_pattern_sharing = notesBeforeSharing, identical_patterns_shared = sharedPatternsRemoved,
             phase_effects_before = phaseEffectsBefore, redundant_automatic_phase_effects_removed = removedAutomaticPhaseEffects,
+            phase_reset_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasPhaseReset)))),
+            duty_cycle_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasDutyCycle)))),
+            envelope_decay_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasEnvelopeDecay)))),
+            patterns_with_playback_delay = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count(p => p.PlaybackDelay != 0))),
             fine_pitch_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasFinePitch)))),
             family_counts = project.Instruments.GroupBy(i => i.FolderName).ToDictionary(g => g.Key, g => g.Count()),
             binary_roundtrip_exact = true, text_structural_counts_match = true, text_inspection_only = !textEditable,

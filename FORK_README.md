@@ -1,6 +1,6 @@
 # FamiStudio Tuning
 
-An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 4 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
+An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 5 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
 
 ## Features
 
@@ -30,9 +30,13 @@ FamiTracker text and MIDI export reject the new delay, loop-variant, decay and h
 
 ## Format and installation
 
+Revision 5 adds two optional regular-instrument properties. **Reset phase on attack** applies to the APU pulse channels and uses the normal timer-high write once per attack, including attacks that also cross a high-byte boundary. Legato, release and stop do not trigger it. Explicit note phase-reset effects retain their separate behavior. **Clamp pitch to timer byte** applies to APU pulse and triangle channels: pitch-envelope modulation saturates the timer's low byte instead of carrying or borrowing into its high byte. The base timer still includes tuning, fine pitch and slides. Both properties default to off, have controls in all seven languages, and survive binary/text, clipboard and undo operations.
+
+These properties export through `FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS = 1` and instruction `$62`. It adds three bytes of channel state and defaults to disabled in standalone engine sources; use the matching engine and the options emitted in the export header. Bundled NSF/NES/FDS kernels enable it. EPSM custom-table builds share table lookup code to preserve the existing 32-song ROM capacity. FamiTracker/FamiTone2/MIDI exporters reject the new semantics when used; VGM records their register playback normally. Duty-cycle text export also preserves explicit zero and disabled envelope structures without changing their existing playback meaning.
+
 The Windows x64 package is self-contained: extract the whole directory and run `FamiStudio.exe`. It does not require installing .NET. Settings use `%LOCALAPPDATA%/FamiStudio-Tuning`; the installed official application and its settings are not replaced. Upstream update notifications default to off because official releases do not include these additions.
 
-Official project formats through version 19 and this fork's previous formats 1001 and 1002 can be read. Revision 4 saves format **1003**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
+Official project formats through version 19 and this fork's previous formats 1001, 1002 and 1003 can be read. Revision 5 saves format **1004**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
 
 Curves are global to a project. Importing songs from a project with different curves on its active chips is rejected before either song is retuned; first make the curves match. An empty destination adopts the imported curves. Importing instruments alone does not require matching curves. Curves for inactive chips are preserved for when those chips are enabled.
 

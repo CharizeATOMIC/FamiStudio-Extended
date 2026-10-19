@@ -33,6 +33,11 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--text-tempo") { TextTempoRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--articulation-playback") { InstrumentArticulationPlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--duty-envelope") { DutyEnvelopeRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--apu-instrument-export") { ApuInstrumentExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--instrument-articulation") { InstrumentArticulationRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--gimmick-convert") { GimmickConversion.Run(args[1], args[2]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--gimmick-nsf") { GimmickNsfRegression.Run(args[1], args[2]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--noise-envelopes") { NoiseEnvelopeRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }

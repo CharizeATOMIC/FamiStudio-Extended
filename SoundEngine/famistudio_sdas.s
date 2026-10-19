@@ -383,6 +383,10 @@ FAMISTUDIO_USE_ARPEGGIO          = 1
 .endif
 
 ; Three optional APU noise macros: raw period, raw control, and length/envelope restart.
+.ifndef FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+    FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS = 0
+.endif
+
 .ifndef FAMISTUDIO_USE_ENVELOPE_DECAY
     FAMISTUDIO_USE_ENVELOPE_DECAY = 0
 .endif
@@ -864,6 +868,11 @@ famistudio_tuning_msb_lo: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
 famistudio_tuning_msb_hi: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
 famistudio_tuning_fraction_lo: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
 famistudio_tuning_fraction_hi: .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
+.endif
+
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+; APU pulse 1/2/triangle: bit 0 clamps pitch to the timer byte; bit 1 resets pulse attacks.
+famistudio_apu_instrument_flags: .ds 3
 .endif
 
 famistudio_pitch_env_value_lo:    .ds FAMISTUDIO_NUM_PITCH_ENVELOPES
@@ -1523,6 +1532,13 @@ famistudio_music_stop::
     sta famistudio_noise_restart
 .endif
 
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+    lda #0
+    sta famistudio_apu_instrument_flags
+    sta famistudio_apu_instrument_flags+1
+    sta famistudio_apu_instrument_flags+2
+.endif
+
 .set_envelopes:
 
     lda #<famistudio_dummy_envelope
@@ -2018,6 +2034,21 @@ famistudio_music_pause::
 
     ; X already includes the PAL/NTSC offset, where appropriate.
 .if FAMISTUDIO_USE_CUSTOM_TUNING
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS & FAMISTUDIO_EXP_EPSM
+    .if pitch_env_offset
+    tya
+    pha
+    clc
+    adc #pitch_env_offset
+    tay
+    .endif
+    jsr famistudio_add_custom_note_pitch
+    .if pitch_env_offset
+    pla
+    tay
+    .endif
+    bcs .tuning_done
+.else
     lda #0
     sta *famistudio_tuning_fraction
     lda famistudio_tuning_lsb_hi+pitch_env_offset,y
@@ -2051,6 +2082,7 @@ famistudio_music_pause::
     jmp .tuning_done
 .builtin_tuning:
 .endif
+.endif
     ; Finally, add note pitch.
     clc
     lda note_table_lsb,x
@@ -2065,13 +2097,103 @@ famistudio_music_pause::
 
 .endm
 
+.if FAMISTUDIO_USE_CUSTOM_TUNING
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS & FAMISTUDIO_EXP_EPSM
+; Share custom-table address setup in the size-constrained EPSM kernel.
+; X = note, Y = global pitch-envelope index. Return C if a custom table was used.
+famistudio_add_custom_note_pitch:
+    lda #0
+    sta *famistudio_tuning_fraction
+    lda famistudio_tuning_lsb_hi,y
+    beq .custom_note_builtin
+    sta *famistudio_tuning_lsb+1
+    lda famistudio_tuning_lsb_lo,y
+    sta *famistudio_tuning_lsb+0
+    lda famistudio_tuning_msb_hi,y
+    sta *famistudio_tuning_msb+1
+    lda famistudio_tuning_msb_lo,y
+    sta *famistudio_tuning_msb+0
+    lda famistudio_tuning_fraction_lo,y
+    sta *famistudio_tuning_fraction_ptr
+    lda famistudio_tuning_fraction_hi,y
+    sta *famistudio_tuning_fraction_ptr+1
+    tya
+    pha
+    txa
+    tay
+    lda [*famistudio_tuning_fraction_ptr],y
+    sta *famistudio_tuning_fraction
+    clc
+    lda [*famistudio_tuning_lsb],y
+    adc *famistudio_ptr1+0
+    sta *famistudio_ptr1+0
+    lda [*famistudio_tuning_msb],y
+    adc *famistudio_ptr1+1
+    sta *famistudio_ptr1+1
+    pla
+    tay
+    sec
+    rts
+.custom_note_builtin:
+    clc
+    rts
+.endif
+.endif
+
 famistudio_get_note_pitch:
     famistudio_get_note_pitch_macro 0, 0, famistudio_note_table_lsb, famistudio_note_table_msb
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+    jsr famistudio_apply_apu_pitch_flags
+.endif
     rts
 
 .if FAMISTUDIO_EXP_VRC6
 famistudio_get_note_pitch_vrc6_saw:
     famistudio_get_note_pitch_macro 0, 0, famistudio_saw_note_table_lsb, famistudio_saw_note_table_msb
+    rts
+.endif
+
+
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+; Recover table + fine + slide, then clamp only the signed pitch envelope's
+; addition to its low byte. Both built-in and custom tables use this path.
+famistudio_apply_apu_pitch_flags:
+    cpy #3
+    bcs .clamp_done
+    lda famistudio_apu_instrument_flags,y
+    and #1
+    beq .clamp_done
+    sec
+    lda *famistudio_ptr1
+    sbc famistudio_pitch_env_value_lo,y
+    sta *famistudio_ptr1
+    lda *famistudio_ptr1+1
+    sbc famistudio_pitch_env_value_hi,y
+    sta *famistudio_ptr1+1
+    lda famistudio_pitch_env_value_hi,y
+    beq .clamp_positive
+    cmp #0xff
+    beq .clamp_negative
+    bmi .clamp_zero
+    bpl .clamp_max
+.clamp_positive:
+    clc
+    lda *famistudio_ptr1
+    adc famistudio_pitch_env_value_lo,y
+    bcc .clamp_store
+.clamp_max:
+    lda #0xff
+    bne .clamp_store
+.clamp_negative:
+    clc
+    lda *famistudio_ptr1
+    adc famistudio_pitch_env_value_lo,y
+    bcs .clamp_store
+.clamp_zero:
+    lda #0
+.clamp_store:
+    sta *famistudio_ptr1
+.clamp_done:
     rts
 .endif
 
@@ -4924,6 +5046,17 @@ famistudio_do_fds_note_attack:
 
 famistudio_do_note_attack:
 
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+    cpx #2
+    bcs .apu_attack_flags_done
+    lda famistudio_apu_instrument_flags,x
+    and #2
+    beq .apu_attack_flags_done
+    lda #0x80
+    sta famistudio_pulse1_prev,x
+.apu_attack_flags_done:
+.endif
+
 .if FAMISTUDIO_USE_NOISE_ENVELOPES
     cpx #3
     bne .noise_attack_done
@@ -6377,6 +6510,14 @@ famistudio_advance_channel:
     jmp .famistudio_update_channel_instrument_change
 .endif
 
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.opcode_apu_instrument_flags:
+    lda [*.channel_data_ptr],y
+    iny
+    sta famistudio_apu_instrument_flags,x
+    jmp .famistudio_update_channel_read_byte
+.endif
+
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
 .opcode_envelope_decay:
     lda famistudio_channel_to_volume_env,x
@@ -6902,7 +7043,7 @@ famistudio_advance_channel:
     .db <(.opcode_invalid)                      ; 0x5e
 .endif
 .endif
-.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
+.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 .if FAMISTUDIO_EXP_NONE
         .db <(.opcode_invalid)
         .db <(.opcode_invalid)
@@ -6921,15 +7062,22 @@ famistudio_advance_channel:
     .db <(.opcode_invalid)
 .endif
 .endif
-.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
+.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 .if FAMISTUDIO_USE_NOISE_ENVELOPES
     .db <(.opcode_noise_envelopes) ; $60
 .else
     .db <(.opcode_invalid)
 .endif
 .endif
+.if FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     .db <(.opcode_envelope_decay) ; $61
+.else
+    .db <(.opcode_invalid)
+.endif
+.endif
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+    .db <(.opcode_apu_instrument_flags) ; $62
 .endif
 
 
@@ -7065,7 +7213,7 @@ famistudio_advance_channel:
     .db >(.opcode_invalid)                      ; 0x5e
 .endif
 .endif
-.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
+.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 .if FAMISTUDIO_EXP_NONE
         .db >(.opcode_invalid)
         .db >(.opcode_invalid)
@@ -7084,15 +7232,22 @@ famistudio_advance_channel:
     .db >(.opcode_invalid)
 .endif
 .endif
-.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY
+.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 .if FAMISTUDIO_USE_NOISE_ENVELOPES
     .db >(.opcode_noise_envelopes) ; $60
 .else
     .db >(.opcode_invalid)
 .endif
 .endif
+.if FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     .db >(.opcode_envelope_decay) ; $61
+.else
+    .db >(.opcode_invalid)
+.endif
+.endif
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+    .db >(.opcode_apu_instrument_flags) ; $62
 .endif
 
 

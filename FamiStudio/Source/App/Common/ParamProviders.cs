@@ -91,6 +91,10 @@ namespace FamiStudio
 
         // Common labels
         static LocalizedString PitchEnvelopeLabel;
+        static LocalizedString ResetPhaseOnAttackLabel;
+        static LocalizedString ResetPhaseOnAttackTooltip;
+        static LocalizedString PitchClampToTimerByteLabel;
+        static LocalizedString PitchClampToTimerByteTooltip;
         static LocalizedString AbsoluteLabel;
         static LocalizedString RelativeLabel;
         static LocalizedString OffLabel;
@@ -212,6 +216,20 @@ namespace FamiStudio
                         instrument.Envelopes[EnvelopeType.Pitch].Relative = newRelative;
                     }
                 };
+            }
+
+            if (instrument.IsRegular)
+            {
+                paramInfos.Add(new InstrumentParamInfo(instrument, ResetPhaseOnAttackLabel, 0, 1, 0, ResetPhaseOnAttackTooltip)
+                {
+                    GetValue = () => instrument.ResetPhaseOnAttack ? 1 : 0,
+                    SetValue = v => instrument.ResetPhaseOnAttack = v != 0
+                });
+                paramInfos.Add(new InstrumentParamInfo(instrument, PitchClampToTimerByteLabel, 0, 1, 0, PitchClampToTimerByteTooltip)
+                {
+                    GetValue = () => instrument.PitchClampToTimerByte ? 1 : 0,
+                    SetValue = v => instrument.PitchClampToTimerByte = v != 0
+                });
             }
 
             // TODO : All the bit manipulation should be inside properties on the instruments Really dumb to have all of this here.

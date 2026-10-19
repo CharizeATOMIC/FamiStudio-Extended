@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -14,6 +14,8 @@ namespace FamiStudio
         private Color color;
         private string folderName;
         private Project project;
+        private bool resetPhaseOnAttack;
+        private bool pitchClampToTimerByte;
         private Dictionary<int, DPCMSampleMapping> samplesMapping;
 
         // FDS
@@ -73,6 +75,9 @@ namespace FamiStudio
         public string NameWithExpansionAndFolder => (string.IsNullOrEmpty(folderName) ? "" : $"{folderName}\\") + Name + (expansion == ExpansionType.None ? "" : $" ({ExpansionType.InternalNames[expansion]})");
         public Color Color { get => color; set => color = value; }
         public int Expansion => expansion;
+        // Applies to the two APU pulse voices; tied/no-attack notes keep their phase.
+        public bool ResetPhaseOnAttack { get => resetPhaseOnAttack; set => resetPhaseOnAttack = value; }
+        public bool PitchClampToTimerByte { get => pitchClampToTimerByte; set => pitchClampToTimerByte = value; }
         public bool IsExpansionInstrument => expansion != ExpansionType.None;
         public Envelope[] Envelopes => envelopes;
         public Dictionary<int, DPCMSampleMapping> SamplesMapping => samplesMapping;
@@ -1169,6 +1174,17 @@ namespace FamiStudio
                         }
                     }
                 }
+            }
+
+            if (buffer.Version >= Project.InstrumentArticulationFormatVersion)
+            {
+                buffer.Serialize(ref resetPhaseOnAttack);
+                buffer.Serialize(ref pitchClampToTimerByte);
+            }
+            else if (buffer.IsReading)
+            {
+                resetPhaseOnAttack = false;
+                pitchClampToTimerByte = false;
             }
 
             if (buffer.Version < 15 && (IsS5B || IsEpsm))

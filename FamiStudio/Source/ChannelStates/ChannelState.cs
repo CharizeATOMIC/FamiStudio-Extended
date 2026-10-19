@@ -754,6 +754,15 @@ namespace FamiStudio
             var notePeriod = outsideNoteTable ? (noteVal & 0xff) * 251 + 293 : noteTable[noteVal];
             var finalPeriod = notePeriod + pitch + slide;
 
+            // Some drivers apply software pitch only to the timer's low byte,
+            // saturating at its boundaries instead of carrying into the high byte.
+            // Keep note tuning, fine pitch and slides in the unmodulated base.
+            if (channelType <= ChannelType.Triangle && note.Instrument?.PitchClampToTimerByte == true)
+            {
+                int basis = notePeriod + (note.FinePitch << pitchShift) + slide;
+                finalPeriod = (basis & ~255) + Utils.Clamp((basis & 255) + (envelopeValues[EnvelopeType.Pitch] << pitchShift), 0, 255);
+            }
+
             return Settings.ClampPeriods ? Utils.Clamp(finalPeriod, 0, maximumPeriod) : (finalPeriod & maximumPeriod);
         }
 

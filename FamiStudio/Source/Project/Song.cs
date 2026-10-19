@@ -31,6 +31,9 @@ namespace FamiStudio
                     if (entry.Key >= GetPatternLength(p)) continue;
                     var note = entry.Value;
                     if (note.HasEnvelopeDecay) return true;
+                    if (note.IsMusical && note.Instrument != null &&
+                        (channel.Type <= ChannelType.Square2 && note.Instrument.ResetPhaseOnAttack ||
+                         channel.Type <= ChannelType.Triangle && note.Instrument.PitchClampToTimerByte)) return true;
                     if (channel.Type == ChannelType.Noise && note.IsMusical && note.Instrument != null)
                         for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
                             if (note.Instrument.Envelopes[type]?.Length > 0) return true;

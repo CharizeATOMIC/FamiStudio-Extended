@@ -37,6 +37,7 @@ namespace FamiStudio
         private Dictionary<Envelope, string> noiseEnvelopeNames = new Dictionary<Envelope, string>();
         private bool usesNoiseEnvelopes;
         private bool usesEnvelopeDecay;
+        private bool usesApuInstrumentFlags;
         private Dictionary<Instrument, int> instrumentIndices = new Dictionary<Instrument, int>();
         private Dictionary<DPCMSampleMapping, int> sampleMappingIndices = new Dictionary<DPCMSampleMapping, int>();
         private string noArpeggioEnvelopeName;
@@ -88,6 +89,7 @@ namespace FamiStudio
         private const byte OpcodeS5BManualEnvPeriod    = 0x5e; // S5B only
         private const byte OpcodeNoiseEnvelopes        = 0x60; // Three optional APU noise macros
         private const byte OpcodeEnvelopeDecay        = 0x61;
+        private const byte OpcodeApuInstrumentFlags   = 0x62;
 
         private const byte OpcodeSetReferenceFT2       = 0xff; // FT2
         private const byte OpcodeLoopFT2               = 0xfd; // FT2
@@ -1202,6 +1204,11 @@ namespace FamiStudio
                 var sawVolume = Vrc6SawMasterVolumeType.Half;
                 var sawVolumeChanged = false;
                 var lastVolume = 15;
+                var lastApuInstrumentFlags = 0;
+                var channelUsesApuInstrumentFlags = channel.Type <= ChannelType.Triangle && channel.Patterns.Any(p =>
+                    p.Notes.Values.Any(n => n.IsMusical && n.Instrument != null &&
+                    (n.Instrument.PitchClampToTimerByte || channel.Type <= ChannelType.Square2 && n.Instrument.ResetPhaseOnAttack)));
+                usesApuInstrumentFlags |= channelUsesApuInstrumentFlags;
                 var firstInstrumentInLoop = (Instrument)null;
                 var lastInstrumentInLoop = (Instrument)null;
                 var currentFlags = OverrideFlags.None;
@@ -1256,6 +1263,7 @@ namespace FamiStudio
                         // TODO : We probably want to do the same for those too?
                         //arpeggio = null;
                         lastVolume = -1;
+                        lastApuInstrumentFlags = -1;
 
                         if (sawVolumeChanged)
                             sawVolume = -1;
@@ -1403,6 +1411,19 @@ namespace FamiStudio
                             }
 
                             usesVibrato = true;
+                        }
+
+                        if (note.IsMusical && note.Instrument != null && channel.Type <= ChannelType.Triangle)
+                        {
+                            var flags = (note.Instrument.PitchClampToTimerByte ? 1 : 0) |
+                                (channel.Type <= ChannelType.Square2 && note.Instrument.ResetPhaseOnAttack ? 2 : 0);
+                            if (flags != lastApuInstrumentFlags && channelUsesApuInstrumentFlags)
+                            {
+                                channelData.Add($"{hexp}{OpcodeApuInstrumentFlags:x2}+");
+                                channelData.Add($"{hexp}{flags:x2}");
+                                usesApuInstrumentFlags = true;
+                            }
+                            lastApuInstrumentFlags = flags;
                         }
 
                         if (note.HasPhaseReset)
@@ -2426,6 +2447,8 @@ namespace FamiStudio
                 flags.Add("APU noise macros require FAMISTUDIO_USE_NOISE_ENVELOPES = 1 and the enhanced sound engine.");
             if (usesEnvelopeDecay)
                 flags.Add("Envelope decay requires FAMISTUDIO_USE_ENVELOPE_DECAY = 1 and the enhanced sound engine.");
+            if (usesApuInstrumentFlags)
+                flags.Add("APU instrument pitch clamp and attack phase reset require FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS = 1 and the enhanced sound engine.");
             if (usesVibrato)
                 flags.Add("Vibrato effect is used, you must set FAMISTUDIO_USE_VIBRATO = 1.");
             if (usesArpeggio)
@@ -2479,6 +2502,7 @@ namespace FamiStudio
             }
 
             usesEnvelopeDecay = false;
+            usesApuInstrumentFlags = false;
             try { SetupProject(originalProject, songIds, dmcExportMode); }
             catch (InvalidOperationException exception)
             {
@@ -2487,6 +2511,11 @@ namespace FamiStudio
             }
             noiseEnvelopeNames.Clear();
             usesNoiseEnvelopes = project.Instruments.Any(i => GetNoiseEnvelopeMask(i) != 0);
+            if (kernel != FamiToneKernel.FamiStudio && project.Instruments.Any(i => i.PitchClampToTimerByte || i.ResetPhaseOnAttack))
+            {
+                Log.LogMessage(LogSeverity.Error, "APU instrument pitch clamp and attack phase reset require the FamiStudio sound engine.");
+                return false;
+            }
             if (usesNoiseEnvelopes && kernel != FamiToneKernel.FamiStudio)
             {
                 Log.LogMessage(LogSeverity.Error, "APU hardware noise macros require the FamiStudio sound engine.");
@@ -2717,7 +2746,10 @@ namespace FamiStudio
         {
             // Exporters may run concurrently (audio/background validation), and
             // a failed save must never parse another export's stale assembly.
-            var tempFolder = Path.Combine(Utils.GetTemporaryDirectory(), "engine-" + Guid.NewGuid().ToString("N"));
+            // GetTemporaryDirectory clears its entire shared desktop directory.
+            // Keep this operation outside it so a second exporter (including
+            // video export) cannot delete these files while they are in use.
+            var tempFolder = Path.Combine(Path.GetTempPath(), "FamiStudio-Engine-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempFolder);
             var tempAsmFilename = Path.Combine(tempFolder, "nsf.asm");
             var tempDmcFilename = Path.Combine(tempFolder, "nsf.dmc");

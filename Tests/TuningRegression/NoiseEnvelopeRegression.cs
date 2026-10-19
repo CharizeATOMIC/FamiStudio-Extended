@@ -178,11 +178,11 @@ static class NoiseEnvelopeRegression
         instrument.NoisePeriodEnvelope.Values[0] = 14;
         p.Serialize(new ProjectLoadBuffer(p, undo.GetBuffer(), Project.Version, ProjectBufferFlags.UndoRedo));
         Check(p.Instruments[0].NoisePeriodEnvelope.Values[0] == 1, "undo restores hardware-noise values");
-        string filename = Path.Combine(output, "noise-format1003.fms");
-        Check(new ProjectFile().Save(p, filename), "format 1003 saves hardware-noise envelopes");
+        string filename = Path.Combine(output, "noise-current-format.fms");
+        Check(new ProjectFile().Save(p, filename), "current format saves hardware-noise envelopes");
         var loaded = new ProjectFile().Load(filename);
         Check(loaded != null && loaded.Instruments[0].ComputeCRC() == p.Instruments[0].ComputeCRC(), "binary round trip preserves macro lengths, loops and values");
-        Check(BitConverter.ToInt32(File.ReadAllBytes(filename), 4) == Project.NoiseEnvelopeFormatVersion, "new noise files declare format 1003");
+        Check(BitConverter.ToInt32(File.ReadAllBytes(filename), 4) == Project.Version, "new noise files declare the current project format");
         foreach (string fixture in new[] { "format1001.fms", "format1002.fms" })
         {
             var old = new ProjectFile().Load(Path.Combine("Tests", "TuningRegression", "Fixtures", fixture));

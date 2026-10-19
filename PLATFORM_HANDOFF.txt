@@ -1,4 +1,4 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 4)
+FamiStudio Tuning: platform and upstream integration notes (revision 5)
 
 Maintenance assessment
 
@@ -17,7 +17,7 @@ Suggested review order:
 
 Before upstream merge, maintainers should choose the official format version and
 opcode, review ROM/RAM/CPU budgets, and decide which optional features to accept.
-Format 1003 and the separate settings directory intentionally identify this fork;
+Format 1004 and the separate settings directory intentionally identify this fork;
 they should not silently become the upstream format/settings policy.
 
 Revision 3 architecture and format
@@ -241,3 +241,29 @@ do not establish native/runtime compatibility. The prior Android toolchain block
 remains, and no physical mobile or NES hardware validation has been performed.
 Game-specific decoding scripts, extracted assets and projects stay outside the
 public application/source package. They are not a general game music importer.
+
+Revision 5 integration addendum
+
+Format 1004 appends two default-off booleans to regular instruments:
+ResetPhaseOnAttack (APU pulse channels) and PitchClampToTimerByte (APU pulse and
+triangle channels). The former resets phase once at an attack through the normal
+high-timer write, without double-writing when the high byte also changes. The
+latter saturates pitch-envelope modulation within the timer low byte; tuning,
+fine pitch and slides remain in the unmodulated base. Existing formats through
+1003 load both flags as false. Shared UI, all seven locales, text, binary, CRC,
+clipboard and undo use the same properties. Duty-cycle text round trips now
+preserve explicit all-zero and disabled envelope structures without changing
+their historical persistent-effect semantics.
+
+Standalone engines expose FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS (default zero).
+Instruction $62 writes the per-channel flags, using three state bytes. The
+bundled NSF/NES/FDS kernels enable it. EPSM plus custom tuning shares table lookup
+code when the flag feature is enabled, leaving the previous 32-song table and
+ROM addresses intact. Four-assembler flag-on/off equivalence and CPU playback
+tests cover this path. Exported music headers list the needed option. Preserve
+the existing distinction between instrument attack resets and explicit note
+phase resets when porting the implementation.
+
+The Windows CI job now includes both revision 4 and revision 5 regression suites.
+Remote CI, native Linux/macOS playback, Android and physical NES testing remain
+separate validation steps; a managed build alone does not establish those results.

@@ -607,6 +607,9 @@ namespace FamiStudio
             if (EnvelopeType.IsHardwareNoise(type))
                 return false;
 
+            // This is the established playback-neutral test, not a structural
+            // serialization test. In particular an all-zero duty macro lets the
+            // persistent note duty effect control the channel during song playback.
             return AllValuesEqual(GetEnvelopeZeroValue(type));
         }
 
