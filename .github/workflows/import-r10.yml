@@ -1,0 +1,69 @@
+name: Import verified R10 history
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: import-r10-history
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out this repository's master branch
+        uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Verify the bundle and import the exact feature branch
+        shell: bash
+        env:
+          BUNDLE_FILE: FamiStudio-Extended-r10.bundle
+          BUNDLE_SHA256: 56957437cc8fa5abcaaee93497b1cf23855341a3870f4be8b443b5dd8e84dfc2
+          BASE_COMMIT: c09dca64788606c09fcb5e70db28b9dd1f34be78
+          EXPECTED_COMMIT: af4a116f85cb0105bce1de1505e5bdf8cbe44b96
+          TARGET_REF: refs/heads/feature/song-tuning-mixer
+        run: |
+          set -euo pipefail
+
+          test -f "$BUNDLE_FILE"
+          printf '%s  %s\n' "$BUNDLE_SHA256" "$BUNDLE_FILE" | sha256sum --check --strict
+          git cat-file -e "${BASE_COMMIT}^{commit}"
+          git bundle verify "$BUNDLE_FILE"
+
+          bundle_ref="$(git bundle list-heads "$BUNDLE_FILE")"
+          if [[ "$bundle_ref" != "$EXPECTED_COMMIT $TARGET_REF" ]]; then
+            printf '%s\n' 'Unexpected bundle ref or commit; refusing to import.' >&2
+            exit 1
+          fi
+
+          git fetch --no-tags "./$BUNDLE_FILE" "$TARGET_REF:refs/heads/import-r10-verified"
+          imported_commit="$(git rev-parse refs/heads/import-r10-verified)"
+          test "$imported_commit" = "$EXPECTED_COMMIT"
+          git merge-base --is-ancestor "$BASE_COMMIT" "$imported_commit"
+          commit_count="$(git rev-list --count "$BASE_COMMIT..$imported_commit")"
+          test "$commit_count" = 18
+
+          expected_remote="${EXPECTED_COMMIT}"$'\t'"${TARGET_REF}"
+          existing_remote="$(git ls-remote --refs origin "$TARGET_REF")"
+          if [[ -n "$existing_remote" && "$existing_remote" != "$expected_remote" ]]; then
+            printf '%s\n' 'Target branch already points to a different commit; refusing to update it.' >&2
+            exit 1
+          fi
+
+          if [[ -z "$existing_remote" ]]; then
+            git push origin "${EXPECTED_COMMIT}:${TARGET_REF}"
+          else
+            printf '%s\n' 'Target branch already contains the exact verified commit; no push needed.'
+          fi
+
+          actual_remote="$(git ls-remote --refs origin "$TARGET_REF")"
+          test "$actual_remote" = "$expected_remote"
+          printf 'Verified remote branch: %s\nCommit: %s\nImported commits above base: %s\n' \
+            "$TARGET_REF" "$EXPECTED_COMMIT" "$commit_count"
