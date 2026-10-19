@@ -127,6 +127,7 @@
     <Compile Include="Source\Project\Note.cs" />
     <Compile Include="Source\Project\Pattern.cs" />
     <Compile Include="Source\Project\Project.cs" />
+    <Compile Include="Source\Project\NoisePitchMigration.cs" />
     <Compile Include="Source\Project\ProjectBuffer.cs" />
     <Compile Include="Source\Project\Song.cs" />
     <Compile Include="Source\Project\TuningSettings.cs" />

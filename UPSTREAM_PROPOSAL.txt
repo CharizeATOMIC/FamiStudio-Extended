@@ -1,4 +1,4 @@
-Proposal draft / 上游提案草稿 — FamiStudio Tuning revision 8
+Proposal draft / 上游提案草稿 — FamiStudio Tuning revision 9
 Status: prepared locally; not sent. / 状态：仅本地准备，尚未发送。
 Repository/branch link: add the verified public URL after publication.
 仓库/分支链接：发布后补入已核实的公开链接。
@@ -22,7 +22,7 @@ FamiStudio's intended scope can stay in the fork.
 
 Suggested review units
 ----------------------
-1. Save safety and discoverability. A visible Save As command complements the
+1. Save safety and discoverability. A visible text-only Save As command complements the
    existing shortcut/context menu. Saves finish a sibling temporary file before
    replacing the destination, and a failed save cannot continue a pending close
    or project replacement. The importer change can be another small PR: select
@@ -37,9 +37,13 @@ Suggested review units
    The canonical hardware ranges and the choice to store reference bases deserve
    review before settling an upstream representation.
 
-3. Editable hardware articulation. The three noise macros expose hardware period,
-   envelope control and restart. A default-off follow-note mode transposes the
-   period macro relative to C4 across the 16 hardware indices. Software envelope
+3. Editable hardware articulation. New noise pitch uses keys and the native
+   instrument arpeggio. Hardware volume and restart share one clearly named menu,
+   while less-used hardware parameters default to one folded inline row. Legacy
+   period data remains supported, with an explicit lossless migration action and
+   clear refusal reasons rather than automatic conversion. Revision 9 removes the
+   separate period editor/follow switch without changing the engine or native DSP.
+   Software envelope
    decay, full seven-bit DPCM mapping DAC, APU attack-phase reset, low-byte pitch
    saturation and hardware sweep can be reviewed separately. Old projects keep
    their old defaults; synthetic register/CPU tests cover the new behavior.
@@ -70,7 +74,8 @@ shared across desktop platforms. All seven current languages are covered. The
 mobile toolbar/property-control paths are prepared, but desktop tests are not
 proof of Android device support.
 
-The fork uses private project format 1007 and a separate settings/clipboard
+The fork uses private project format 1007, unchanged between revisions 8 and 9,
+and a separate settings/clipboard
 namespace. It reads old official projects and earlier fork versions; that is not
 a proposal to reserve those numbers upstream. Matching music exports require the
 fork engine. The optional assembly features default off; ROM/RAM/CPU costs should
@@ -93,10 +98,21 @@ Separate cartridge demonstrations execute in an independent emulator. Tests
 distinguish frame-level editor behavior from cycle-timed CPU hardware behavior;
 there is no claim of physical-console or universal-player validation.
 
-Revision 8 passes 22 file-save checks, 597 noise-follow checks (96 real NSF CPU
-executions), all seven UI languages at 100% and Chinese at 150%. The four
-assemblers agree across 64 noise configurations, and 60 NES/FDS templates pass
-31,956 layout checks. Logs and screenshots can accompany the corresponding PR.
+Revision 9 passes 2,896 checks across eight repeated backend suites and 1,836
+new migration checks, including 36 scenarios and 72 actual NSF executions at
+PAL/NTSC and 1x/2x/4x. A separate private four-song migration comparison matches
+53,314,344 editor PCM samples and 258,397 ordered APU/S5B writes over 36,328 NSF
+music ticks. That evidence does not claim identical CPU write timestamps or NSF
+PCM. The final Windows EXE also matches four 12-second excerpts from the previous
+release and preserves the original example's PCM at all three output rates.
+All seven UI languages at 100% and Chinese at 150% pass in an isolated portable
+runtime: eight runs and 1,869 PASS records. Non-portable GUI tests are refused
+before application initialization to avoid writing the user's normal settings.
+Windows self-contained publication and Linux/macOS managed builds succeed with
+zero errors; all eight native DLLs match R8. R9 changes neither the engine nor
+native DSP. Its retained R8 baseline comprises 64 four-assembler configurations
+and 31,956 layout checks over 60 NES/FDS templates; these were not rerun as R9
+tests. Logs and screenshots can accompany each corresponding PR.
 The Windows account could not create symbolic links, so Unix/link semantics still
 need target-platform runtime verification. Earlier revision reports remain
 identified by their revision, not reused as current proof.
@@ -125,15 +141,18 @@ bringing the remaining features forward.
 
 建议拆分顺序
 ------------
-1. 保存与导入。显式“另存为”入口；完成临时文件后再替换目标；保存失败不
+1. 保存与导入。显式“另存为”文字入口，不增加重复磁盘图标；完成临时文件
+   后再替换目标；保存失败不
    继续关闭或切换工程。NSF/NSFe 多选子曲导入可再独立成一个 PR，涵盖各曲
    时长、资源身份、取消和失败时不留下部分导入结果。
 2. 调音与曲线。项目→歌曲→样式继承的标准音和十二音级偏移，以及独立的
    工程级芯片整数曲线。播放/预览/出口共享量化；引擎通过可选表指针支持，
    不把每帧音高烘焙成事件。硬件表示边界和曲线基准的存储方式可先讨论。
-3. 乐器表达能力。噪声周期、硬件包络控制和重启宏；默认关闭的 C4 相对跟随
-   模式；软件包络衰减；完整七位 DPCM 初值；APU 起音相位、低字节饱和及
-   硬件扫频。这些可以逐个提交，旧工程默认播放保持不变。
+3. 乐器表达能力。新噪波音高使用琴键和原生乐器琶音，硬件音量/重启统一为
+   有文字名称的入口，少用的硬件参数默认同页折叠。旧周期数据继续兼容，
+   只在用户主动转换且能无损表示时迁移，否则说明原因并保留原样。R9 移除
+   独立周期编辑器/跟随开关，不改引擎或原生 DSP。软件包络衰减、完整七位
+   DPCM 初值、APU 起音相位、低字节饱和及硬件扫频也可以逐项提交。
 4. 曲式。样式播放延迟和同声部循环变奏，表达首次与重复演奏的真实差别。
    引擎仍导出普通音符/效果流，独立审查跨界事件归属、循环、旧出口与界面。
 5. 独立时钟。输出 1×/2×/4×，已有歌曲和包络保留作者时基及真实速度；
@@ -150,7 +169,8 @@ bringing the remaining features forward.
 可以共享；首次合入仍需审查原生 ABI、文件格式及引擎容量。移动端共享控件
 已准备，但桌面触摸事件测试不能代表 Android 真机验证。
 
-分支私用格式为 1007，设置及剪贴板命名独立，支持读取旧官方/分支工程。
+分支私用格式为 1007，R8 与 R9 不变；设置及剪贴板命名独立，支持读取旧
+官方/分支工程。
 这些版本号不是给上游预留的建议。新导出需要匹配的引擎；各可选功能默认
 关闭，需分别审查 ROM、RAM、CPU 及组合配置。已提供四种汇编器和多扩展
 CA65 版本。原生层包含模拟器实例/立体声接口及输出率接口，每个平台必须
@@ -162,9 +182,18 @@ CA65 版本。原生层包含模拟器实例/立体声接口及输出率接口�
 Linux/macOS 托管编译与目标平台原生验证严格分开。尚未测试物理 FC/NES，
 也不宣称编辑器帧头写入与所有游戏 CPU 周期调度产生逐采样相同的声音。
 
-R8 已通过 22 项保存、597 项噪声跟随（含 96 份 NSF 真实 CPU 执行）、七语言
-100% 和中文 150% 界面检查，64 种配置四汇编器一致，60 个模板通过 31,956
-项布局检查，可随相关 PR 提供日志与截图。本机无创建符号链接权限，Unix/
+R9 重跑八套后台回归共 2,896 项，并通过 1,836 项新增迁移检查，含 36 种
+场景及 PAL/NTSC、1×/2×/4× 下 72 份实际 NSF CPU 执行。独立私有四曲迁移
+中 53,314,344 个编辑器 PCM 采样完全相同，36,328 个 NSF 音乐 tick 中
+258,397 次有序 APU/S5B 写入完全相同；不宣称 CPU 写入时刻或 NSF PCM
+相同。最终 Windows EXE 的四曲各 12 秒片段与上一版本相同，原创示例在
+三个输出倍率也保持 PCM 相同。七语言 100% 与中文 150% 的八次界面运行
+全部通过，共 1,869 条 PASS 记录。测试使用独立便携配置，非便携模式在
+应用初始化前即拒绝运行，避免写入日常使用的配置。
+Windows 自包含发布、Linux/macOS 托管编译均零错误，八个原生 DLL 与 R8
+相同。R9 不改引擎及原生 DSP，沿用 R8 的 64 种配置四汇编器一致、60 个
+模板的 31,956 项布局检查，不将它们算成本轮重跑。可随相关 PR 提供日志
+与截图。本机无创建符号链接权限，Unix/
 链接仍需目标平台运行验证；历史报告保留明确版本。新提取的商业游戏 ROM、
 样本、乐器、曲谱及派生工程均不
 进入公开源码或测试夹具，上游已存在的示例及其许可说明保留原样。

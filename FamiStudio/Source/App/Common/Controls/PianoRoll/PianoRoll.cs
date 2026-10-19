@@ -822,6 +822,10 @@ namespace FamiStudio
 
         public void StartEditInstrument(Instrument instrument, int envelope)
         {
+            // Older workspace views may still point at the retired absolute
+            // noise-period editor. New edits use the normal arpeggio envelope.
+            if (envelope == EnvelopeType.NoisePeriod)
+                envelope = EnvelopeType.Arpeggio;
             SaveChannelScroll();
 
             editMode = EditionMode.Envelope;
@@ -7360,16 +7364,6 @@ namespace FamiStudio
             });
         }
 
-        private void ToggleNoisePeriodFollowsNote()
-        {
-            var instrument = editInstrument;
-            App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, instrument.Id);
-            instrument.NoisePeriodFollowsNote = !instrument.NoisePeriodFollowsNote;
-            App.UndoRedoManager.EndTransaction();
-            EnvelopeChanged?.Invoke(instrument, EnvelopeType.NoisePeriod);
-            MarkDirty();
-        }
-
         private void UseSoftwareNoiseVolume()
         {
             var instrument = editInstrument;
@@ -7396,20 +7390,19 @@ namespace FamiStudio
                     menu.Add(new ContextMenuOption("MenuProperties", TuningStrings.EnvelopeClockLabel, EditEnvelopeClockProperties, ContextMenuSeparator.After));
 
                 if (editMode == EditionMode.Envelope && editInstrument.IsRegular &&
-                    (EnvelopeType.IsHardwareNoise(editEnvelope) || App.SelectedChannel.Type == ChannelType.Noise))
+                    (EnvelopeType.IsHardwareNoise(editEnvelope) || App.SelectedChannel.Type == ChannelType.Noise || editInstrument.NoisePeriodEnvelope.Length > 0))
                 {
                     // Reach every controlling macro from the existing desktop / touch menu.
-                    foreach (var type in new[] { EnvelopeType.NoisePeriod, EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
+                    foreach (var type in new[] { EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
                     {
                         if (type != editEnvelope)
                         {
                             var target = type;
-                            menu.Add(new ContextMenuOption(EnvelopeType.Icons[type], EnvelopeType.LocalizedNames[type], () => App.StartEditInstrument(editInstrument, target)));
+                            menu.Add(new ContextMenuOption(null, EnvelopeType.LocalizedNames[type], () => App.StartEditInstrument(editInstrument, target)));
                         }
                     }
                     if (editInstrument.NoisePeriodEnvelope.Length > 0)
-                        menu.Add(new ContextMenuOption(NoiseEditorStrings.FollowNotesLabel, NoiseEditorStrings.FollowNotesTooltip,
-                            ToggleNoisePeriodFollowsNote, () => editInstrument.NoisePeriodFollowsNote ? ContextMenuCheckState.Checked : ContextMenuCheckState.None));
+                        menu.Add(new ContextMenuOption(null, NoiseEditorStrings.ConvertLegacyPitchLabel, () => App.ProjectExplorer.ConvertLegacyNoisePitch(editInstrument)));
                     if (editInstrument.NoiseControlEnvelope.Length > 0 && (editEnvelope == EnvelopeType.Volume || editEnvelope == EnvelopeType.NoiseEnvelope))
                         menu.Add(new ContextMenuOption("EnvelopeVolume", NoiseEditorStrings.UseSoftwareVolumeLabel, NoiseEditorStrings.UseSoftwareVolumeTooltip, UseSoftwareNoiseVolume));
                 }
@@ -10187,6 +10180,8 @@ namespace FamiStudio
             if (buffer.IsReading) loopViewChannels.Clear();
             buffer.Serialize(ref editInstrument);
             buffer.Serialize(ref editEnvelope);
+            if (buffer.IsReading && editEnvelope == EnvelopeType.NoisePeriod)
+                editEnvelope = EnvelopeType.Arpeggio;
             buffer.Serialize(ref editArpeggio);
             buffer.Serialize(ref editSample);
             buffer.Serialize(ref envelopeValueZoom);

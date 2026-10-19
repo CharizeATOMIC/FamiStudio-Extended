@@ -92,17 +92,18 @@ static class InstrumentArticulationRegression
         Set(instrument,0);Localization.LocalizeStatic(typeof(InstrumentParamProvider));
         typeof(ProjectExplorer).GetField("expandedInstrument",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(explorer,null);
         Invoke(explorer,"ToggleExpandInstrument",instrument);
+        InstrumentLayoutUiRegression.ExpandHardware(explorer,instrument);
         foreach(string key in new[]{"ResetPhaseOnAttackLabel","PitchClampToTimerByteLabel"})
         {
             string label=Label(key);var check=Checkbox(explorer,label);int flag=key.StartsWith("Reset")?1:2;
             Click(check);Check(Matches(instrument,flag),language+" actual checkbox edits "+key);
             app.UndoRedoManager.Undo();Check(Matches(instrument,0),language+" checkbox undo restores defaults");
             app.UndoRedoManager.Redo();Check(Matches(instrument,flag),language+" checkbox redo restores setting");
-            explorer.RefreshButtons();check=Checkbox(explorer,label);
+            explorer.RefreshButtons();InstrumentLayoutUiRegression.ExpandHardware(explorer,instrument);check=Checkbox(explorer,label);
             typeof(ParamControl).GetMethod("ResetParamDefaultValue",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(check,null);
             Check(Matches(instrument,0),language+" reset-to-default clears setting");
             app.UndoRedoManager.Undo();Check(Matches(instrument,flag),language+" reset-to-default is undoable");
-            app.UndoRedoManager.Redo();explorer.RefreshButtons();
+            app.UndoRedoManager.Redo();explorer.RefreshButtons();InstrumentLayoutUiRegression.ExpandHardware(explorer,instrument);
         }
         Click(Checkbox(explorer,Label("ResetPhaseOnAttackLabel")));Click(Checkbox(explorer,Label("PitchClampToTimerByteLabel")));
         Check(Matches(instrument,3),language+" both settings can be enabled independently");

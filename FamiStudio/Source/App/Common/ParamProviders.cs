@@ -15,6 +15,9 @@ namespace FamiStudio
         public int CustomHeight;
         public bool IsList;
         public bool IsEmpty;
+        public bool Advanced;
+        public bool RefreshLayoutOnChange;
+        public EnabledDelegate IsVisible = () => true;
         public bool Logarithmic;
         public string TabName;
         public object CustomUserData1;
@@ -225,12 +228,7 @@ namespace FamiStudio
 
             if (instrument.IsRegular)
             {
-                paramInfos.Add(new InstrumentParamInfo(instrument, NoiseEditorStrings.FollowNotesLabel, 0, 1, 0, NoiseEditorStrings.FollowNotesTooltip)
-                {
-                    GetValue = () => instrument.NoisePeriodFollowsNote ? 1 : 0,
-                    SetValue = v => instrument.NoisePeriodFollowsNote = v != 0,
-                    IsEnabled = () => instrument.NoisePeriodEnvelope.Length > 0
-                });
+                var advancedStart = paramInfos.Count;
                 paramInfos.Add(new InstrumentParamInfo(instrument, ResetPhaseOnAttackLabel, 0, 1, 0, ResetPhaseOnAttackTooltip)
                 {
                     GetValue = () => instrument.ResetPhaseOnAttack ? 1 : 0,
@@ -243,28 +241,34 @@ namespace FamiStudio
                 });
                 paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepEnabledLabel, 0, 1, 0, PulseSweepTooltip)
                 {
+                    RefreshLayoutOnChange = true,
                     GetValue = () => (instrument.PulseSweepRegister & 0x80) != 0 ? 1 : 0,
                     SetValue = v => instrument.PulseSweepRegister = v == 0 ? (byte)0x08 :
                         (byte)(instrument.PulseSweepRegister == 0x08 ? 0x86 : instrument.PulseSweepRegister | 0x80)
                 });
                 paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepPeriodLabel, 1, 8, 1, PulseSweepTooltip)
                 {
+                    IsVisible = () => (instrument.PulseSweepRegister & 0x80) != 0,
                     GetValue = () => ((instrument.PulseSweepRegister >> 4) & 7) + 1,
                     SetValue = v => instrument.PulseSweepRegister = (byte)((instrument.PulseSweepRegister & 0x8f) | ((v - 1) << 4)),
                     IsEnabled = () => (instrument.PulseSweepRegister & 0x80) != 0
                 });
                 paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepUpLabel, 0, 1, 0, PulseSweepTooltip)
                 {
+                    IsVisible = () => (instrument.PulseSweepRegister & 0x80) != 0,
                     GetValue = () => (instrument.PulseSweepRegister >> 3) & 1,
                     SetValue = v => instrument.PulseSweepRegister = (byte)((instrument.PulseSweepRegister & 0xf7) | (v << 3)),
                     IsEnabled = () => (instrument.PulseSweepRegister & 0x80) != 0
                 });
                 paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepShiftLabel, 1, 7, 6, PulseSweepTooltip)
                 {
+                    IsVisible = () => (instrument.PulseSweepRegister & 0x80) != 0,
                     GetValue = () => Math.Max(1, instrument.PulseSweepRegister & 7),
                     SetValue = v => instrument.PulseSweepRegister = (byte)((instrument.PulseSweepRegister & 0xf8) | v),
                     IsEnabled = () => (instrument.PulseSweepRegister & 0x80) != 0
                 });
+                for (int i = advancedStart; i < paramInfos.Count; i++)
+                    paramInfos[i].Advanced = true;
             }
 
             // TODO : All the bit manipulation should be inside properties on the instruments Really dumb to have all of this here.

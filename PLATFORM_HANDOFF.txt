@@ -1,9 +1,58 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 8)
+FamiStudio Tuning: platform and upstream integration notes (revision 9)
 
-Current revision 8 handoff
+Current revision 9 handoff
 -------------------------
-This section describes the current integration. Numbered older sections below
-are historical design/verification records, not current release pass claims.
+R9 keeps format 1007, all existing engine stream formats and the native DSP/ABI.
+It changes the shared editor workflow and adds an explicit migration operation.
+Do not rebuild or alter the engine merely to implement the UI simplification.
+The original four regular-instrument envelope icons return. Instruments using
+hardware noise have one EnvelopeNoise entry whose menu names hardware volume and
+restart. Hardware options fold into one inline row with an enabled count. Hidden
+controls retain their data and sound. Disabled sweep hides its three subcontrols.
+Save As remains a visible text action without a second disk icon.
+
+New noise pitch uses keyboard notes and the existing instrument arpeggio. The
+separate NoisePeriod editor and NoisePeriodFollowsNote switch are no longer UI
+controls. Their serialized fields and compatibility player/export paths remain:
+opening an older project must never clear them, reinterpret them as arpeggios or
+silently retune the song. A visible legacy hint identifies that source of sound.
+
+The explicit Convert legacy noise pitch to arpeggio action must validate before
+mutating, participate in undo, and leave the project unchanged on refusal. Guards
+cover other-channel sharing, nonzero instrument arpeggios, independent note
+arpeggios, incompatible fixed-period notes/slides, no-attack continuity and
+unsupported macro data. No generic automatic migration is claimed. The new UI
+reuses native controls, with labels and reason messages in all seven languages.
+ASCII semicolons in older NoiseEditorStrings values were replaced with sentence
+punctuation because IniFile treats them as comments and truncated the help text.
+
+R9 passes 4,732 backend checks: 2,896 across eight repeated suites (default 1,506,
+articulation playback 124, envelope clocks 134, instrument articulation 76, noise
+envelopes 141, noise following 597, saving 22 and update rates 296), plus 1,836
+migration checks covering 36 scenarios and 72 actual NSF executions in PAL/NTSC
+at 1x/2x/4x. All seven UI languages at 100% plus Chinese at 150% pass in an isolated
+portable runtime: eight runs, 1,869 PASS records, including narrow-label geometry
+and legacy-conversion access. Non-portable GUI tests are refused before application
+initialization. A private four-song migration compares 53,314,344 editor PCM samples
+exactly and 258,397 ordered APU/S5B writes over 36,328 NSF music ticks. Write-cycle
+timestamps and NSF PCM are not claimed identical.
+
+The final self-contained Windows EXE matches four 12-second excerpts from the
+previous release (529,200 PCM samples each) and produces identical 176,400-sample
+PCM for the original clock example at 1x/2x/4x. Windows publication and independent
+Linux/macOS managed compilation succeed with zero errors. The latter are Windows
+hosted compile checks, not target-OS native execution. All eight published native
+DLL hashes match both the repository and R8. Engine/native code is unchanged, so
+R8 assembler, layout and cartridge reports below are retained evidence, not new
+R9 test counts.
+Commercial-game migration inputs/outputs stay outside public application, source
+and synthetic test packages. Repository publication and upstream contact remain
+preparation work. Platform/device limits below continue to apply.
+
+Revision 8 retained architecture and verification record
+-------------------------------------------------------
+This section records the preceding revision. Its three-icon noise layout and
+follow-note UI are superseded by R9; its compatibility data and save safety remain.
 Revision 8 save/noise CPU regressions and seven-language UI runs passed, as
 itemized below. RELEASE_NOTES.txt contains the bilingual user
 overview; UPSTREAM_PROPOSAL.txt is an unsent bilingual discussion draft.
@@ -17,9 +66,9 @@ sources together; old engines cannot consume following-mode data correctly.
 No additional opcode or native ABI is introduced by this property. Shared model,
 text/binary, undo/clipboard and localized instrument controls use the same flag.
 
-The instrument menu now exposes noise period, hardware-envelope control and
+The revision 8 instrument menu exposed noise period, hardware-envelope control and
 restart macros. Its software-volume label/help explains the hardware-control
-override; period help distinguishes fixed and note-following behavior. Shared
+override; period help distinguished fixed and note-following behavior. Shared
 mobile paths are included but remain subject to device/toolchain validation.
 
 Toolbar Save As is visible beside Save on desktop and in the expanded mobile
@@ -243,13 +292,19 @@ and execute all-expansion NSF pitch changes in PAL and NTSC. The import suite
 checks ordering, durations, duplicate titles, different/identical resources, DPCM
 mapping references, persisted projects, N163 channel counts and cancellation.
 
-UI: run --ui with each of eng, zho, deu, spa, por, rus and kor. The Chinese run
+UI: use Tests/RunUiSmoke.ps1 after building the harness. It copies runtime files
+into a new portable directory, avoiding the installed/user configuration. Tests
+write settings, so direct non-portable --ui execution is refused. The default
+matrix is eng, zho, deu, spa, por, rus and kor at 100%, plus zho at 150%. Logs,
+screenshots and ui-results.json stay in the chosen output directory. The Chinese run
 includes graph dragging, black/white key selection, note-range boundaries,
 integer input beyond the default +/-50 drag band, hardware bounds, full-keyboard
 zoom/scroll, child/parent cancellation and NSF multi
-selection. Append a sample project path and 150 for the scaling check.
+selection. The default fixture contains only original synthetic data. Use
+-InputProject for a different fixture and -DotnetPath for a non-default SDK host.
 Example:
-  dotnet run --project Tests/TuningRegression -c Release -- --ui zho work/ui sample.fms 150
+  dotnet build Tests/TuningRegression/TuningRegression.csproj -c Release
+  powershell -File Tests/RunUiSmoke.ps1 -OutputDirectory work/ui
 
 Ten original register fixtures and 32 four-assembler comparisons passed in earlier
 revisions. The unchanged engine/native code retains that earlier evidence; it

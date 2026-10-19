@@ -59,6 +59,7 @@ static class GimmickFinalUiInspection
 
         var pulse=project.Instruments.First(i=>i.IsRegular&&i.ResetPhaseOnAttack&&i.PitchClampToTimerByte);
         app.StartEditInstrument(pulse,EnvelopeType.Pitch);ShowInstrument(pulse);
+        InstrumentLayoutUiRegression.ExpandHardware(window.ProjectExplorer,pulse);
         Check(pulse.ResetPhaseOnAttack&&pulse.PitchClampToTimerByte,"real pulse instrument exposes both active articulation parameters");
         capture(window,Path.Combine(output,"zho-gimmick-final-pulse.ppm"));
         }

@@ -24,6 +24,8 @@ static class UiSmoke
     }
     public static void Run(string[] args)
     {
+        if (!Platform.IsPortableMode)
+            throw new InvalidOperationException("UI regression tests require an isolated portable copy. Run Tests/RunUiSmoke.ps1; do not run them against your user settings or add portable.txt to a shared installation.");
         Init.InitializeBaseSystems(false);
         Settings.CheckUpdates = false; Settings.ShowTutorial = false; Settings.OpenLastProjectOnStart = false;
         if (args.Length > 4) Settings.DpiScaling = int.Parse(args[4]);

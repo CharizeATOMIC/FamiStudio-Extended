@@ -1,4 +1,4 @@
-FamiStudio Tuning — Revision 8 / 修订版 8
+FamiStudio Tuning — Revision 9 / 修订版 9
 Based on FamiStudio 4.5.3 / 基于 FamiStudio 4.5.3
 Project format / 工程格式: 1007
 
@@ -8,20 +8,27 @@ Project format / 工程格式: 1007
 这是独立开发分支，不是 FamiStudio 官方发行版。保留上游版权和许可证。
 GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚未发布或发送。
 
-本次修复
+本次改进
 --------
-1. 工具栏在“保存”旁增加可见的“另存为”按钮。原 Ctrl+Shift+S、保存按钮
-   右键菜单继续可用；移动端展开工具栏也保留入口。沿用七种语言原生标签。
-2. 保存先在目标目录写入完整临时文件并刷新，再原子替换目标文件。取消或
-   写入失败不改变当前路径、未保存状态和原文件；保存失败不再继续执行
-   原先等待保存的关闭、新建或打开操作。另存为成功后，后续保存写入新路径。
-3. 噪声乐器的正常包络菜单补齐噪声周期、硬件包络控制、硬件包络重启三个
-   现有宏入口，并明确区分软件音量和硬件包络。启用硬件控制时，它覆盖软件
-   音量；固定噪声周期宏启用时，它覆盖琴键的音高选择。
-4. 新增可选“噪声周期跟随音符”。以 C4 为基准，在 16 个硬件周期索引间循环
-   移调；C4 保持宏中原值。默认关闭，旧工程继续使用固定周期。它不意味着
-   噪声获得十二平均律音高。导出使用现有噪声宏功能，跟随值加 16 标记，
-   必须搭配本分支更新后的声音引擎。
+1. 普通乐器恢复四个原生包络图标，不再给每个音色增加三枚噪波图标。使用
+   硬件噪波的乐器只显示一个“噪波设置”入口，菜单以文字区分硬件音量和
+   包络重启，不再用相同喇叭图标表示不同操作。
+2. 较少使用的硬件参数默认收起为同页一行，并提示已启用项数。收起不改
+   声音。关闭扫频时不再显示三个灰色从属参数。“另存为”保留可见文字
+   入口，去掉第二个磁盘图标；Ctrl+Shift+S 和保存右键菜单继续可用。
+3. 新噪波音高统一用琴键和原生乐器琶音编辑，不再提供独立噪波周期编辑器
+   或跟随开关。硬件音量和重启仍可编辑，并说明它们何时覆盖软件音量。
+4. 旧工程不会被自动改声或静默迁移。旧周期数据继续兼容读取、播放和导出，
+   编辑器显示来源提示。通过“将旧噪波音高转为琶音”明确发起迁移，成功后
+   用普通琶音编辑，可撤销恢复。共享于其他通道、已有非零乐器琶音、独立
+   琶音、固定周期含非 C4 音符/滑音、无攻击衔接或无法表示的数据都会说明
+   原因并保留原样，不强行套用转换。
+5. 七语言补齐上述界面及迁移提示，并修复旧噪波帮助文字被 INI 英文分号
+   截断的问题。R9 仍使用格式 1007，不改声音引擎格式、原生 DSP 或 ABI。
+
+R8 的原子保存修复继续保留：完整写入并刷新临时文件后再替换目标，取消/
+失败不改当前路径、脏状态或原文件，也不会继续关闭/切换工程。另存为成功
+后，普通保存写入新路径。长文件名、只读目标及平台权限边界见移植说明。
 
 本分支累计新增功能
 ------------------
@@ -34,8 +41,9 @@ GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚�
   可实时设置各声部立体声及声像，适用于监听、预览和音频导出。
 • NSF/NSFe 导入可多选子曲并分别设置捕获时长，批量合并到一个工程，支持
   取消和资源去重。这仍是寄存器捕获导入，不是通用原游戏乐器反编译器。
-• APU 噪声周期/硬件包络/重启宏，软件包络衰减效果，样式播放延迟和循环
-  变奏，使完整的乐器程序及首次/重复演奏区别可编辑、可导出。
+• 原生噪波琶音、硬件音量/重启宏，软件包络衰减效果，样式播放延迟和循环
+  变奏，使完整的乐器程序及首次/重复演奏区别可编辑、可导出。旧周期宏
+  作为兼容数据保留，安全时可显式迁移为原生琶音。
 • 可选 APU 方波起音相位重置、方波/三角波音高宏低字节饱和，以及真实
   方波硬件扫频。DPCM 每键映射可保存完整 0–127 初始 DAC，包括奇数。
 • 项目输出更新率可选 1×/2×/4×，同制式约为 NTSC 60/120/240 Hz、
@@ -49,9 +57,10 @@ GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚�
 
 兼容与使用边界
 --------------
-• 可读取上游格式至 19 以及本分支 1001–1006。R8 保存为 1007；官方版及
-  更早的分支不能读取新格式。旧 1006 的 Brotli 和 Deflate 两种文件均保留
-  读取能力。请用另存为保留原工程。独立设置目录为 FamiStudio-Tuning。
+• 可读取上游格式至 19 以及本分支 1001–1007。R9 与 R8 同为格式 1007，
+  R8 可以读取这种格式，但没有 R9 的编辑流程；官方版及 R1–R7 无法读取。
+  旧 1006 的 Brotli 和 Deflate 均可读取。请用另存为保留原工程。独立设置
+  目录为 FamiStudio-Tuning。
 • 自定义调音、芯片曲线和新增演奏语义用于 FamiStudio 声音引擎/NSF/NSFe
   时，需要匹配本分支引擎及出口头部列出的编译选项。独立引擎的新增选项
   默认关闭；未开启功能的旧游戏无需承担这些可选状态和处理分支。
@@ -70,13 +79,24 @@ GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚�
 
 验证及平台状态
 --------------
-R8 已通过 22 项文件保存检查、597 项噪声跟随检查（含 96 份 NSF 真实 CPU
-执行）、七语言 100% 界面及中文 150% 界面检查。界面测试包括窄工具栏、
-取消/失败不切工程、脏状态和另存为后的再次保存。64 种噪声配置四汇编器
-字节一致，其中关闭噪声功能的 32 种保持 R7 字节；60 个 NES/FDS 模板通过
-31,956 项布局检查。原创定时器卡带每个 1×/2×/4× 配置通过八圈 CPU 和
-独立 FCEUmm 的 660 视频帧检查。历史版本数量不计入这些 R8 结果。
-Windows 自包含发布及 Linux/macOS 托管编译成功。Windows 账户不能创建
+R9 已通过 4,732 项后台检查：重跑八套回归共 2,896 项（基础 1,506、
+发声播放 124、包络时钟 134、乐器发声属性 76、噪声包络 141、噪声跟随
+597、保存 22、更新率 296），新增迁移检查 1,836 项，含 36 种场景、
+PAL/NTSC 及 1×/2×/4× 下 72 份实际 NSF CPU 执行。七语言 100% 与中文
+150% 的八次界面运行全部通过，共 1,869 条 PASS 记录，覆盖窄标签布局和
+旧噪波迁移入口。最终界面测试使用独立便携目录，非便携模式在应用初始化
+之前拒绝执行，避免测试写入日常使用的配置。
+独立的私有四曲迁移验证中，完整混音与单独噪声共 53,314,344 个编辑器
+PCM 采样完全相同。实际 NSF CPU 执行的 36,328 个音乐 tick 中，258,397
+次有序 APU/S5B 地址/数值写入完全相同；不宣称 CPU 写入时刻或 NSF PCM
+相同。最终自包含 EXE 另验证四曲各 12 秒、各 529,200 个采样与上一版本
+完全相同，原创示例 1×/2×/4× 各 176,400 个采样也完全相同。
+R9 Windows 自包含发布及 Linux/macOS 托管编译均为零错误，发布的八个
+原生 DLL 与源码目录、R8 发布版的 SHA256 一致。R9 未修改引擎及原生 DSP，
+因此沿用而不重算 R8 的引擎证据：64 种配置四汇编器字节一致，60 个
+NES/FDS 模板通过 31,956 项布局检查，原创定时器卡带每档通过八圈 CPU
+和独立 FCEUmm 的 660 视频帧检查。这些不是本轮重跑的检查数量。
+Windows 账户不能创建
 符号链接，该检查明确跳过；Unix 权限/链接、原生播放、设备和签名/打包仍
 需在目标平台验证，不能以托管编译代替运行证据。Android
 尚缺本机匹配的 .NET 9 Android 工具链和设备验证。未在物理 FC/NES 上验证。
@@ -91,22 +111,32 @@ This is an independent development fork, not an official FamiStudio release.
 Upstream copyright and license notices are retained. Repository publication and
 the upstream proposal remain preparation work; neither has been posted or sent.
 
-Revision 8 changes
+Revision 9 changes
 ------------------
-• A visible localized Save As button sits beside Save. Ctrl+Shift+S and the Save
-  context menu remain available; the expanded mobile toolbar has an entry too.
-• Saves finish and flush a sibling temporary file before an atomic replacement.
-  Cancellation or failure preserves the current path, dirty state and original
-  file. A failed save cannot continue a pending close/new/open operation.
-  Successful Save As makes the new file the destination of subsequent saves.
-• The regular instrument menu exposes all three existing noise macros: period,
-  hardware-envelope control and restart. Labels/help distinguish software volume
-  from overriding hardware control, and keyboard pitch from a fixed-period macro.
-• Optional Noise period follows note transposes a period macro relative to C4,
-  wrapping over the APU's 16 period indices. C4 preserves the stored values.
-  The default is off, preserving old fixed-period instruments. This does not make
-  noise equal-tempered. Export tags following period values with +16 under the
-  existing noise-envelope option and requires the matching updated engine.
+• Regular instruments regain their four native envelope icons. Hardware-noise
+  instruments have one Noise settings entry with named hardware-volume and
+  restart actions, instead of repeated speaker icons across the main row.
+• Less-used hardware options start folded into one inline row with an enabled
+  count. Folding never changes sound. Disabled sweep hides its three subordinate
+  controls. Save As stays visibly labeled but loses the second disk icon. Its
+  shortcut and the Save context menu remain available.
+• New noise pitch uses keys and the native instrument arpeggio. The separate
+  noise-period editor and follow-note switch are removed from the UI. Hardware
+  volume/restart controls and their software-volume override help remain.
+• Old projects are never silently migrated or retuned. Legacy period data remains
+  readable, playable and exportable, with a visible compatibility hint. An explicit
+  Convert legacy noise pitch to arpeggio action checks whether the conversion is
+  lossless. Shared channels, existing nonzero arpeggios, independent arpeggios,
+  incompatible fixed-period notes/slides, no-attack continuity and unsupported
+  data report a reason and remain intact. Successful migration is undoable.
+• Seven-language help and migration messages are included. Existing noise hints
+  no longer truncate at an INI semicolon. Format remains 1007, with no revision 9
+  engine-stream, native DSP or ABI change.
+
+Revision 8's atomic save protection remains: cancelled/failed writes preserve
+the path, dirty state and original file and block pending close/open operations.
+Successful Save As becomes the target of subsequent saves. Platform metadata and
+link validation boundaries remain documented in PLATFORM_HANDOFF.txt.
 
 Cumulative fork features
 ------------------------
@@ -120,7 +150,8 @@ Cumulative fork features
   channels), and per-song channel stereo/pan for preview, playback and audio.
 • Multi-subsong NSF/NSFe capture into one project, individual durations, safe
   resource merging and cancellation. This is not a general source-engine decoder.
-• Hardware noise macros, software envelope decay, delayed patterns and loop
+• Native noise arpeggios, hardware volume/restart macros, compatible legacy period
+  data, software envelope decay, delayed patterns and loop
   variants; optional APU attack phase reset, pitch-envelope low-byte saturation
   and hardware pulse sweep; full 0–127 initial DAC in each DPCM key mapping.
 • Independent 1x/2x/4x output, song and envelope clocks. Changing output rate keeps
@@ -132,9 +163,11 @@ Cumulative fork features
 
 Compatibility
 -------------
-R8 writes format 1007 and reads official formats through 19 plus fork 1001–1006,
-including both 1006 compression variants. Earlier applications cannot read 1007.
-Use Save As to retain originals. Settings use the separate FamiStudio-Tuning path.
+R9 retains R8's format 1007 and reads official formats through 19 plus fork
+1001–1007, including both 1006 compression variants. R8 shares the file format,
+but not the new editor workflow. The official application and fork revisions
+through 7 cannot read 1007. Use Save As to retain originals. Settings use the
+separate FamiStudio-Tuning path.
 
 Hardware exports require matching engine sources and the options emitted in the
 export header. New standalone engine options default off. Additional chip copies
@@ -152,14 +185,26 @@ features they cannot preserve instead of silently dropping them.
 
 Verification and distribution
 -----------------------------
-R8 passes 22 file-save checks, 597 noise-follow checks including 96 real NSF CPU
-executions, all seven UI languages at 100% and Chinese at 150%. UI checks include
-narrow toolbars, cancellation/failure continuations, dirty state and subsequent
-Save. All four assemblers match over 64 noise configurations; 32 noise-disabled
-configurations retain R7 bytes. All 60 NES/FDS templates pass 31,956 layout checks.
-An original timer cartridge also passes eight CPU loops and 660 independent
-FCEUmm video frames per 1x/2x/4x configuration. Historical counts are separate.
-Windows self-contained publication and Linux/macOS managed builds succeed.
+R9 passes 4,732 backend checks: eight repeated suites total 2,896 (default 1,506,
+articulation playback 124, envelope clocks 134, instrument articulation 76, noise
+envelopes 141, noise following 597, saving 22 and update rates 296). The 1,836 new
+migration checks cover 36 scenarios and 72 actual NSF executions at PAL/NTSC and
+1x/2x/4x. All seven UI languages at 100% and Chinese at 150% pass: eight runs and
+1,869 PASS records, including narrow-label geometry and legacy-conversion access.
+The final GUI runs use an isolated portable directory. Non-portable test execution
+is refused before application initialization to protect everyday settings.
+A private four-song migration comparison matches 53,314,344 editor PCM samples
+across the full mix and isolated noise. Actual NSF CPU execution matches 258,397
+ordered APU/S5B address/value writes over 36,328 music ticks. CPU write timestamps
+and NSF PCM are not claimed identical. The final self-contained EXE also matches
+the preceding release for four 12-second excerpts of 529,200 samples each, while
+an original clock example matches all 176,400 samples at each of 1x/2x/4x.
+R9 Windows self-contained publication and Linux/macOS managed builds succeed with
+zero errors. All eight native DLLs match the source directory and R8 by SHA256.
+The engine and native DSP are unchanged, so R8 engine evidence is retained rather
+than counted as rerun R9 tests: 64 four-assembler configurations, 31,956 layout
+checks over 60 NES/FDS templates, and eight CPU loops plus 660 independent FCEUmm
+video frames per original timer-cartridge rate.
 The Windows account cannot create symbolic links, so that test is explicitly
 skipped. Unix permissions/links, target-OS audio and packaging still need runtime
 validation. Rebuild the native ABI on each target OS. Android

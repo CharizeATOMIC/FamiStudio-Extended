@@ -220,12 +220,15 @@ namespace FamiStudio
 
             // A visible, named action complements the existing shortcut and
             // save-button context menu. Reuse the seven translated menu labels.
-            buttonSaveAs = CreateToolbarButton(Platform.IsDesktop ? "SaveSmall" : "Save", "SaveAs");
+            buttonSaveAs = CreateToolbarButton(null, "SaveAs");
             buttonSaveAs.Text = SaveAsLabel;
             buttonSaveAs.Font = fonts.FontSmall;
             buttonSaveAs.Ellipsis = true;
-            buttonSaveAs.BottomText = Platform.IsMobile;
-            if (Platform.IsDesktop) buttonSaveAs.AutosizeWidth();
+            if (Platform.IsDesktop)
+            {
+                buttonSaveAs.AutosizeWidth();
+                buttonSaveAs.Resize(buttonSaveAs.Width + DpiScaling.ScaleForWindow(12), buttonSaveAs.Height);
+            }
             buttonSaveAs.Click += ButtonSaveAs_Click;
 
             buttonExport = CreateToolbarButton("Export", "Export");

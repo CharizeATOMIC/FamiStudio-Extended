@@ -76,3 +76,4 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --pulse-sweep-nsf work/sweep-nsf-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --save-project work/save-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-pitch-migration work/noise-pitch-migration-tests

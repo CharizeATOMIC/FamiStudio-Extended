@@ -210,10 +210,7 @@ namespace FamiStudio
             EnvelopeType.FdsWaveform,
             EnvelopeType.N163Waveform,
             EnvelopeType.S5BMixer,
-            EnvelopeType.S5BNoiseFreq,
-            EnvelopeType.NoiseEnvelopeRestart,
-            EnvelopeType.NoiseEnvelope,
-            EnvelopeType.NoisePeriod
+            EnvelopeType.S5BNoiseFreq
         };
 
         private class CaptureOperation
@@ -267,6 +264,7 @@ namespace FamiStudio
         private CaptureOperation captureOperation;
         private Instrument draggedInstrument = null;
         private Instrument expandedInstrument = null;
+        private readonly HashSet<int> expandedHardwareInstruments = new HashSet<int>();
         private Folder draggedFolder = null;
         private string selectedInstrumentTab = null;
         private DPCMSample expandedSample = null;
@@ -344,6 +342,7 @@ namespace FamiStudio
         public void Reset()
         {
             expandedInstrument = null;
+            expandedHardwareInstruments.Clear();
             expandedSample = null;
             selectedInstrumentTab = null;
             highlightedObject = null;
@@ -839,6 +838,19 @@ namespace FamiStudio
                 }
             }
 
+            // Keep the familiar common envelopes in their original order. Only
+            // instruments that actually use hardware noise need a row shortcut.
+            if (instrument.IsRegular && HasHardwareNoise(instrument))
+            {
+                x -= spacingX + props.Width;
+                var noise = CreateImageButton(panel, x, "EnvelopeNoise");
+                noise.UserData = "HardwareNoise";
+                noise.ToolTip = NoiseEditorStrings.NoiseSettingsTooltip;
+                noise.Click += _ => ShowHardwareNoiseMenu(instrument);
+                noise.MarkHandledOnClick = Platform.IsMobile;
+                lastEnv = noise;
+            }
+
             var label = CreateLabel(panel, instrument.Name, true, icon.Right + marginX, 0, Math.Max(1, lastEnv.Left - icon.Right - marginX * 2), true);
             label.Font = App.SelectedInstrument == instrument ? fonts.FontMediumBold : fonts.FontMedium;
             label.MouseDoubleClick += (s, e) => EditInstrumentProperties(instrument);
@@ -863,6 +875,69 @@ namespace FamiStudio
         {
             App.SelectedInstrument = instrument;
             App.StartEditInstrument(instrument, envelopeType);
+        }
+
+        private static bool HasHardwareNoise(Instrument instrument)
+        {
+            return instrument.IsRegular && (instrument.NoisePeriodEnvelope.Length > 0 ||
+                instrument.NoiseControlEnvelope.Length > 0 || instrument.NoiseRestartEnvelope.Length > 0);
+        }
+
+        private void EditHardwareNoiseEnvelope(Instrument instrument, int type)
+        {
+            App.SelectedInstrument = instrument;
+            expandedInstrument = instrument;
+            expandedSample = null;
+            RecreateAllControls();
+            App.StartEditInstrument(instrument, type);
+        }
+
+        private void ShowHardwareNoiseMenu(Instrument instrument)
+        {
+            var options = new List<ContextMenuOption>();
+            if (instrument.NoisePeriodEnvelope.Length > 0)
+                options.Add(new ContextMenuOption(null, NoiseEditorStrings.ConvertLegacyPitchLabel, NoiseEditorStrings.LegacyPitchHint,
+                    () => ConvertLegacyNoisePitch(instrument), ContextMenuSeparator.After));
+            foreach (int type in new[] { EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
+            {
+                int target = type;
+                int length = instrument.Envelopes[type].Length;
+                string label = length > 0 ? NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[type], length) :
+                    NoiseEditorStrings.UnusedMacroLabel.Format(EnvelopeType.LocalizedNames[type]);
+                options.Add(new ContextMenuOption(null, label, NoiseEditorStrings.GetHint(instrument, type, true), () => EditHardwareNoiseEnvelope(instrument, target)));
+            }
+            App.ShowContextMenuAsync(options.ToArray());
+        }
+
+        public void ConvertLegacyNoisePitch(Instrument instrument)
+        {
+            var failure = NoisePitchMigration.GetFailure(App.Project, instrument);
+            if (failure != NoisePitchMigrationFailure.None)
+            {
+                string hint = failure switch
+                {
+                    NoisePitchMigrationFailure.SharedWithOtherChannels => NoiseEditorStrings.MigrationSharedHint,
+                    NoisePitchMigrationFailure.NonzeroInstrumentArpeggio => NoiseEditorStrings.MigrationArpeggioHint,
+                    NoisePitchMigrationFailure.IndependentArpeggio => NoiseEditorStrings.MigrationIndependentHint,
+                    NoisePitchMigrationFailure.FixedPeriodNeedsC4 => NoiseEditorStrings.MigrationFixedHint,
+                    NoisePitchMigrationFailure.NoAttackCompatibility => NoiseEditorStrings.MigrationAttackHint,
+                    _ => NoiseEditorStrings.MigrationUnsupportedHint
+                };
+                App.DisplayNotification(hint, false, true);
+                return;
+            }
+            App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, instrument.Id);
+            bool converted = NoisePitchMigration.TryConvert(App.Project, instrument, out _);
+            App.UndoRedoManager.AbortOrEndTransaction(converted);
+            if (converted)
+            {
+                App.SelectedInstrument = instrument;
+                App.SelectedArpeggio = null;
+                expandedInstrument = instrument;
+                RecreateAllControls();
+                App.StartEditInstrument(instrument, EnvelopeType.Arpeggio);
+                App.DisplayNotification(NoiseEditorStrings.MigrationSuccessHint, false);
+            }
         }
 
         private void Instrument_PointerDown(Control sender, PointerEventArgs e, Instrument inst, int envelopeType = -1, TextureAtlasRef image = null)
@@ -919,6 +994,9 @@ namespace FamiStudio
                             menu.Add(new ContextMenuOption("MenuCopy", CopyRegisterValueContext, () => { CopyRegisterValues(inst); }, ContextMenuSeparator.Before));
                             menu.Add(new ContextMenuOption("MenuPaste", PasteRegisterValueContext, () => { PasteRegisterValues(inst); }));
                         }
+
+                        if (inst.IsRegular)
+                            menu.Add(new ContextMenuOption("EnvelopeNoise", NoiseEditorStrings.NoiseSettingsLabel, () => ShowHardwareNoiseMenu(inst)));
 
                         menu.Add(new ContextMenuOption("MenuDuplicate", DuplicateContext, () => { DuplicateInstrument(inst); }, ContextMenuSeparator.Before));
                         menu.Add(new ContextMenuOption("MenuReplace", ReplaceWithContext, () => { AskReplaceInstrument(inst); }, ContextMenuSeparator.After));
@@ -1234,12 +1312,41 @@ namespace FamiStudio
 
                 var y = 0;
                 var tabCreated = false;
+                var hardwareHeaderCreated = false;
+                var parameterInstrument = userData as Instrument;
                 var panel = CreateGradientPanel(color);
                 //var indentX = marginX + expandSizeX;
                 var indentX = expandSizeX;
 
                 foreach (var param in parameters)
                 {
+                    if (param.Advanced && parameterInstrument != null)
+                    {
+                        if (!hardwareHeaderCreated)
+                        {
+                            CreateHardwareSettingsHeader(panel, parameterInstrument, indentX, y);
+                            y += panelSizeY;
+                            if (expandedHardwareInstruments.Contains(parameterInstrument.Id))
+                            {
+                                var noiseSettings = new Button(null, NoiseEditorStrings.NoiseSettingsLabel);
+                                noiseSettings.UserData = "NoiseSettings";
+                                noiseSettings.ToolTip = NoiseEditorStrings.NoiseSettingsTooltip;
+                                noiseSettings.Transparent = true;
+                                noiseSettings.ForegroundColor = Theme.BlackColor;
+                                noiseSettings.Ellipsis = true;
+                                noiseSettings.VibrateOnClick = true;
+                                panel.AddControl(noiseSettings);
+                                noiseSettings.Move(indentX, y, panel.Width - indentX - marginX, panelSizeY);
+                                noiseSettings.Click += _ => ShowHardwareNoiseMenu(parameterInstrument);
+                                y += panelSizeY;
+                            }
+                            hardwareHeaderCreated = true;
+                        }
+                        if (!expandedHardwareInstruments.Contains(parameterInstrument.Id))
+                            continue;
+                    }
+                    if (!param.IsVisible())
+                        continue;
                     if (!tabCreated && param.HasTab)
                     {
                         CreateParamTabs(panel, indentX, y, panel.Width - indentX - marginX, panelSizeY, tabNames.ToArray(), selectedTabName);
@@ -1285,6 +1392,8 @@ namespace FamiStudio
                                     App.UndoRedoManager.EndTransaction();
                                     if (userData is Instrument instrument)
                                         RefreshInstrumentEnvelopeTooltips(instrument);
+                                    if (param.RefreshLayoutOnChange)
+                                        RecreateAllControls();
                                 };
                                 label.UserData = paramCheck;
                             }
@@ -1296,6 +1405,11 @@ namespace FamiStudio
                                 paramSlider.ValueChangeEnd   += (s) => App.UndoRedoManager.EndTransaction();
                                 label.UserData = paramSlider;
                             }
+                            // Localized names must leave the value control reachable,
+                            // especially in narrow panels and on touch displays.
+                            var valueControl = (Control)label.UserData;
+                            label.Resize(Math.Max(1, valueControl.Left - label.Left - marginX), label.Height);
+                            label.Ellipsis = true;
                         }
 
                         y += panelSizeY;
@@ -1304,6 +1418,46 @@ namespace FamiStudio
 
                 panel.Resize(panel.Width, y);
             }
+        }
+
+        private int GetActiveHardwareSettingsCount(Instrument instrument)
+        {
+            int count = (instrument.ResetPhaseOnAttack ? 1 : 0) +
+                        (instrument.PitchClampToTimerByte ? 1 : 0) +
+                        (instrument.PulseSweepRegister != 0x08 ? 1 : 0);
+            for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
+                if (instrument.Envelopes[type]?.Length > 0)
+                    count++;
+            return count;
+        }
+
+        private string GetHardwareSettingsCaption(Instrument instrument)
+        {
+            int count = GetActiveHardwareSettingsCount(instrument);
+            return count == 0 ? NoiseEditorStrings.HardwareSettingsLabel : NoiseEditorStrings.HardwareSettingsActiveLabel.Format(count);
+        }
+
+        private void CreateHardwareSettingsHeader(PanelContainer panel, Instrument instrument, int x, int y)
+        {
+            var button = new Button(expandedHardwareInstruments.Contains(instrument.Id) ? "InstrumentExpanded" : "InstrumentExpand", GetHardwareSettingsCaption(instrument));
+            button.UserData = "HardwareSettings";
+            button.TextEvent += _ => GetHardwareSettingsCaption(instrument);
+            button.ToolTip = NoiseEditorStrings.HardwareSettingsTooltip;
+            button.Transparent = true;
+            button.ForegroundColor = Theme.BlackColor;
+            button.ImageScale = iconImageScale;
+            button.Ellipsis = true;
+            button.VibrateOnClick = true;
+            panel.AddControl(button);
+            button.Move(x, y, panel.Width - x - marginX, panelSizeY);
+            button.Click += _ => ToggleInstrumentHardwareSettings(instrument);
+        }
+
+        private void ToggleInstrumentHardwareSettings(Instrument instrument)
+        {
+            if (!expandedHardwareInstruments.Remove(instrument.Id))
+                expandedHardwareInstruments.Add(instrument.Id);
+            RecreateAllControls();
         }
 
         private void ParamLabel_PointerUp(Control sender, PointerEventArgs e)
@@ -1672,6 +1826,13 @@ namespace FamiStudio
                 // Arpeggios trigger this, but with null instruments.
                 if (instrument != null)
                 {
+                    var instrumentPanel = FindInstrumentPanel(instrument);
+                    if (instrumentPanel != null && EnvelopeType.IsHardwareNoise(envType) &&
+                        ((instrumentPanel.FindControlByUserData("HardwareNoise") != null) != HasHardwareNoise(instrument)))
+                    {
+                        RecreateAllControls();
+                        return;
+                    }
                     var env = instrument.Envelopes[envType];
                     var button = FindInstrumentEnvelopeButton(instrument, envType);
                     // Waveform-repeat has no separate button; its parent waveform owns the editor.
