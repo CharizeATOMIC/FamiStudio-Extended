@@ -23,7 +23,11 @@ void Nes_Sunsoft::reset()
 {
 	reset_psg();
 	memset(&ages[0], 0, array_count(ages));
+	reg = 0;
 	last_time = 0;
+	// The PSG runs every 16 CPU cycles. Do not carry the previous song's
+	// remaining sub-step into a freshly reset chip.
+	delay = 0;
 	last_amp = 0;
 	reset_triggers();
 }

@@ -265,5 +265,10 @@ the existing distinction between instrument attack resets and explicit note
 phase resets when porting the implementation.
 
 The Windows CI job now includes both revision 4 and revision 5 regression suites.
+The shared native S5B reset now clears its 16-cycle timing remainder and selected
+register. Rebuild the native library on each platform; no ABI change is needed.
+Tests/check_s5b_reset.py uses synthetic programs and the public native ABI to
+compare repeated PCM for tone, noise and hardware envelopes in PAL/NTSC and
+mono/stereo. It is included in all three desktop CI jobs.
 Remote CI, native Linux/macOS playback, Android and physical NES testing remain
 separate validation steps; a managed build alone does not establish those results.

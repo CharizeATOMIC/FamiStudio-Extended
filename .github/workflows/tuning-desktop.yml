@@ -43,7 +43,9 @@ jobs:
           cmake --install work/native --config Release --prefix "$GITHUB_WORKSPACE/FamiStudio"
       - name: Check native audio ABI
         shell: bash
-        run: python3 Tests/check_native_mixer.py "FamiStudio/${{ matrix.native }}"
+        run: |
+          python3 Tests/check_native_mixer.py "FamiStudio/${{ matrix.native }}"
+          python3 Tests/check_s5b_reset.py "FamiStudio/${{ matrix.native }}" work/native/s5b-reset.json
       - name: Build desktop application
         shell: bash
         run: dotnet build "FamiStudio/${{ matrix.project }}" -c Release --nologo
