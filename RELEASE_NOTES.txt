@@ -1,0 +1,169 @@
+FamiStudio Tuning — Revision 8 / 修订版 8
+Based on FamiStudio 4.5.3 / 基于 FamiStudio 4.5.3
+Project format / 工程格式: 1007
+
+中文
+====
+
+这是独立开发分支，不是 FamiStudio 官方发行版。保留上游版权和许可证。
+GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚未发布或发送。
+
+本次修复
+--------
+1. 工具栏在“保存”旁增加可见的“另存为”按钮。原 Ctrl+Shift+S、保存按钮
+   右键菜单继续可用；移动端展开工具栏也保留入口。沿用七种语言原生标签。
+2. 保存先在目标目录写入完整临时文件并刷新，再原子替换目标文件。取消或
+   写入失败不改变当前路径、未保存状态和原文件；保存失败不再继续执行
+   原先等待保存的关闭、新建或打开操作。另存为成功后，后续保存写入新路径。
+3. 噪声乐器的正常包络菜单补齐噪声周期、硬件包络控制、硬件包络重启三个
+   现有宏入口，并明确区分软件音量和硬件包络。启用硬件控制时，它覆盖软件
+   音量；固定噪声周期宏启用时，它覆盖琴键的音高选择。
+4. 新增可选“噪声周期跟随音符”。以 C4 为基准，在 16 个硬件周期索引间循环
+   移调；C4 保持宏中原值。默认关闭，旧工程继续使用固定周期。它不意味着
+   噪声获得十二平均律音高。导出使用现有噪声宏功能，跟随值加 16 标记，
+   必须搭配本分支更新后的声音引擎。
+
+本分支累计新增功能
+------------------
+• 每首歌、时间轴每列样式可覆盖 A4 标准音及十二个音级的音分偏移；关闭覆盖
+  即继承上一级。A4 为 300–580 Hz，各音级偏移为 ±1200 音分。
+• 工程全局的八类芯片、每类 96 个音可直接设置整数硬件周期/频率值。完整
+  横向键盘支持缩放、滚动、拖动和输入。显示轴为默认值 ±50，输入可超过
+  显示范围，受所选硬件表示的实际边界限制。播放和出口共用频率量化。
+• 扩展芯片勾选项右侧直接调整数量，最多每类八份、总计 64 声部。每首歌
+  可实时设置各声部立体声及声像，适用于监听、预览和音频导出。
+• NSF/NSFe 导入可多选子曲并分别设置捕获时长，批量合并到一个工程，支持
+  取消和资源去重。这仍是寄存器捕获导入，不是通用原游戏乐器反编译器。
+• APU 噪声周期/硬件包络/重启宏，软件包络衰减效果，样式播放延迟和循环
+  变奏，使完整的乐器程序及首次/重复演奏区别可编辑、可导出。
+• 可选 APU 方波起音相位重置、方波/三角波音高宏低字节饱和，以及真实
+  方波硬件扫频。DPCM 每键映射可保存完整 0–127 初始 DAC，包括奇数。
+• 项目输出更新率可选 1×/2×/4×，同制式约为 NTSC 60/120/240 Hz、
+  PAL 50/100/200 Hz。已有歌曲和宏保留自己的时基，因此切换输出率不改变
+  原速度，也不会自动把旧歌曲网格扩成四倍。新歌曲/宏使用创建时的项目率。
+  包络属性可保时长转换步进率；不能精确表达或超出长度限制的转换会明确
+  拒绝，不静默丢步骤。输出率也不能低于实际使用的歌曲/包络时基。
+• 全部七种既有语言覆盖新增界面；数值加减区域增大，支持直接输入。修复
+  S5B 重置确定性、NSF 自定义周期及 APU 扫频模拟中的实际问题。工程采用
+  无损 Brotli 压缩，撤销及剪贴板保持各自原有压缩协议。
+
+兼容与使用边界
+--------------
+• 可读取上游格式至 19 以及本分支 1001–1006。R8 保存为 1007；官方版及
+  更早的分支不能读取新格式。旧 1006 的 Brotli 和 Deflate 两种文件均保留
+  读取能力。请用另存为保留原工程。独立设置目录为 FamiStudio-Tuning。
+• 自定义调音、芯片曲线和新增演奏语义用于 FamiStudio 声音引擎/NSF/NSFe
+  时，需要匹配本分支引擎及出口头部列出的编译选项。独立引擎的新增选项
+  默认关闭；未开启功能的旧游戏无需承担这些可选状态和处理分支。
+• 重复的同型号芯片只用于编辑和音频路径，NSF/NES/FDS/声音引擎及 VGM
+  不接受重复芯片。立体声和声像只属于音频混音，不写入这些硬件格式。
+• 高倍率目前支持同 NTSC/PAL 制式播放、音频及 FamiStudio 引擎/NSF/NSFe。
+  普通 NES/FDS 导出模板、高倍率跨制式转换及不能保真的旧格式出口会明确
+  拒绝。另有原创定时器卡带示例展示游戏如何均匀调用高倍率引擎；游戏需
+  自行安排 IRQ/计时器并评估 CPU 预算，视频帧回调不能替代均匀子帧调度。
+• FamiTracker 速度模式在编辑器中保留支持；这与“导出为 FamiTracker 文件”
+  是两回事。声音引擎导出中的样式延迟目前要求 FamiStudio 速度模式。
+  无法表达调音/新演奏语义的 FamiTracker、FamiTone2、MIDI 等出口会报错。
+  VGM 不支持本分支样式延迟/循环变奏/高倍率输出。
+• 噪声、DPCM、节奏声部继续受真实硬件行为限制。FM 比率及调制仍参与音色。
+  立体声分轨混音不保证等于原本单声道的非线性混音。
+
+验证及平台状态
+--------------
+R8 已通过 22 项文件保存检查、597 项噪声跟随检查（含 96 份 NSF 真实 CPU
+执行）、七语言 100% 界面及中文 150% 界面检查。界面测试包括窄工具栏、
+取消/失败不切工程、脏状态和另存为后的再次保存。64 种噪声配置四汇编器
+字节一致，其中关闭噪声功能的 32 种保持 R7 字节；60 个 NES/FDS 模板通过
+31,956 项布局检查。原创定时器卡带每个 1×/2×/4× 配置通过八圈 CPU 和
+独立 FCEUmm 的 660 视频帧检查。历史版本数量不计入这些 R8 结果。
+Windows 自包含发布及 Linux/macOS 托管编译成功。Windows 账户不能创建
+符号链接，该检查明确跳过；Unix 权限/链接、原生播放、设备和签名/打包仍
+需在目标平台验证，不能以托管编译代替运行证据。Android
+尚缺本机匹配的 .NET 9 Android 工具链和设备验证。未在物理 FC/NES 上验证。
+商业游戏 ROM、提取乐器/曲谱及派生工程不进入公开应用、源码包或测试夹具；
+本地专项资料独立保存。上游已跟踪的原始示例及许可说明不作删除或改写。
+
+
+English
+========
+
+This is an independent development fork, not an official FamiStudio release.
+Upstream copyright and license notices are retained. Repository publication and
+the upstream proposal remain preparation work; neither has been posted or sent.
+
+Revision 8 changes
+------------------
+• A visible localized Save As button sits beside Save. Ctrl+Shift+S and the Save
+  context menu remain available; the expanded mobile toolbar has an entry too.
+• Saves finish and flush a sibling temporary file before an atomic replacement.
+  Cancellation or failure preserves the current path, dirty state and original
+  file. A failed save cannot continue a pending close/new/open operation.
+  Successful Save As makes the new file the destination of subsequent saves.
+• The regular instrument menu exposes all three existing noise macros: period,
+  hardware-envelope control and restart. Labels/help distinguish software volume
+  from overriding hardware control, and keyboard pitch from a fixed-period macro.
+• Optional Noise period follows note transposes a period macro relative to C4,
+  wrapping over the APU's 16 period indices. C4 preserves the stored values.
+  The default is off, preserving old fixed-period instruments. This does not make
+  noise equal-tempered. Export tags following period values with +16 under the
+  existing noise-envelope option and requires the matching updated engine.
+
+Cumulative fork features
+------------------------
+• Song and pattern-column overrides of A4 reference and twelve cents offsets;
+  disabled overrides inherit. A4: 300–580 Hz; pitch-class offsets: +/-1200 cents.
+• Project-global 96-note integer hardware curves for eight chip types, with a
+  full horizontal keyboard, zoom, scrolling, drag and direct input. The visible
+  +/-50 band is relative to each default; manual values may exceed it within the
+  selected hardware representation. Playback/export share pitch quantization.
+• Expansion-copy counts beside their checkboxes (up to eight per type, 64 total
+  channels), and per-song channel stereo/pan for preview, playback and audio.
+• Multi-subsong NSF/NSFe capture into one project, individual durations, safe
+  resource merging and cancellation. This is not a general source-engine decoder.
+• Hardware noise macros, software envelope decay, delayed patterns and loop
+  variants; optional APU attack phase reset, pitch-envelope low-byte saturation
+  and hardware pulse sweep; full 0–127 initial DAC in each DPCM key mapping.
+• Independent 1x/2x/4x output, song and envelope clocks. Changing output rate keeps
+  existing music speed and authored grid resolution. New resources use the
+  current output clock. Envelope-rate conversion preserves duration where exactly
+  representable, otherwise reports the incompatible resource before mutation.
+• Seven-language controls, larger numeric hit areas, direct input, deterministic
+  S5B reset, NSF timing/sweep corrections and lossless Brotli project storage.
+
+Compatibility
+-------------
+R8 writes format 1007 and reads official formats through 19 plus fork 1001–1006,
+including both 1006 compression variants. Earlier applications cannot read 1007.
+Use Save As to retain originals. Settings use the separate FamiStudio-Tuning path.
+
+Hardware exports require matching engine sources and the options emitted in the
+export header. New standalone engine options default off. Additional chip copies
+are audio-only and rejected by NSF/NES/FDS/engine/VGM exports; stereo/pan is not
+encoded into hardware data. Noise, samples and rhythm retain hardware limits.
+
+High-rate playback/audio/engine/NSF/NSFe currently require the same video region.
+High-rate cross-region operation, ordinary NES/FDS templates and unsupported
+legacy formats are rejected. A separate original mapper-timer cartridge shows
+uniform game scheduling; integrators must provide the timer/IRQ and CPU budget.
+Editor FamiTracker tempo remains supported; FamiTracker file export is a separate
+compatibility question. Engine pattern delay currently requires FamiStudio tempo.
+VGM rejects delay, loop variants and high rate. Other legacy exporters reject
+features they cannot preserve instead of silently dropping them.
+
+Verification and distribution
+-----------------------------
+R8 passes 22 file-save checks, 597 noise-follow checks including 96 real NSF CPU
+executions, all seven UI languages at 100% and Chinese at 150%. UI checks include
+narrow toolbars, cancellation/failure continuations, dirty state and subsequent
+Save. All four assemblers match over 64 noise configurations; 32 noise-disabled
+configurations retain R7 bytes. All 60 NES/FDS templates pass 31,956 layout checks.
+An original timer cartridge also passes eight CPU loops and 660 independent
+FCEUmm video frames per 1x/2x/4x configuration. Historical counts are separate.
+Windows self-contained publication and Linux/macOS managed builds succeed.
+The Windows account cannot create symbolic links, so that test is explicitly
+skipped. Unix permissions/links, target-OS audio and packaging still need runtime
+validation. Rebuild the native ABI on each target OS. Android
+still needs the matching .NET 9 Android toolchain and device testing. No physical
+NES/FC console has been tested. Extracted commercial-game assets and derived
+projects remain private and are excluded from public application/source packages.
+Already tracked upstream examples and their notices remain unchanged.

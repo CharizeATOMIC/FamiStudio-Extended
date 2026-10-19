@@ -1,6 +1,6 @@
 # FamiStudio Tuning
 
-An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 7 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
+An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 8 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place. See `RELEASE_NOTES.txt` for a bilingual overview and the current verification status.
 
 ## Features
 
@@ -14,6 +14,16 @@ An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/Fa
 - All seven existing languages include the new controls and messages: English, Chinese, German, Spanish, Portuguese, Russian and Korean.
 - Revision 2 enlarges numeric hit targets. Click a table's number to type cents or chip count; Enter accepts and Escape cancels. Shift-click steps by ten. Typed pan values preview during playback. Reference-Hz fields remain directly editable.
 - Revision 3 replaces the NSF/NSFe song selector with a checklist. Import several subsongs from one file into one project, with a separate editable duration for each selection and Select All / Select None. Import progress can be cancelled. This retains the existing register-capture importer; it does not reconstruct a game's source instruments or sequencer commands.
+
+## Revision 8: visible Save As and editable noise instruments
+
+The desktop toolbar now includes a visible, localized **Save As** button next to Save. Ctrl+Shift+S and the original Save-button context menu remain available. The expanded mobile toolbar also includes the command. Saving writes a complete temporary file beside the destination, flushes it, then atomically replaces or moves it into place. Cancellation or a failed write leaves the current path, dirty state and original file intact; a failed save no longer runs a pending close/new/open continuation. Successful Save As switches subsequent saves to the new path. Short temporary names retain support for long legal filenames. Read-only files are refused; symbolic links retain their identity and Unix file mode bits are copied to the replacement.
+
+APU noise instruments expose the existing noise-period, hardware-envelope-control and hardware-envelope-restart macros in the instrument's normal envelope menu. The ordinary volume macro is identified as software volume. Help text explains that an enabled hardware-control macro overrides software volume, and that an enabled fixed-period macro overrides keyboard pitch. This makes the controls that determine the sound reachable without adding a separate editor.
+
+The optional **Noise period follows note** instrument property transposes the noise-period macro using the note relative to C4, wrapping through the APU's 16 hardware period indices. C4 preserves the stored macro values. This is a discrete noise-period relationship, not equal-tempered pitch or an extension of the hardware's frequency range. The property defaults to false, preserving existing fixed-period instruments. Matching engine data marks following period values by adding 16; it uses the existing optional noise-envelope feature rather than introducing a new opcode. Old engines must not play this new following-mode data.
+
+Format **1007** stores the new property; format 1006 Brotli and legacy Deflate files remain readable. Revision 8 passes 22 file-save checks and 597 noise-follow checks, including 96 real NSF CPU executions. All seven UI languages pass at 100%, and Chinese also passes at 150%, including save/cancel/failure state and narrow-toolbar checks. Four-assembler parity passes 64 noise configurations, with the 32 noise-disabled configurations retaining revision 7 bytes; 31,956 layout assertions cover all 60 NES/FDS templates. Windows publication and Linux/macOS managed builds succeed. Symbolic-link creation was unavailable on the Windows test account, so link and Unix-mode behavior remain target-platform validation items. Earlier revision counts below are historical evidence, not additional revision 8 totals.
 
 ## Revision 4: instrument and sequence fidelity
 
@@ -60,7 +70,7 @@ FamiTone2, FamiTracker text and MIDI export reject an odd mapping initial value 
 
 The Windows x64 package is self-contained: extract the whole directory and run `FamiStudio.exe`. It does not require installing .NET. Settings use `%LOCALAPPDATA%/FamiStudio-Tuning`; the installed official application and its settings are not replaced. Upstream update notifications default to off because official releases do not include these additions.
 
-Official project formats through version 19 and this fork's previous formats 1001 through 1005 can be read. Revision 7 saves format **1006**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
+Official project formats through version 19 and this fork's previous formats 1001 through 1006 can be read. Revision 8 saves format **1007**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
 
 Curves are global to a project. Importing songs from a project with different curves on its active chips is rejected before either song is retuned; first make the curves match. An empty destination adopts the imported curves. Importing instruments alone does not require matching curves. Curves for inactive chips are preserved for when those chips are enabled.
 

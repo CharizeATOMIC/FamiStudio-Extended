@@ -31,7 +31,7 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1006;
+        public const int Version = 1007;
         public const int TuningFormatVersion = 1001;
         public const int ChipTuningFormatVersion = 1002;
         public const int NoiseEnvelopeFormatVersion = 1003;
@@ -39,6 +39,7 @@ namespace FamiStudio
         public const int DpcmMappingDacFormatVersion = 1005;
         public const int PulseSweepFormatVersion = 1006;
         public const int UpdateRateFormatVersion = 1006;
+        public const int NoisePeriodFollowFormatVersion = 1007;
         private int updateRateMultiplier = 1;
         public int UpdateRateMultiplier
         {

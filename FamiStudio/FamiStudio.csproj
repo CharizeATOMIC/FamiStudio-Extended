@@ -135,6 +135,7 @@
     <Compile Include="Source\App\Common\Init.cs" />
     <Compile Include="Source\App\Common\OscilloscopeGenerator.cs" />
     <Compile Include="Source\App\Common\ParamProviders.cs" />
+    <Compile Include="Source\App\Common\NoiseEditorStrings.cs" />
     <Compile Include="Source\App\Common\PatternBitmapCache.cs" />
     <Compile Include="Source\App\Common\PropertyPage.cs" />
     <Compile Include="Source\App\Common\Settings.cs" />

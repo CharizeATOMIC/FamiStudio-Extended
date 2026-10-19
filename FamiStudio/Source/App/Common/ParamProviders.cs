@@ -225,6 +225,12 @@ namespace FamiStudio
 
             if (instrument.IsRegular)
             {
+                paramInfos.Add(new InstrumentParamInfo(instrument, NoiseEditorStrings.FollowNotesLabel, 0, 1, 0, NoiseEditorStrings.FollowNotesTooltip)
+                {
+                    GetValue = () => instrument.NoisePeriodFollowsNote ? 1 : 0,
+                    SetValue = v => instrument.NoisePeriodFollowsNote = v != 0,
+                    IsEnabled = () => instrument.NoisePeriodEnvelope.Length > 0
+                });
                 paramInfos.Add(new InstrumentParamInfo(instrument, ResetPhaseOnAttackLabel, 0, 1, 0, ResetPhaseOnAttackTooltip)
                 {
                     GetValue = () => instrument.ResetPhaseOnAttack ? 1 : 0,

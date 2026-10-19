@@ -210,7 +210,10 @@ namespace FamiStudio
             EnvelopeType.FdsWaveform,
             EnvelopeType.N163Waveform,
             EnvelopeType.S5BMixer,
-            EnvelopeType.S5BNoiseFreq
+            EnvelopeType.S5BNoiseFreq,
+            EnvelopeType.NoiseEnvelopeRestart,
+            EnvelopeType.NoiseEnvelope,
+            EnvelopeType.NoisePeriod
         };
 
         private class CaptureOperation
@@ -826,7 +829,8 @@ namespace FamiStudio
                     env.Dimmed = instrument.Envelopes[idx].IsEmpty(idx);
                     env.WhiteHighlight = highlightedObject == instrument;
                     env.UserData = EnvelopeType.InternalNames[idx];
-                    env.ToolTip = $"<MouseLeft> {EditEnvelopeTooltip.Format(EnvelopeType.LocalizedNames[idx].Value.ToLower())}\n<MouseLeft><Drag> {CopyEnvelopeTooltip} - <MouseRight> {MoreOptionsTooltip}";
+                    env.ToolTip = GetInstrumentEnvelopeTooltip(instrument, idx);
+                    env.PointerMove += (s, e) => env.ToolTip = GetInstrumentEnvelopeTooltip(instrument, idx);
                     env.Click += (s) => InstrumentEnvelope_Click(instrument, idx);
                     env.PointerDown += (s, e) => Instrument_PointerDown(s, e, instrument, idx, env.Image);
                     env.PointerUp += (s, e) => Instrument_PointerUp(e, instrument, idx);
@@ -835,7 +839,7 @@ namespace FamiStudio
                 }
             }
 
-            var label = CreateLabel(panel, instrument.Name, true, icon.Right + marginX, 0, lastEnv.Left - icon.Right - marginX * 2, true);
+            var label = CreateLabel(panel, instrument.Name, true, icon.Right + marginX, 0, Math.Max(1, lastEnv.Left - icon.Right - marginX * 2), true);
             label.Font = App.SelectedInstrument == instrument ? fonts.FontMediumBold : fonts.FontMedium;
             label.MouseDoubleClick += (s, e) => EditInstrumentProperties(instrument);
             label.TouchDoubleClick += (s, e) => EditInstrumentProperties(instrument);
@@ -1276,7 +1280,12 @@ namespace FamiStudio
                                 var paramCheck = CreateParamCheckBox(panel, param, y, panelSizeY);
                                 paramCheck.ToolTip = $"<MouseLeft> {ToggleValueTooltip}\n<MouseRight> {MoreOptionsTooltip}";
                                 paramCheck.ValueChangeStart += (s) => App.UndoRedoManager.BeginTransaction(transScope, transObjectId, -1, param.TransactionFlags);
-                                paramCheck.ValueChangeEnd   += (s) => App.UndoRedoManager.EndTransaction();
+                                paramCheck.ValueChangeEnd   += (s) =>
+                                {
+                                    App.UndoRedoManager.EndTransaction();
+                                    if (userData is Instrument instrument)
+                                        RefreshInstrumentEnvelopeTooltips(instrument);
+                                };
                                 label.UserData = paramCheck;
                             }
                             else
@@ -1636,6 +1645,26 @@ namespace FamiStudio
             UpdateSelectedItem(typeof(Arpeggio), App.SelectedArpeggio);
         }
 
+        private string GetInstrumentEnvelopeTooltip(Instrument instrument, int envType)
+        {
+            var tooltip = $"<MouseLeft> {EditEnvelopeTooltip.Format(EnvelopeType.LocalizedNames[envType].Value.ToLower())}\n<MouseLeft><Drag> {CopyEnvelopeTooltip} - <MouseRight> {MoreOptionsTooltip}";
+            var hint = NoiseEditorStrings.GetHint(instrument, envType, true);
+            return string.IsNullOrEmpty(hint) ? tooltip : tooltip + "\n" + hint;
+        }
+
+        private void RefreshInstrumentEnvelopeTooltips(Instrument instrument)
+        {
+            var panel = FindInstrumentPanel(instrument);
+            if (panel == null)
+                return;
+            foreach (var type in EnvelopeDisplayOrder)
+            {
+                var button = panel.FindControlByUserData(EnvelopeType.InternalNames[type]) as Button;
+                if (button != null)
+                    button.ToolTip = GetInstrumentEnvelopeTooltip(instrument, type);
+            }
+        }
+
         public void InstrumentEnvelopeChanged(Instrument instrument, int envType)
         {
             if (selectedTab == TabType.Project)
@@ -1645,7 +1674,10 @@ namespace FamiStudio
                 {
                     var env = instrument.Envelopes[envType];
                     var button = FindInstrumentEnvelopeButton(instrument, envType);
-                    button.Dimmed = env.IsEmpty(envType);
+                    // Waveform-repeat has no separate button; its parent waveform owns the editor.
+                    if (button != null)
+                        button.Dimmed = env.IsEmpty(envType);
+                    RefreshInstrumentEnvelopeTooltips(instrument);
                 }
                 else
                 {
@@ -2992,7 +3024,7 @@ namespace FamiStudio
 
         private Button FindInstrumentEnvelopeButton(Instrument inst, int envType)
         {
-            return FindInstrumentPanel(inst).FindControlByUserData(EnvelopeType.InternalNames[envType]) as Button;
+            return FindInstrumentPanel(inst)?.FindControlByUserData(EnvelopeType.InternalNames[envType]) as Button;
         }
 
         private Button FindInstrumentDpcmButton(Instrument inst)
@@ -3007,7 +3039,7 @@ namespace FamiStudio
             env.ResetToDefault(envelopeType);
             inst.NotifyEnvelopeChanged(envelopeType, true);
             App.UndoRedoManager.EndTransaction();
-            FindInstrumentEnvelopeButton(inst, envelopeType).Dimmed = env.IsEmpty(envelopeType);
+            InstrumentEnvelopeChanged(inst, envelopeType);
             MarkDirty();
         }
 

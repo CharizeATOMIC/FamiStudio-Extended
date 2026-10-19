@@ -96,6 +96,8 @@ static class UiSmoke
         InstrumentArticulationRegression.Ui(window, language, output, Capture);
         DpcmMappingUiTests.Run(window, language, output, Capture);
         UpdateRateUiTests.Run(window, language, output, Capture);
+        NoiseEditorUiRegression.Run(window, language, output, Capture);
+        SaveProjectRegression.Ui(window, language, output, Capture);
         Invoke(app, "ShutdownAudioPlayers", true);
         Invoke(window, "DestroyWindow");
         Init.ShutdownBaseSystems();

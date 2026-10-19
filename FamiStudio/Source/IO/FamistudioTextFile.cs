@@ -129,6 +129,7 @@ namespace FamiStudio
                 if (instrument.ResetPhaseOnAttack) instrumentLine += GenerateAttribute("ResetPhaseOnAttack", true);
                 if (instrument.PitchClampToTimerByte) instrumentLine += GenerateAttribute("PitchClampToTimerByte", true);
                 if (instrument.PulseSweepRegister != 0x08) instrumentLine += GenerateAttribute("PulseSweepRegister", instrument.PulseSweepRegister);
+                if (instrument.NoisePeriodFollowsNote) instrumentLine += GenerateAttribute("NoisePeriodFollowsNote", true);
 
                 if (instrument.IsExpansionInstrument)
                 {
@@ -558,6 +559,7 @@ namespace FamiStudio
                             if (parameters.TryGetValue("ResetPhaseOnAttack", out var resetPhaseStr)) instrument.ResetPhaseOnAttack = bool.Parse(resetPhaseStr);
                             if (parameters.TryGetValue("PitchClampToTimerByte", out var clampPitchStr)) instrument.PitchClampToTimerByte = bool.Parse(clampPitchStr);
                             if (parameters.TryGetValue("PulseSweepRegister", out var sweepStr)) instrument.PulseSweepRegister = byte.Parse(sweepStr);
+                            if (parameters.TryGetValue("NoisePeriodFollowsNote", out var followNoiseStr)) instrument.NoisePeriodFollowsNote = bool.Parse(followNoiseStr);
                             if (parameters.TryGetValue("Folder", out var folderName) && project.CreateFolder(FolderType.Instrument, folderName) != null)
                                 instrument.FolderName = folderName;
                             if (parameters.TryGetValue("Color", out var hexColor))

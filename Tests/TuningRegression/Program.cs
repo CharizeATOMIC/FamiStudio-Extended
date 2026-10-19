@@ -33,6 +33,8 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--save-project") { SaveProjectRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--noise-follow") { NoiseFollowRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--engine-clock-demo") { EngineClockExportRegression.Demo(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--engine-clocks") { EngineClockExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--project-compression") { ProjectCompressionRegression.Run(args[1], args.Length > 2 ? args[2] : null); Init.ShutdownBaseSystems(); return; }

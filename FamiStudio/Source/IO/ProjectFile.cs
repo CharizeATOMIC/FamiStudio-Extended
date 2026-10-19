@@ -67,28 +67,53 @@ namespace FamiStudio
 
         public bool Save(Project project, string filename)
         {
-#if !DEBUG
+            string temporaryFile = null;
             try
-#endif
             {
                 var serializer = new ProjectSaveBuffer(project);
                 project.Serialize(serializer);
-                var buffer = serializer.GetBuffer();
+                var buffer = Compression.CompressProjectBytes(serializer.GetBuffer());
 
-                using (var stream = File.Create(filename))
+                // Write beside the destination so committing the completed file
+                // stays on one filesystem. Failed compression or disk writes do
+                // not truncate a previously saved project.
+                var destination = Path.GetFullPath(filename);
+                var destinationInfo = new FileInfo(destination);
+                if (destinationInfo.LinkTarget != null)
                 {
+                    // Preserve the link itself, matching the previous direct
+                    // write behavior, but commit atomically beside its target.
+                    destination = destinationInfo.ResolveLinkTarget(true)?.FullName ??
+                        throw new IOException("Cannot resolve project file link.");
+                    destinationInfo = new FileInfo(destination);
+                }
+                if (destinationInfo.Exists && destinationInfo.IsReadOnly)
+                    throw new UnauthorizedAccessException("Project file is read-only.");
+                UnixFileMode? unixMode = !OperatingSystem.IsWindows() && destinationInfo.Exists ?
+                    File.GetUnixFileMode(destination) : null;
+                temporaryFile = Path.Combine(Path.GetDirectoryName(destination),
+                    ".fms-" + Guid.NewGuid().ToString("N") + ".tmp");
+
+                using (var stream = new FileStream(temporaryFile, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    // Unix rename does not inherit the replaced file's mode.
+                    // Apply it before writing any project contents.
+                    if (!OperatingSystem.IsWindows() && unixMode.HasValue)
+                        File.SetUnixFileMode(temporaryFile, unixMode.Value);
                     stream.Write(BitConverter.GetBytes(MagicNumber), 0, 4);
                     stream.Write(BitConverter.GetBytes(Project.Version), 0, 4);
-
-                    buffer = Compression.CompressProjectBytes(buffer);
                     stream.Write(buffer, 0, buffer.Length);
-                    stream.Flush();
-                    stream.Close();
-
-                    project.Filename = filename;
-
-                    return true;
+                    stream.Flush(true);
                 }
+
+                if (File.Exists(destination))
+                    File.Replace(temporaryFile, destination, null);
+                else
+                    File.Move(temporaryFile, destination);
+
+                temporaryFile = null;
+                project.Filename = filename;
+                return true;
             }
 #if !DEBUG
             catch
@@ -96,6 +121,14 @@ namespace FamiStudio
                 return false;
             }
 #endif
+            finally
+            {
+                if (temporaryFile != null)
+                {
+                    try { File.Delete(temporaryFile); }
+                    catch { /* Preserve the original save failure. */ }
+                }
+            }
         }
     }
 }

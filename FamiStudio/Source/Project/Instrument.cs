@@ -17,6 +17,7 @@ namespace FamiStudio
         private bool resetPhaseOnAttack;
         private bool pitchClampToTimerByte;
         private byte pulseSweepRegister = 0x08;
+        private bool noisePeriodFollowsNote;
         private Dictionary<int, DPCMSampleMapping> samplesMapping;
 
         // FDS
@@ -83,6 +84,9 @@ namespace FamiStudio
         // value; this belongs to the instrument, not to individual score notes.
         public byte PulseSweepRegister { get => pulseSweepRegister; set => pulseSweepRegister = value; }
         public bool PulseSweepEnabled => (pulseSweepRegister & 0x80) != 0 && (pulseSweepRegister & 7) != 0;
+        // The optional noise period macro is absolute by default. Follow mode
+        // offsets its 16 hardware rates from C4 using the normal note/arp/slide path.
+        public bool NoisePeriodFollowsNote { get => noisePeriodFollowsNote; set => noisePeriodFollowsNote = value; }
         public bool IsExpansionInstrument => expansion != ExpansionType.None;
         public Envelope[] Envelopes => envelopes;
         public Dictionary<int, DPCMSampleMapping> SamplesMapping => samplesMapping;
@@ -1196,6 +1200,11 @@ namespace FamiStudio
                 buffer.Serialize(ref pulseSweepRegister);
             else if (buffer.IsReading)
                 pulseSweepRegister = 0x08;
+
+            if (buffer.Version >= Project.NoisePeriodFollowFormatVersion)
+                buffer.Serialize(ref noisePeriodFollowsNote);
+            else if (buffer.IsReading)
+                noisePeriodFollowsNote = false;
 
             if (buffer.Version < 15 && (IsS5B || IsEpsm))
             {

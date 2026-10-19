@@ -537,6 +537,13 @@ namespace FamiStudio
                         case EnvelopeType.NoiseEnvelopeRestart:
                             processed = ProcessEnvelope(env, false, false, true);
                             break;
+                        case EnvelopeType.NoisePeriod:
+                            var noisePeriodEnv = env.ShallowClone();
+                            if (instrument.NoisePeriodFollowsNote)
+                                for (int j = 0; j < noisePeriodEnv.Length; j++)
+                                    noisePeriodEnv.Values[j] += 16;
+                            processed = ProcessEnvelope(noisePeriodEnv, false, false);
+                            break;
                         default:
                             processed = ProcessEnvelope(env,
                                 i == EnvelopeType.Volume && kernel == FamiToneKernel.FamiStudio,

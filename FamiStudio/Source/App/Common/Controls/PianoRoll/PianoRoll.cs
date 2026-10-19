@@ -3451,6 +3451,20 @@ namespace FamiStudio
                     textY += r.fonts.FontMedium.LineHeight;
                 }
 
+                var noiseHint = NoiseEditorStrings.GetHint(editInstrument, editEnvelope, App.SelectedChannel.Type == ChannelType.Noise);
+                if (!string.IsNullOrEmpty(noiseHint))
+                {
+                    var availableWidth = Math.Max(1, width - pianoSizeX - bigTextPosX - scrollBarThickness);
+                    var lines = r.fonts.FontMedium.SplitLongString(noiseHint, availableWidth, Localization.IsChinese, out _).Split('\n');
+                    foreach (var line in lines)
+                    {
+                        // Keep help readable when a tall envelope passes behind it.
+                        r.f.DrawText(line, r.fonts.FontMedium, bigTextPosX + 1, textY + 1, Theme.BlackColor);
+                        r.f.DrawText(line, r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
+                        textY += r.fonts.FontMedium.LineHeight;
+                    }
+                }
+
                 if (relativeEffectScaling && IsSelectionValid())
                 { 
                     r.c.DrawText(RelativeEffectScalingLabel, fonts.FontMedium, bigTextPosX, textY, Theme.LightRedColor);
@@ -7346,6 +7360,27 @@ namespace FamiStudio
             });
         }
 
+        private void ToggleNoisePeriodFollowsNote()
+        {
+            var instrument = editInstrument;
+            App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, instrument.Id);
+            instrument.NoisePeriodFollowsNote = !instrument.NoisePeriodFollowsNote;
+            App.UndoRedoManager.EndTransaction();
+            EnvelopeChanged?.Invoke(instrument, EnvelopeType.NoisePeriod);
+            MarkDirty();
+        }
+
+        private void UseSoftwareNoiseVolume()
+        {
+            var instrument = editInstrument;
+            App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, instrument.Id);
+            instrument.NoiseControlEnvelope.ResetToDefault(EnvelopeType.NoiseEnvelope);
+            instrument.NotifyEnvelopeChanged(EnvelopeType.NoiseEnvelope, true);
+            EnvelopeChanged?.Invoke(instrument, EnvelopeType.NoiseEnvelope);
+            App.UndoRedoManager.EndTransaction();
+            App.StartEditInstrument(instrument, EnvelopeType.Volume);
+        }
+
         private bool HandleContextMenuEnvelope(int x, int y)
         {
             if (Platform.IsMobile && IsPointInHeader(x, y) ||
@@ -7359,6 +7394,25 @@ namespace FamiStudio
 
                 if (editEnvelope != EnvelopeType.FdsModulation)
                     menu.Add(new ContextMenuOption("MenuProperties", TuningStrings.EnvelopeClockLabel, EditEnvelopeClockProperties, ContextMenuSeparator.After));
+
+                if (editMode == EditionMode.Envelope && editInstrument.IsRegular &&
+                    (EnvelopeType.IsHardwareNoise(editEnvelope) || App.SelectedChannel.Type == ChannelType.Noise))
+                {
+                    // Reach every controlling macro from the existing desktop / touch menu.
+                    foreach (var type in new[] { EnvelopeType.NoisePeriod, EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
+                    {
+                        if (type != editEnvelope)
+                        {
+                            var target = type;
+                            menu.Add(new ContextMenuOption(EnvelopeType.Icons[type], EnvelopeType.LocalizedNames[type], () => App.StartEditInstrument(editInstrument, target)));
+                        }
+                    }
+                    if (editInstrument.NoisePeriodEnvelope.Length > 0)
+                        menu.Add(new ContextMenuOption(NoiseEditorStrings.FollowNotesLabel, NoiseEditorStrings.FollowNotesTooltip,
+                            ToggleNoisePeriodFollowsNote, () => editInstrument.NoisePeriodFollowsNote ? ContextMenuCheckState.Checked : ContextMenuCheckState.None));
+                    if (editInstrument.NoiseControlEnvelope.Length > 0 && (editEnvelope == EnvelopeType.Volume || editEnvelope == EnvelopeType.NoiseEnvelope))
+                        menu.Add(new ContextMenuOption("EnvelopeVolume", NoiseEditorStrings.UseSoftwareVolumeLabel, NoiseEditorStrings.UseSoftwareVolumeTooltip, UseSoftwareNoiseVolume));
+                }
 
                 if ((editMode == EditionMode.Envelope || editMode == EditionMode.Arpeggio) && x < lastPixel)
                 {

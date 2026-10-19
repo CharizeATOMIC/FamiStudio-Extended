@@ -7,6 +7,11 @@ using FamiStudio;
 
 static class PulseSweepRegression
 {
+    sealed class Version1005Writer : ProjectSaveBuffer, ProjectBuffer
+    {
+        public Version1005Writer(Project project) : base(project) { }
+        int ProjectBuffer.Version => 1005;
+    }
     sealed class Capture : BasePlayer
     {
         readonly List<(int Register,int Value)> pending = new();
@@ -118,8 +123,10 @@ static class PulseSweepRegression
             Check(instrument.PulseSweepRegister==control,"undo preserves sweep "+control);
         }
         Check(crcs.Count==8,"instrument deduplication distinguishes sweep behavior");
-        var oldBuffer=new ProjectSaveBuffer(project);instrument.Serialize(oldBuffer);
-        instrument.Serialize(new ProjectLoadBuffer(project,oldBuffer.GetBuffer()[..^1],1005));
+        // Write the real older layout. Trimming one trailing field cannot
+        // remove newer clock bytes embedded in every serialized envelope.
+        var oldBuffer=new Version1005Writer(project);instrument.Serialize(oldBuffer);
+        instrument.Serialize(new ProjectLoadBuffer(project,oldBuffer.GetBuffer(),1005));
         Check(instrument.PulseSweepRegister==8,"format 1005 instrument loads with legacy sweep disabled");
         var oldProject=new ProjectFile().Load(Path.Combine("Tests","TuningRegression","Fixtures","format1004-dpcm.fms"));
         Check(oldProject.Instruments.All(i=>i.PulseSweepRegister==8),"existing full project loads without enabling hardware sweep");

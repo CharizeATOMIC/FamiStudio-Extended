@@ -1157,30 +1157,32 @@ namespace FamiStudio
                 if (Platform.IsDesktop)
                 {
                     filename = Platform.ShowSaveFileDialog(DesktopSaveProjectTitle, "FamiStudio Files (*.fms)|*.fms", ref Settings.LastFileFolder);
-                    if (filename != null)
-                    {
-                        SaveProjectInternal(filename);
-                        callback?.Invoke();
-                    }
+                    CompleteProjectSave(filename, callback);
                 }
                 else
                 {
                     var dlg = new MobileProjectDialog(this, MobileSaveProjectTitle, true);
                     dlg.ShowDialogAsync((f) =>
                     {
-                        SaveProjectInternal(f);
-                        callback?.Invoke();
+                        CompleteProjectSave(f, callback);
                     });
                 }
             }
             else
             {
-                SaveProjectInternal(filename);
-                callback?.Invoke();
+                CompleteProjectSave(filename, callback);
             }
         }
 
-        private void SaveProjectInternal(string filename)
+        // The continuation may close the app or replace the current project.
+        // Cancellation and failed writes must never run that continuation.
+        private void CompleteProjectSave(string filename, Action callback)
+        {
+            if (!string.IsNullOrEmpty(filename) && SaveProjectInternal(filename))
+                callback?.Invoke();
+        }
+
+        private bool SaveProjectInternal(string filename)
         {
             var success = new ProjectFile().Save(project, filename);
 
@@ -1203,6 +1205,7 @@ namespace FamiStudio
 
             MarkEverythingDirty();
             SaveWorkInProgress();
+            return success;
         }
 
         public void Export()

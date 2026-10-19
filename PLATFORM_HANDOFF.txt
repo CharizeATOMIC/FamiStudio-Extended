@@ -1,4 +1,72 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 6)
+FamiStudio Tuning: platform and upstream integration notes (revision 8)
+
+Current revision 8 handoff
+-------------------------
+This section describes the current integration. Numbered older sections below
+are historical design/verification records, not current release pass claims.
+Revision 8 save/noise CPU regressions and seven-language UI runs passed, as
+itemized below. RELEASE_NOTES.txt contains the bilingual user
+overview; UPSTREAM_PROPOSAL.txt is an unsent bilingual discussion draft.
+
+Project format 1007 appends Instrument.NoisePeriodFollowsNote, default false.
+Old files retain fixed noise-period macro semantics. Following mode transposes
+the period relative to C4 and wraps over the 16 physical period indices. C4 keeps
+the stored trajectory. Export marks a following value with +16 in the existing
+NoisePeriod stream. Rebuild all optional-noise NSF/NES/FDS kernels and assembly
+sources together; old engines cannot consume following-mode data correctly.
+No additional opcode or native ABI is introduced by this property. Shared model,
+text/binary, undo/clipboard and localized instrument controls use the same flag.
+
+The instrument menu now exposes noise period, hardware-envelope control and
+restart macros. Its software-volume label/help explains the hardware-control
+override; period help distinguishes fixed and note-following behavior. Shared
+mobile paths are included but remain subject to device/toolchain validation.
+
+Toolbar Save As is visible beside Save on desktop and in the expanded mobile
+toolbar, reusing existing seven-language labels and shortcuts. ProjectFile.Save
+writes and flushes a unique short-name sibling temporary file, then commits it with
+File.Replace or File.Move. Keep the temporary file on the destination filesystem.
+Do not restore the old truncate-before-compression path. FamiStudio's completion
+callback now runs only after a successful write; cancellation/failure must not
+advance a pending project close/replacement. Preserve current filename, undo save
+marker and recent-file metadata on failure. File symlinks are resolved for the
+commit destination while Project.Filename retains the selected path. Read-only
+destinations are refused, and Unix mode bits are applied to the replacement before
+writing its contents. Verify links/permissions on the target OS; Windows tests do
+not establish Unix runtime behavior. A symlink test explicitly reports a skip if
+the local account/filesystem cannot create links.
+
+The format 1006 compression marker remains tied to version 1006, not to the
+current Project.Version. Positive-size legacy Deflate and high-bit Brotli 1006
+files must both remain readable after the version increment. Undo and clipboard
+retain their independent codec. This save fix does not change the payload codec.
+
+New verification entry point:
+  dotnet run --project Tests/TuningRegression -c Release -- --save-project <folder>
+The actual-window --ui runs also exercise the visible command at narrow widths,
+saved/dirty state, cancelled/failed continuations and subsequent normal Save.
+Noise tests compare synthetic editor/engine trajectories and old default mode.
+Recorded R8 results: 22 file-save assertions, 597 noise-follow assertions including
+96 real NSF CPU executions, all seven UI languages at 100% plus Chinese at 150%,
+64 four-assembler noise configurations (32 disabled retain R7 bytes), and 31,956
+ROM/FDS layout assertions over 60 templates. Windows self-contained publication
+and Linux/macOS managed compilation passed. The Windows test account could not
+create a symlink; that branch is explicitly skipped, not claimed as runtime proof.
+Logs: r8-save-regression.log, r8-noise-follow.log, r8-noise-engine-assemblers.log,
+r8-noise-follow-rom-layout.log, r8-ui-<language>-100.log (Chinese: r8-ui-zho.log),
+r8-ui-zho-150.log, r8-publish.log, r8-linux-build.log and r8-mac-build.log.
+The original mapper-timer cartridge also passes eight CPU loops and 660 video
+frames in an independent FCEUmm core for each 1x/2x/4x configuration. This is
+emulator evidence, not a physical-console test. No newly
+extracted commercial-game asset is required or permitted in public fixtures.
+
+Cross-platform work is still required: R7's output-rate native ABI and earlier
+multi-context/stereo functions must be rebuilt for Windows, Linux, macOS and
+Android. Reuse the shared C# changes, not old prebuilt native libraries. Linux/macOS
+managed builds are compilation evidence only. Run native audio, scaling, save
+permissions/links, packaging/signing and device tests on the target system.
+Android requires the matching .NET 9 Android toolchain; no Android or physical
+FC/NES hardware release is claimed. Remote CI/publication remain separate steps.
 
 Maintenance assessment
 
@@ -17,7 +85,7 @@ Suggested review order:
 
 Before upstream merge, maintainers should choose the official format version and
 opcode, review ROM/RAM/CPU budgets, and decide which optional features to accept.
-Format 1005 and the separate settings directory intentionally identify this fork;
+Format 1007 and the separate settings directory intentionally identify this fork;
 they should not silently become the upstream format/settings policy.
 
 Revision 3 architecture and format

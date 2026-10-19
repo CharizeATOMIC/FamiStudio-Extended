@@ -27,7 +27,14 @@ namespace FamiStudio
                 bool controlEnabled = envelopes[EnvelopeType.NoiseEnvelope]?.Length > 0;
                 bool restartEnabled = envelopes[EnvelopeType.NoiseEnvelopeRestart]?.Length > 0;
                 if (periodEnabled)
-                    period = (period & 0x80) | (envelopeValues[EnvelopeType.NoisePeriod] & 15);
+                {
+                    int macroPeriod = envelopeValues[EnvelopeType.NoisePeriod];
+                    // Internal note 49 is the editor's C4, whose ordinary noise
+                    // rate is 14. Preserve the legacy modulo-16 noise keyboard.
+                    if (note.Instrument?.NoisePeriodFollowsNote == true)
+                        macroPeriod += (period & 15) - 14;
+                    period = (period & 0x80) | (macroPeriod & 15);
+                }
 
                 WriteRegister(NesApu.APU_NOISE_LO, period);
                 // Hardware control retains the decay/loop/length semantics in

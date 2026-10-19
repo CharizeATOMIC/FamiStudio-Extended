@@ -2616,9 +2616,19 @@ famistudio_update_noise_sound:
     lda famistudio_noise_env_mask
     and #1
     beq .noise_control
-    lda famistudio_noise_period_buffer
-    and #$80
-    ora famistudio_env_value+FAMISTUDIO_NOISE_PERIOD_ENV
+    lda famistudio_env_value+FAMISTUDIO_NOISE_PERIOD_ENV
+    cmp #16
+    bcc .noise_absolute_period
+    ; Follow mode is encoded as period+16. CMP supplies carry=1;
+    ; ADC cannot carry (31+143+1<256), so SBC subtracts15.
+    ; Modulo16 the result is rawPeriod + normalPeriod - 14 (C4).
+    adc famistudio_noise_period_buffer
+    sbc #14
+.noise_absolute_period:
+    ; Replace only the low nibble, retaining the original noise mode.
+    eor famistudio_noise_period_buffer
+    and #15
+    eor famistudio_noise_period_buffer
     sta famistudio_noise_period_buffer
 .noise_control:
     lda famistudio_noise_env_mask

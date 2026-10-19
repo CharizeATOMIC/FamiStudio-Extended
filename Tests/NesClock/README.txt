@@ -54,7 +54,7 @@ and directly calls music_play with invalid index 255 during the 4x test.
 That rejected call may use normal zero-page scratch but must leave every
 persistent song/envelope clock and voice state unchanged.
 
-Measured with the supplied phrase, final R7 engine:
+Measured again with the supplied phrase and final R8 engine (unchanged from R7):
 Rate  Mean interval  Min..max interval  Worst engine  Worst whole IRQ
  1x   29780.402       29779..29782        3136 cycles    3266 cycles
  2x   14890.324       14889..14892        3774 cycles    3904 cycles

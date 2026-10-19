@@ -544,7 +544,7 @@ default_palette:
         inx
         bne clear_ram_loop
     .if ::FAMISTUDIO_EXP_FDS
-        ldx #0
+        ; The completed RAM-clear loop already leaves X = 0.
         clear_zp_loop:
             sta $00, x
             inx
@@ -632,8 +632,7 @@ check_rendering_off:
     bne oam_dma
         lda #%00000000
         sta $2001
-        ldx #0
-        stx nmi_ready
+        sta nmi_ready
         jmp ppu_update_end
 oam_dma:
     ; sprite OAM DMA
@@ -1131,9 +1130,12 @@ equalizer_volume_lookup:
 equalizer_color_lookup:
     .byte $00, $01, $02
     .byte $00, $01, $01
+.if !FAMISTUDIO_EXP_FDS
+    ; FDS has six channels; the remaining nine entries are unreachable.
     .byte $02, $00, $01
     .byte $02, $00, $01
     .byte $01, $02, $00
+.endif
 
 ; x = channel to update
 .proc update_equalizer

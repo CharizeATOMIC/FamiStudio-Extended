@@ -9,6 +9,7 @@ namespace FamiStudio
         private Button buttonNew;
         private Button buttonOpen;
         private Button buttonSave;
+        private Button buttonSaveAs;
         private Button buttonExport;
         private Button buttonCopy;
         private Button buttonCut;
@@ -72,7 +73,8 @@ namespace FamiStudio
             { "Machine",   (2, 4) },
             { "Follow",    (2, 5) },
             { "Loop",      (2, 6) },
-            { "Metronome", (2, 7) }
+            { "Metronome", (2, 7) },
+            { "SaveAs",    (2, 8) }
         };
 
         // [portrait/landscape, timecode/oscilloscope]
@@ -215,6 +217,16 @@ namespace FamiStudio
             buttonSave = CreateToolbarButton("Save", "Save");
             buttonSave.Click += ButtonSave_Click;
             buttonSave.PointerUp += ButtonSave_PointerUpEvent;
+
+            // A visible, named action complements the existing shortcut and
+            // save-button context menu. Reuse the seven translated menu labels.
+            buttonSaveAs = CreateToolbarButton(Platform.IsDesktop ? "SaveSmall" : "Save", "SaveAs");
+            buttonSaveAs.Text = SaveAsLabel;
+            buttonSaveAs.Font = fonts.FontSmall;
+            buttonSaveAs.Ellipsis = true;
+            buttonSaveAs.BottomText = Platform.IsMobile;
+            if (Platform.IsDesktop) buttonSaveAs.AutosizeWidth();
+            buttonSaveAs.Click += ButtonSaveAs_Click;
 
             buttonExport = CreateToolbarButton("Export", "Export");
             buttonExport.Click += ButtonExport_Click;
@@ -391,6 +403,12 @@ namespace FamiStudio
         private void ButtonSave_Click(Control sender)
         {
             App.SaveProjectAsync();
+            StartClosing();
+        }
+
+        private void ButtonSaveAs_Click(Control sender)
+        {
+            App.SaveProjectAsync(true);
             StartClosing();
         }
 
@@ -678,6 +696,7 @@ namespace FamiStudio
                 buttonNew.ToolTip       = $"<MouseLeft> {NewProjectTooltip} {Settings.FileNewShortcut.TooltipString}";
                 buttonOpen.ToolTip      = $"<MouseLeft> {OpenProjectTooltip} {Settings.FileOpenShortcut.TooltipString}\n<MouseRight> {RecentFilesTooltip}";
                 buttonSave.ToolTip      = $"<MouseLeft> {SaveProjectTooltip} {Settings.FileSaveShortcut.TooltipString}\n<MouseRight> {MoreOptionsTooltip}";
+                buttonSaveAs.ToolTip    = $"<MouseLeft> {SaveAsTooltip} {Settings.FileSaveAsShortcut.TooltipString}";
                 buttonExport.ToolTip    = $"<MouseLeft> {ExportTooltip} {Settings.FileExportShortcut.TooltipString}\n<MouseRight> {MoreOptionsTooltip}";
                 buttonCopy.ToolTip      = $"<MouseLeft> {CopySelectionTooltip} {Settings.CopyShortcut.TooltipString}";
                 buttonCut.ToolTip       = $"<MouseLeft> {CutSelectionTooltip} {Settings.CutShortcut.TooltipString}";
@@ -708,8 +727,10 @@ namespace FamiStudio
                 var margin = DpiScaling.ScaleForWindow(4);
 
                 // Hide a few buttons if the window is too small (out min "usable" resolution is ~1280x720).
-                var hideLessImportantButtons = Width < 1420 * DpiScaling.Window;
-                var hideOscilloscope         = Width < 1250 * DpiScaling.Window;
+                var usableWidth = Width - buttonSaveAs.Width;
+                var hideLessImportantButtons = usableWidth < 1420 * DpiScaling.Window;
+                var hideOscilloscope         = usableWidth < 1250 * DpiScaling.Window;
+                var compactPlayback          = usableWidth < 900 * DpiScaling.Window;
 
                 var x = 0;
                 var lastVisibleButton = (Button)null;
@@ -732,7 +753,8 @@ namespace FamiStudio
                                           btn == buttonUndo   ||
                                           btn == buttonRedo;
 
-                    btn.Visible = !(hideLessImportantButtons && isLessImportant);
+                    btn.Visible = !(hideLessImportantButtons && isLessImportant) &&
+                        !(compactPlayback && (btn == buttonQwerty || btn == buttonMetronome || btn == buttonFollow));
 
                     if (btn.Visible)
                     {
@@ -746,7 +768,7 @@ namespace FamiStudio
 
                     if (btn == buttonConfig)
                     {
-                        var timecodeOscSizeX  = DpiScaling.ScaleForWindow(140);
+                        var timecodeOscSizeX  = DpiScaling.ScaleForWindow(compactPlayback ? 100 : 140);
 
                         oscilloscope.Visible = !hideOscilloscope;
                         
@@ -763,7 +785,7 @@ namespace FamiStudio
                     }
                 }
 
-                tooltipLabel.Move(lastVisibleButton.Right + margin, 0, buttonHelp.Left - lastVisibleButton.Right - margin * 2, Height);
+                tooltipLabel.Move(lastVisibleButton.Right + margin, 0, Math.Max(0, buttonHelp.Left - lastVisibleButton.Right - margin * 2), Height);
             }
             else
             {

@@ -68,3 +68,11 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --text-tempo work/text-tempo-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --dpcm-effects work/dpcm-effects-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --apu-instrument-export work/articulation-export-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --update-rate work/update-rate-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --envelope-clock work/envelope-clock-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --engine-clocks work/engine-clock-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --project-compression work/compression-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pulse-sweep work/sweep-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pulse-sweep-nsf work/sweep-nsf-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --save-project work/save-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
