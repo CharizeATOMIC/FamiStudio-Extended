@@ -1,0 +1,79 @@
+name: Tuning desktop builds
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            project: FamiStudio.csproj
+            native: NesSndEmu.dll
+          - os: ubuntu-latest
+            project: FamiStudio.Linux.csproj
+            native: libNesSndEmu.so
+          - os: macos-latest
+            project: FamiStudio.Mac.csproj
+            native: NesSndEmu.dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Configure native library
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cmake -S ThirdParty/NesSndEmu -B work/native -DCMAKE_BUILD_TYPE=Release '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            cmake -S ThirdParty/NesSndEmu -B work/native -A x64
+          else
+            cmake -S ThirdParty/NesSndEmu -B work/native -DCMAKE_BUILD_TYPE=Release
+          fi
+      - name: Build and install native library
+        shell: bash
+        run: |
+          cmake --build work/native --config Release --parallel 2
+          cmake --install work/native --config Release --prefix "$GITHUB_WORKSPACE/FamiStudio"
+      - name: Check native audio ABI
+        shell: bash
+        run: |
+          python3 Tests/check_native_mixer.py "FamiStudio/${{ matrix.native }}"
+          python3 Tests/check_s5b_reset.py "FamiStudio/${{ matrix.native }}" work/native/s5b-reset.json
+      - name: Build desktop application
+        shell: bash
+        run: dotnet build "FamiStudio/${{ matrix.project }}" -c Release --nologo
+      - name: Run Windows playback and export regression
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          dotnet run --project Tests/TuningRegression -c Release -- work/tuning-tests
+          dotnet run --project Tests/TuningRegression -c Release -- --chip-curves work/tuning-tests
+          dotnet run --project Tests/TuningRegression -c Release -- --nsf-multi work/nsf-multi-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-envelopes work/noise-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --envelope-decay work/decay-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pattern-delay work/delay-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --loop-variant work/variant-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pattern-export work/export-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --legacy-export work/legacy-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --instrument-articulation work/articulation-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --articulation-playback work/articulation-playback-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --duty-envelope work/duty-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --text-tempo work/text-tempo-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --dpcm-effects work/dpcm-effects-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --apu-instrument-export work/articulation-export-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --update-rate work/update-rate-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --envelope-clock work/envelope-clock-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --engine-clocks work/engine-clock-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --project-compression work/compression-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pulse-sweep work/sweep-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pulse-sweep-nsf work/sweep-nsf-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --save-project work/save-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-pitch-migration work/noise-pitch-migration-tests
