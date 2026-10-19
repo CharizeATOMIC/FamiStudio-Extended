@@ -1,0 +1,231 @@
+FamiSpectrum — upstream integration plan / 上游整合说明
+Proposed name; independent fork based on FamiStudio 4.5.3, revision 10.
+暂定名称，基于 FamiStudio 4.5.3 的独立分支，修订版 10。
+
+Status and scope / 状态与范围
+----------------------------
+Known base: c09dca64788606c09fcb5e70db28b9dd1f34be78 (4.5.3).
+R10 direct-controls commit: 52a246f. Separate branding commit: 69c62a8.
+Public upstream checked on 2026-10-20:
+  Latest official release: 4.5.3.
+  master: 70625dd09d8acaef831bbce468d416fb0b596be1.
+  Source: https://github.com/BleuBleu/FamiStudio/commit/70625dd09d8acaef831bbce468d416fb0b596be1
+Browser inspection and a fetched origin/master agree. Relative to the known base,
+this master adds one commit with four lines in Docs/docs/changelog.md only.
+The 16 visible branches contain master and earlier-version branches; no newer
+development branch was visible. This says nothing about private development.
+Actual application proof completed on that public master: the complete binary
+feature patch through 52a246f8ea4aeb6504427a0737dea33153c8a28a (without branding)
+passes git apply --cached --3way with zero conflicts. Its index tree exactly
+matches git merge-tree output 3cb0b2282b949643ce7c33ca73093a827d844dce, including
+the latest upstream changelog. Main working tree/index were not modified.
+The resulting merged tree has not been independently built or run. This proves
+application to the observed public master only, not future/private branches or
+general API compatibility with unknown development work.
+Keep LICENSE, upstream copyright notices and third-party licenses intact.
+The proposed public name does not require renaming C# namespaces, assembly
+entry points, engine symbols, existing settings paths or serialization keys.
+
+2026-10-20 通过浏览器及 fetch 核实：最新正式版仍是 4.5.3；公开 master 为
+70625dd，只比基线多一次更新日志的四行改动。16 个可见分支中未见新版本
+开发分支，不能据此推断作者私下开发状态。功能截止 52a246f、不含品牌的
+完整二进制补丁已在该 master 上通过真实 --cached --3way 应用，零冲突，
+与 git merge-tree 生成的 3cb0b228 树完全相同，保留上游更新日志。结果树
+尚未独立构建/运行，不保证未来或私有分支也无冲突。公开名称可调整，
+但不为改名全库替换命名空间/引擎符号，以免增加作者移植时的无关冲突。
+
+Priorities and dependency order / 优先功能与依赖顺序
+-------------------------------------------------
+The user-facing priorities are song/pattern tuning, absolute chip curves,
+multi-subsong NSF import, live pan/optional chip copies and speed-preserving
+1x/2x/4x clocks. Noise articulation and UI cleanup are separable follow-ups.
+Review priority is not a requirement to apply historical commits in that order.
+C# source paths below are relative to FamiStudio/ unless otherwise stated.
+
+1. Multi-subsong NSF import: a small independent editor/I/O PR.
+   Main files: Source/IO/NsfFile.cs, App/Common/Dialogs/NsfImportDialog.cs,
+   existing project resource-merge APIs, and the dialog's seven locale sections.
+   Test: Tests/TuningRegression/NsfMultiImportRegression.cs.
+   Preserve selected order, per-track duration, resource ownership/deduplication,
+   cancellation, failure and prior single-track CLI semantics. Reuse the target
+   branch's merge implementation rather than replacing its whole Project.cs.
+   No music opcode or native audio ABI is required just for multi-selection.
+
+2. Song/pattern tuning: model -> quantizer/playback -> export -> UI as one feature.
+   Source/Project/TuningSettings.cs, Project.cs, Song.cs, Pattern.cs;
+   Source/Player/CustomTuningTables.cs, NesApu.cs, InstrumentPlayer.cs;
+   Source/ChannelStates/ChannelState.cs; IO/FamistudioTextFile.cs and
+   FamitoneMusicFile.cs; App/Common/Dialogs/TuningProperties.cs.
+   Full inheritance includes A4 and all twelve cents offsets. Preserve tuning
+   for held notes, slides, loop entry and keyboard preview, not only new attacks.
+   Include binary/text/undo/clipboard and selected-song legacy-export guards.
+   Coordinate the optional custom-tuning engine and embedded kernels below.
+
+3. Absolute chip curves: build on the shared quantization/export contract in #2.
+   Source/Project/ChipTuningSettings.cs, Player/CustomTuningTables.cs;
+   App/Common/Dialogs/ChipTuningDialog.cs, Controls/ChipTuningCurve.cs and
+   ProjectPropertiesDialog.cs. Test: ChipCurveRegression.cs / CurveUiTests.cs.
+   Retain sparse defaults, basis metadata and chip-specific representation
+   limits. In particular, VRC7 uses each note's canonical fixed block; it is not
+   an unrestricted raw f-number UI. Graph +/-50 is a display/drag band, not the
+   storage limit. The existing $5f table instruction serves these curves too.
+
+4. Live channel stereo/pan first; repeated expansion copies as a separate PR.
+   Source/Project/Song.cs, Project.cs, Channel.cs; Player/BasePlayer.cs,
+   InstrumentPlayer.cs, WavPlayer.cs and NesApu.cs; song/project properties;
+   ThirdParty/NesSndEmu/DllWrapper.cpp, Mixer_Apu.h and SndEmu.def.
+   Port context creation/destruction and channel/copy identity through mute,
+   preview, N163 allocation, clipboard, import and audio stems together.
+   Native nonlinear mixing and stem balance are not interchangeable. Extra
+   copies are editor/audio features: hardware exporters must reject them.
+   This unit requires matching native libraries on each platform, but not a
+   new music-engine opcode. Authors can accept pan and decline chip copies.
+
+5. Independent update clocks: a separate full-stack feature after baseline audio.
+   Project.UpdateRateMultiplier, Song.LogicRateMultiplier and
+   Envelope.TickRateMultiplier; BasePlayer/InstrumentPlayer, ChannelState,
+   WAV/video timing; native Simple_Apu.cpp/.h and DllWrapper.cpp;
+   NotSoFatso NSF_File/NSF_Core rate handling; NsfFile and music/SFX export.
+   Preserve existing authored song/macro clocks when output changes. New
+   resources use the current output clock. Envelope-rate conversion must preserve
+   duration/loop/release and reject unrepresentable data before mutation.
+   Render substeps at uniform native cycle intervals. Updating only the header,
+   BPM or number of calls at one frame boundary is not equivalent.
+   Include NSF/NSFe period execution, output duration, preview and multi-chip
+   stems. High-rate cross-region cases and ordinary NES/FDS templates currently
+   refuse unsupported scheduling. Games must supply uniform timer/IRQ calls.
+
+6. Optional follow-ups: save atomicity/discoverability, readable hardware-noise
+   envelopes and explicit legacy migration, software decay, pulse articulation/
+   sweep, DPCM seven-bit mapping DAC, pattern delay/loop variants, compression.
+   Each can be reviewed separately, but retain its model/player/export contract.
+   R10 specifically places hardware volume/restart buttons directly in the
+   folded hardware group, with step/unused labels and no intermediate menu or
+   extra instrument-row noise icon. This requires no native or engine change.
+
+以上按依赖拆功能，不要求作者接收整个分支。多曲导入可先单独合入；调音与
+芯片曲线共用量化及引擎表协议；实时声像可与重复芯片拆开；高更新率必须连同
+歌曲/包络时基、原生子帧、NSF 调度完整审查。噪波、界面、保存和其他演奏语义
+可随后逐项讨论。各平台共享 C# 并不等于无需重编和验证原生层。
+
+Engine and native integration boundary / 引擎与原生边界
+------------------------------------------------------
+Optional standalone switches all default to 0:
+  FAMISTUDIO_USE_CUSTOM_TUNING        $5f  tuning-table pointers
+  FAMISTUDIO_USE_NOISE_ENVELOPES      $60  period/control/restart macro pointers
+  FAMISTUDIO_USE_ENVELOPE_DECAY       $61  software volume decay interval
+  FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS $62  attack phase / timer-byte clamp flags
+  FAMISTUDIO_USE_PULSE_SWEEP          $63  pulse sweep register
+  FAMISTUDIO_USE_UPDATE_RATE          $64  output rate and song divider
+These are this fork's assignments, not reserved upstream opcode allocations.
+For an accepted feature, update the C# emitter and all relevant CA65, ASM6,
+NESASM, SDAS sources plus CA65 multi-expansion source as a unit. Regenerate the
+embedded NSF/NES/FDS variants with Tools/build_tuning_nsf.py and
+Tools/build_tuning_rom.py, keeping exporter bank/data boundaries consistent.
+Do not copy only an opcode handler or only an exported song into an old kernel.
+
+Clocked envelopes retain their bytecode: an optional divider precedes the macro
+label. $64 enables clock state. Songs/effects and envelopes have independent
+dividers; restart pulses must not repeat while waiting. SFX keep their original
+base rate. Default-off configurations avoid the new optional state/update work.
+Enabled high rates increase total CPU work and require per-game timing budgets.
+
+Native ABI additions for contexts/mixing and NesApuSetUpdateRateMultiplier require
+new native builds per OS. NotSoFatso period/sweep fixes must be reviewed with its
+CPU/APU scheduling; a C#-only port leaves that behavior incomplete. R9/R10 change
+none of this ABI or DSP, but adoption of the cumulative fork does. Keep native
+fixes and optional features separate where their dependencies allow it.
+
+文件格式与兼容 / File format and compatibility
+---------------------------------------------
+Private format is 1007; R8/R9/R10 share it. Reads include official formats through
+19 and fork 1001..1007. Versioned additions are tuning/copies (1001), chip curves
+(1002), noise/sequence semantics (1003), articulation (1004), full mapping DAC
+(1005), sweep/clocks and compression transition (1006), legacy noise following
+(1007). Preserve both accepted 1006 compression markers. Upstream should choose
+its own schema/versioning; do not assign 1007 to a new upstream format blindly.
+
+Changing persistence requires binary/text/undo/clipboard/hash/equality and old
+default tests together. R10 hides the independent period editor but retains its
+legacy serialized fields and runtime/export behavior. Migration is explicit,
+undoable and refused when not provably lossless. Dropping hidden fields on load
+would silently change existing projects. Unsupported exporters must fail clearly.
+
+Historical commits: what can be reused / 历史提交如何复用
+--------------------------------------------------------
+These references identify where changes originated. They are not a clean PR
+series against a future upstream architecture. On the exact historical fork
+parent, commits form an ordinary sequential history. The checked public master
+only changes documentation from the base. The full feature patch now has a
+successful three-way application proof on that exact master. This is distinct
+from certifying individual whole-commit cherry-picks or running the merged tree.
+
+9158e13  Smallest production fix candidate: S5B reset of register latch/substep
+         delay in ThirdParty/NesSndEmu/nes_apu/Nes_Sunsoft.cpp. Extract/review this
+         source hunk first. The full commit also carries a Windows DLL, docs,
+         CI and a test using fork-specific native context APIs, so even this
+         should not be blindly cherry-picked with its binaries onto upstream.
+40798dc  Numeric hit targets/direct input are separable source hunks, but this
+         commit also includes native build/CI and cartridge work. Split it.
+68b33e5  Initial tuning, virtual copies and live stereo are combined with model,
+         ABI, engine and many generated assets. Use as provenance, not one PR.
+ef4b4a3  Chip curves and multi-NSF import share a commit but are independent review
+         units. Extract NSF dialog/I/O/tests separately; curves depend on tuning.
+8e0de79  Noise/decay/delay/loop semantics touch model, scheduler and all engines.
+         Split by semantic feature, retaining its cross-layer tests.
+69f1988  Articulation and score readability are bundled; port flags/player/engine
+         together and keep local conversion helpers out of an upstream music PR.
+2ef33c8  Full DPCM DAC plus score cleanup: isolate mapping persistence/player/
+         exporter changes. User-project cleanup is not a generic required change.
+ed0f90e  Output clocks, sweep and percussion changes are combined. Split sweep,
+         clocks and emulator fixes, then rerun their individual and combined tests.
+bd9fbe1  Atomic save/visible Save As and noise-follow UI share a commit. Save I/O
+         is a separate candidate; adapt continuations and filesystem semantics.
+9f6cd5e  R9 editor/migration depends on earlier noise fields and UI controls.
+         Apply only after accepted model features; do not discard compatibility.
+52a246f  R10 direct hardware-envelope controls are a separate UI-only follow-up.
+         It expects the R9 hardware group and noise model; it is not standalone
+         on unmodified 4.5.3. No DSP or engine change belongs to this commit.
+69c62a8  Public branding is a separate commit and need not be ported upstream.
+         Internal compatibility identifiers remain intact.
+
+可优先抽取的最小修复是 9158e13 中的 S5B 源码重置逻辑，而不是连 Windows
+二进制与分支专用测试 ABI 一起机械 cherry-pick。其他历史大提交混合了独立
+功能、测试和生成资源，宜按上面映射重新组织。尚未测试的新上游，不承诺
+任何整提交无冲突可用；“来源提交”不等于“已验证移植提交”。
+
+Prepared author bundle / 已准备的作者补丁包
+------------------------------------------
+FamiSpectrum-Upstream-r10/ contains:
+  features-from-4.5.3.patch       full feature delta, base c09dca6 -> 52a246f
+  r10-direct-noise-controls.patch isolated R10 UI follow-up on the R9 model/UI
+  optional-branding.patch         separate 69c62a8 public-name change
+  integration-verification.json  exact public target and application evidence
+The full feature patch SHA256 is
+87cbd577db99aaa82c5475eb533f214d0fc0a50b62c1dc623d1d1e0ac23b7999.
+Do not apply all three patches sequentially: the full feature patch already
+contains the direct-controls change. Branding is optional and unnecessary for
+upstream adoption. The full patch aids review/reproduction; smaller semantic PRs
+are still recommended. No bundle has been sent to the author.
+
+Acceptance checklist / 合入验收
+-------------------------------
+Record the actual upstream target SHA, compare its current equivalents, and
+port one unit onto a clean branch. Use upstream's own serialization/opcode/API
+choices. Keep synthetic fixtures public; newly extracted commercial-game ROM,
+sample, instrument, score and derived projects remain outside public patches.
+For each unit, verify default behavior, persistence, undo/clipboard, cancellation
+where relevant, all seven UI languages, and real exported CPU behavior when the
+unit affects playback. Recheck assembler parity and ROM/RAM layout when engine
+code changes. Use Tests/RunUiSmoke.ps1 for isolated portable GUI execution.
+
+R10 direct-control UI passes eight isolated runs: seven languages at 100% and
+Chinese at 150%, with 1,981 PASS records and unchanged user INI hashes. This
+evidence predates the separate branding build. Branded Windows publication and
+Linux/macOS managed builds pass with zero errors. FamiSpectrum.exe passes -help
+and an exact four-second PCM comparison with FamiStudio.exe. Final release PCM
+matches R9 across four 12-second excerpts and the original 1x/2x/4x clock example.
+All eight native DLLs match R9 and the source directory. These builds test the
+local fork, not the separately produced merged tree. Target-OS native execution,
+device audio, signing/notarization, Android and physical NES/FC remain separate
+work. Source and CI are provided, but no remote CI run is claimed.

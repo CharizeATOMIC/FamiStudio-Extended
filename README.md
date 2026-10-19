@@ -1,6 +1,12 @@
-# FamiStudio Tuning — independent desktop fork
+# FamiSpectrum — independent desktop fork
 
-Per-song and pattern tuning, twelve-note cents offsets, live channel panning, and optional repeated expansion chips. Based on FamiStudio 4.5.3. See [fork features, builds and compatibility](FORK_README.md). This is not an official FamiStudio release. The original project introduction follows.
+Based on FamiStudio 4.5.3, with song/pattern tuning, absolute chip curves, multi-subsong NSF import, live stereo/pan, optional repeated expansion chips and independent update clocks. This is not an official FamiStudio release. Original copyright and license notices are retained. See [features and compatibility](FORK_README.md), [release notes](RELEASE_NOTES.txt) and the [upstream integration plan](UPSTREAM_INTEGRATION.txt).
+
+For the Windows self-contained package, extract the entire directory and run **FamiSpectrum.exe**. **FamiStudio.exe** remains a compatible launcher. Windows has runtime evidence; Linux/macOS managed compilation does not establish native runtime support, and Android remains unverified.
+
+## Original upstream README (retained)
+
+The text below is the original FamiStudio introduction, including its upstream links and contribution policy. It describes the upstream project; the fork's current features, builds and validation limits are documented above.
 
 # Welcome to the FamiStudio GitHub page
 This is the GitHub page of FamiStudio, which is intended for people wanting to view/download the source code or report bug fixes.

@@ -1,13 +1,29 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 9)
+FamiSpectrum: platform and upstream integration notes (revision 10)
 
-Current revision 9 handoff
--------------------------
-R9 keeps format 1007, all existing engine stream formats and the native DSP/ABI.
-It changes the shared editor workflow and adds an explicit migration operation.
+Proposed public name, pending confirmation. Independent fork based on FamiStudio
+4.5.3; original copyright and license remain. Internal namespaces, engine symbols
+and settings paths are intentionally retained. UPSTREAM_INTEGRATION.txt maps
+feature dependencies, historical commits and a successful three-way application
+to checked public master 70625dd. That resulting tree was not independently built
+or run. No claim covers private or future upstream branches.
+
+The Windows package launches as FamiSpectrum.exe and keeps FamiStudio.exe as a
+byte-identical compatible apphost. The assembly remains FamiStudio.dll; do not
+rename assembly binding or persisted identifiers just for public branding.
+
+Current revision 10 handoff
+--------------------------
+R10 keeps format 1007, all existing engine stream formats and the native DSP/ABI.
+It moves existing hardware-volume and restart editor buttons directly into the
+expanded hardware-settings area. The buttons show step counts or unused state
+using existing seven-language strings and open the editors without a middle menu.
+Remove the extra main-row noise icon and the instrument Noise settings context
+entry. Keep the original four envelope icons. A legacy period macro adds a direct
+conversion button inside the expanded hardware group.
+R9's explicit migration operation and compatibility guards remain.
 Do not rebuild or alter the engine merely to implement the UI simplification.
-The original four regular-instrument envelope icons return. Instruments using
-hardware noise have one EnvelopeNoise entry whose menu names hardware volume and
-restart. Hardware options fold into one inline row with an enabled count. Hidden
+The original four regular-instrument envelope icons remain. Hardware options
+fold into one inline row with an enabled count. Hidden
 controls retain their data and sound. Disabled sweep hides its three subcontrols.
 Save As remains a visible text action without a second disk icon.
 
@@ -26,6 +42,16 @@ reuses native controls, with labels and reason messages in all seven languages.
 ASCII semicolons in older NoiseEditorStrings values were replaced with sentence
 punctuation because IniFile treats them as comments and truncated the help text.
 
+R10 direct controls pass all seven languages at 100% and Chinese at 150%: eight
+isolated UI runs, 1,981 PASS records and unchanged user INI hashes. Captures bind
+to the control update before the separate branding change. The branded Windows
+publish and Linux/macOS managed builds pass with zero errors. The new alias
+passes -help and a four-second WAV comparison against the compatibility launcher.
+Final release excerpts match R9 PCM (four times 529,200 samples), and the original
+clock example matches 176,400 samples per 1x/2x/4x rate. Eight native DLL hashes
+match R9 and the source directory. The R9/R8 results below retain their revision,
+not new R10 counts. No engine or native DSP rebuild is needed for this change.
+
 R9 passes 4,732 backend checks: 2,896 across eight repeated suites (default 1,506,
 articulation playback 124, envelope clocks 134, instrument articulation 76, noise
 envelopes 141, noise following 597, saving 22 and update rates 296), plus 1,836
@@ -37,7 +63,7 @@ initialization. A private four-song migration compares 53,314,344 editor PCM sam
 exactly and 258,397 ordered APU/S5B writes over 36,328 NSF music ticks. Write-cycle
 timestamps and NSF PCM are not claimed identical.
 
-The final self-contained Windows EXE matches four 12-second excerpts from the
+The final R9 self-contained Windows EXE matches four 12-second excerpts from the
 previous release (529,200 PCM samples each) and produces identical 176,400-sample
 PCM for the original clock example at 1x/2x/4x. Windows publication and independent
 Linux/macOS managed compilation succeed with zero errors. The latter are Windows

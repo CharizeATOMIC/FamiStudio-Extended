@@ -1,4 +1,4 @@
-FamiStudio Tuning — Revision 9 / 修订版 9
+FamiSpectrum — Revision 10 / 修订版 10
 Based on FamiStudio 4.5.3 / 基于 FamiStudio 4.5.3
 Project format / 工程格式: 1007
 
@@ -6,14 +6,21 @@ Project format / 工程格式: 1007
 ====
 
 这是独立开发分支，不是 FamiStudio 官方发行版。保留上游版权和许可证。
+FamiSpectrum 为待确认的公开名称，内部命名空间、引擎符号和原分支设置路径
+保持不变，以减少上游整合差异。完整功能补丁已在 2026-10-20 核实的公开
+master 70625dd 上三方应用成功，无冲突并保留最新更新日志；合并结果树未
+独立构建或运行，不代表未来或私有开发分支的兼容保证。
 GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚未发布或发送。
+Windows 解压完整目录后运行 FamiSpectrum.exe；FamiStudio.exe 兼容入口保留。
 
 本次改进
 --------
-1. 普通乐器恢复四个原生包络图标，不再给每个音色增加三枚噪波图标。使用
-   硬件噪波的乐器只显示一个“噪波设置”入口，菜单以文字区分硬件音量和
-   包络重启，不再用相同喇叭图标表示不同操作。
-2. 较少使用的硬件参数默认收起为同页一行，并提示已启用项数。收起不改
+1. “硬件设置”展开后直接显示硬件音量、包络重启两个按钮，不再经过中间
+   菜单。按钮显示包络步数或“未使用”，点击即进入原有包络编辑器，复用
+   既有七语言文字。移除乐器主行额外的噪波快捷图标及乐器右键“噪波设置”
+   入口，普通乐器保留四个原生包络图标。存在旧周期数据时，同组直接显示
+   转换为琶音的按钮。
+2. 沿用较少使用的硬件参数默认收起为同页一行，并提示已启用项数。收起不改
    声音。关闭扫频时不再显示三个灰色从属参数。“另存为”保留可见文字
    入口，去掉第二个磁盘图标；Ctrl+Shift+S 和保存右键菜单继续可用。
 3. 新噪波音高统一用琴键和原生乐器琶音编辑，不再提供独立噪波周期编辑器
@@ -23,8 +30,8 @@ GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚�
    用普通琶音编辑，可撤销恢复。共享于其他通道、已有非零乐器琶音、独立
    琶音、固定周期含非 C4 音符/滑音、无攻击衔接或无法表示的数据都会说明
    原因并保留原样，不强行套用转换。
-5. 七语言补齐上述界面及迁移提示，并修复旧噪波帮助文字被 INI 英文分号
-   截断的问题。R9 仍使用格式 1007，不改声音引擎格式、原生 DSP 或 ABI。
+5. 保留 R9 的七语言迁移提示及 INI 分号截断修复。R10 只调整既有编辑器
+   入口，仍使用格式 1007，不改声音引擎格式、原生 DSP 或 ABI。
 
 R8 的原子保存修复继续保留：完整写入并刷新临时文件后再替换目标，取消/
 失败不改当前路径、脏状态或原文件，也不会继续关闭/切换工程。另存为成功
@@ -57,8 +64,8 @@ R8 的原子保存修复继续保留：完整写入并刷新临时文件后再�
 
 兼容与使用边界
 --------------
-• 可读取上游格式至 19 以及本分支 1001–1007。R9 与 R8 同为格式 1007，
-  R8 可以读取这种格式，但没有 R9 的编辑流程；官方版及 R1–R7 无法读取。
+• 可读取上游格式至 19 以及本分支 1001–1007。R8/R9/R10 同为格式 1007，
+  较早版本没有当前全部编辑流程；官方版及 R1–R7 无法读取此格式。
   旧 1006 的 Brotli 和 Deflate 均可读取。请用另存为保留原工程。独立设置
   目录为 FamiStudio-Tuning。
 • 自定义调音、芯片曲线和新增演奏语义用于 FamiStudio 声音引擎/NSF/NSFe
@@ -79,6 +86,15 @@ R8 的原子保存修复继续保留：完整写入并刷新临时文件后再�
 
 验证及平台状态
 --------------
+R10 直接硬件按钮已通过七语言 100% 和中文 150% 的八次隔离界面运行，
+共 1,981 条 PASS，日常用户 INI 的前后哈希不变。该界面证据采集于独立品牌
+修改之前；之后的品牌 Windows 自包含发布和 Linux/macOS 托管编译均零错误。
+FamiSpectrum.exe 的 -help 与四秒 WAV 实测通过，与兼容启动器的 PCM 完全
+相同。最终 R10 发布版四曲各十二秒、各 529,200 个采样与 R9 完全相同，
+原创时钟示例 1×/2×/4× 各 176,400 个采样也相同。八个原生 DLL 的哈希
+均与 R9 和源码目录一致。下列 R9 数据保留原版本归属，
+不能标作 R10 新跑结果；本轮未改引擎、原生 DSP 或工程格式。
+
 R9 已通过 4,732 项后台检查：重跑八套回归共 2,896 项（基础 1,506、
 发声播放 124、包络时钟 134、乐器发声属性 76、噪声包络 141、噪声跟随
 597、保存 22、更新率 296），新增迁移检查 1,836 项，含 36 种场景、
@@ -108,14 +124,25 @@ English
 ========
 
 This is an independent development fork, not an official FamiStudio release.
+FamiSpectrum is the proposed public name, pending confirmation. Existing source
+namespaces, engine symbols and settings paths remain to limit porting churn.
+The complete feature patch applies without conflicts to public master 70625dd,
+checked on 2026-10-20, and preserves its latest changelog. The resulting merge
+tree has not been independently built or run; future/private branches are not covered.
 Upstream copyright and license notices are retained. Repository publication and
 the upstream proposal remain preparation work; neither has been posted or sent.
+Extract the full Windows package and run FamiSpectrum.exe. FamiStudio.exe remains
+a compatible launcher.
 
-Revision 9 changes
-------------------
-• Regular instruments regain their four native envelope icons. Hardware-noise
-  instruments have one Noise settings entry with named hardware-volume and
-  restart actions, instead of repeated speaker icons across the main row.
+Revision 10 changes and retained editor workflow
+-----------------------------------------------
+• Hardware settings now contains hardware-volume and envelope-restart buttons
+  directly. Each shows its step count or unused state and opens the existing
+  envelope editor without an intermediate menu. Existing seven-language labels
+  are reused. The extra noise shortcut in the main instrument row and the
+  instrument's Noise settings context-menu entry are removed. Regular instruments
+  retain their four native envelope icons. Legacy period data adds a direct
+  conversion button in the same hardware group.
 • Less-used hardware options start folded into one inline row with an enabled
   count. Folding never changes sound. Disabled sweep hides its three subordinate
   controls. Save As stays visibly labeled but loses the second disk icon. Its
@@ -129,9 +156,9 @@ Revision 9 changes
   lossless. Shared channels, existing nonzero arpeggios, independent arpeggios,
   incompatible fixed-period notes/slides, no-attack continuity and unsupported
   data report a reason and remain intact. Successful migration is undoable.
-• Seven-language help and migration messages are included. Existing noise hints
-  no longer truncate at an INI semicolon. Format remains 1007, with no revision 9
-  engine-stream, native DSP or ABI change.
+• Revision 9's seven-language migration help and INI-semicolon fix remain.
+  Revision 10 only changes access to existing editors. Format remains 1007,
+  with no engine-stream, native DSP or ABI change.
 
 Revision 8's atomic save protection remains: cancelled/failed writes preserve
 the path, dirty state and original file and block pending close/open operations.
@@ -163,9 +190,9 @@ Cumulative fork features
 
 Compatibility
 -------------
-R9 retains R8's format 1007 and reads official formats through 19 plus fork
-1001–1007, including both 1006 compression variants. R8 shares the file format,
-but not the new editor workflow. The official application and fork revisions
+R10 retains R8/R9's format 1007 and reads official formats through 19 plus fork
+1001–1007, including both 1006 compression variants. Earlier releases share the
+file format but not the full current editor workflow. The official application and fork revisions
 through 7 cannot read 1007. Use Save As to retain originals. Settings use the
 separate FamiStudio-Tuning path.
 
@@ -185,6 +212,17 @@ features they cannot preserve instead of silently dropping them.
 
 Verification and distribution
 -----------------------------
+R10 direct hardware controls pass eight isolated UI runs: seven languages at 100%
+and Chinese at 150%, with 1,981 PASS records and unchanged user INI hashes. This
+precedes the separate branding update. The branded Windows publish and Linux/macOS
+managed builds then complete with zero errors. FamiSpectrum.exe passes -help and
+a four-second render with PCM identical to the compatibility launcher. Final R10
+release PCM matches R9 for four 12-second excerpts (529,200 samples each), and the
+original clock example matches all 176,400 samples at 1x/2x/4x. All eight native
+DLL hashes match R9 and the repository. The following R9 results retain their
+original revision and are not new
+R10 checks. Engine, native DSP and project format are unchanged.
+
 R9 passes 4,732 backend checks: eight repeated suites total 2,896 (default 1,506,
 articulation playback 124, envelope clocks 134, instrument articulation 76, noise
 envelopes 141, noise following 597, saving 22 and update rates 296). The 1,836 new

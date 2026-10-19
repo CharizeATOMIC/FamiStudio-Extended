@@ -1,16 +1,20 @@
-Proposal draft / 上游提案草稿 — FamiStudio Tuning revision 9
+Proposal draft / 上游提案草稿 — FamiSpectrum revision 10
 Status: prepared locally; not sent. / 状态：仅本地准备，尚未发送。
 Repository/branch link: add the verified public URL after publication.
 仓库/分支链接：发布后补入已核实的公开链接。
+Proposed name, pending confirmation. Independent fork based on FamiStudio 4.5.3.
+暂定名称待确认。基于 FamiStudio 4.5.3 的独立分支，非官方发行版。
+See UPSTREAM_INTEGRATION.txt for dependencies, source maps and historical commits.
+依赖、源码映射及历史提交拆分见 UPSTREAM_INTEGRATION.txt。
 
 ENGLISH — suggested issue or discussion text
 ============================================
 
-Title: Proposal: optional per-song/pattern tuning and independently reviewable
-       editor, noise-instrument and playback improvements
+Title: Proposal: song/pattern tuning, chip curves, multi-NSF import and optional
+       live mixing/update clocks as separate upstream changes
 
 Hi! I use FamiStudio for 8-bit composition and have built an experimental desktop
-fork from 4.5.3. The initial need was to give songs and pattern columns their own
+fork named FamiSpectrum (proposed name) from 4.5.3. The initial need was to give songs and pattern columns their own
 A4 reference and twelve-note temperament, while preserving those choices in the
 sound engine and NSF export. That work also produced several independent editor
 and playback improvements. Would any of the following be useful upstream?
@@ -20,8 +24,17 @@ useful scope first, then prepare small PRs against your current branch, using yo
 preferred format versions, opcodes, naming and UI conventions. Features outside
 FamiStudio's intended scope can stay in the fork.
 
-Suggested review units
-----------------------
+The requested priorities are song/pattern tuning, absolute per-chip curves,
+multi-subsong NSF import, live channel pan/optional chip copies, and independent
+1x/2x/4x output clocks that keep existing music speed. Noise instruments, save/UI
+cleanup and compression can follow independently. The feature patch applies
+cleanly through a three-way check to the public master observed on 2026-10-20
+(70625dd), which only adds changelog text to the 4.5.3 base. That resulting tree
+has not been independently built or run, and this result does not cover private
+or future development. Features can be split to match your architectural choices.
+
+Independent review units (dependency order is in UPSTREAM_INTEGRATION.txt)
+------------------------------------------------------------------------
 1. Save safety and discoverability. A visible text-only Save As command complements the
    existing shortcut/context menu. Saves finish a sibling temporary file before
    replacing the destination, and a failed save cannot continue a pending close
@@ -38,11 +51,13 @@ Suggested review units
    review before settling an upstream representation.
 
 3. Editable hardware articulation. New noise pitch uses keys and the native
-   instrument arpeggio. Hardware volume and restart share one clearly named menu,
-   while less-used hardware parameters default to one folded inline row. Legacy
+   instrument arpeggio. Hardware volume and restart have direct buttons inside
+   the folded hardware-settings row, showing steps/unused state without an
+   intermediate menu. Legacy
    period data remains supported, with an explicit lossless migration action and
-   clear refusal reasons rather than automatic conversion. Revision 9 removes the
-   separate period editor/follow switch without changing the engine or native DSP.
+   clear refusal reasons rather than automatic conversion. Revision 9 removed the
+   separate period editor/follow switch; revision 10 simplifies access to the two
+   hardware-envelope editors without changing the engine or native DSP.
    Software envelope
    decay, full seven-bit DPCM mapping DAC, APU attack-phase reset, low-byte pitch
    saturation and hardware sweep can be reviewed separately. Old projects keep
@@ -74,7 +89,7 @@ shared across desktop platforms. All seven current languages are covered. The
 mobile toolbar/property-control paths are prepared, but desktop tests are not
 proof of Android device support.
 
-The fork uses private project format 1007, unchanged between revisions 8 and 9,
+The fork uses private project format 1007, unchanged through revisions 8, 9 and 10,
 and a separate settings/clipboard
 namespace. It reads old official projects and earlier fork versions; that is not
 a proposal to reserve those numbers upstream. Matching music exports require the
@@ -98,6 +113,13 @@ Separate cartridge demonstrations execute in an independent emulator. Tests
 distinguish frame-level editor behavior from cycle-timed CPU hardware behavior;
 there is no claim of physical-console or universal-player validation.
 
+R10 direct-control UI passes eight isolated runs (seven languages at 100%, Chinese
+at 150%) and 1,981 PASS records, with unchanged user INI hashes. Those captures
+predate the separate branding change. The branded Windows publish and Linux/macOS
+managed builds pass with zero errors. FamiSpectrum.exe passes CLI help and an
+exact four-second PCM comparison with the compatibility launcher; final release
+audio matches R9 across four 12-second excerpts and the original 1x/2x/4x example.
+The following evidence belongs to the indicated earlier revisions.
 Revision 9 passes 2,896 checks across eight repeated backend suites and 1,836
 new migration checks, including 36 scenarios and 72 actual NSF executions at
 PAL/NTSC and 1x/2x/4x. A separate private four-song migration comparison matches
@@ -128,10 +150,10 @@ bringing the remaining features forward.
 中文 — 可直接用于讨论/意见的正文
 ================================
 
-标题建议：可选的歌曲/样式调音，以及可分开审阅的编辑器、噪声乐器和播放改进
+标题建议：分项讨论歌曲/样式调音、芯片曲线、NSF 多曲导入及可选实时混音/更新率
 
 你好！我一直使用 FamiStudio 创作 8-bit 音乐，最近以 4.5.3 为基础做了一个
-实验性桌面分支。最初的需求是让每首歌和时间轴每列样式有独立的 A4 标准音
+实验性桌面分支，暂定名 FamiSpectrum。最初的需求是让每首歌和时间轴每列样式有独立的 A4 标准音
 及十二音级律制，并能正确导出到声音引擎和 NSF。开发中也整理了一些彼此
 独立的编辑器和播放改进，想先了解其中哪些符合 FamiStudio 的发展方向。
 
@@ -139,8 +161,15 @@ bringing the remaining features forward.
 格式版本、指令、命名和界面习惯，不需要一次接收整个分支。不适合主项目的
 功能可以继续留在独立分支中。
 
-建议拆分顺序
-------------
+优先讨论歌曲/样式调音、绝对整数芯片曲线、NSF 多曲导入、实时声像/可选
+重复芯片，以及保持已有音乐速度的 1×/2×/4× 独立更新率。噪波乐器、保存/
+界面和压缩可作为后续独立改动。完整功能补丁已在 2026-10-20 核实的公开
+master 70625dd 上通过真实三方应用，零冲突并保留更新日志；该 master 比
+4.5.3 只多一处日志改动。结果树尚未独立构建或运行，也不覆盖未来或私有
+开发分支。仍希望依据你们当前架构重新拆分，而不是要求接收整个补丁。
+
+可独立审阅的功能单元（依赖顺序见 UPSTREAM_INTEGRATION.txt）
+---------------------------------------------------------
 1. 保存与导入。显式“另存为”文字入口，不增加重复磁盘图标；完成临时文件
    后再替换目标；保存失败不
    继续关闭或切换工程。NSF/NSFe 多选子曲导入可再独立成一个 PR，涵盖各曲
@@ -148,10 +177,12 @@ bringing the remaining features forward.
 2. 调音与曲线。项目→歌曲→样式继承的标准音和十二音级偏移，以及独立的
    工程级芯片整数曲线。播放/预览/出口共享量化；引擎通过可选表指针支持，
    不把每帧音高烘焙成事件。硬件表示边界和曲线基准的存储方式可先讨论。
-3. 乐器表达能力。新噪波音高使用琴键和原生乐器琶音，硬件音量/重启统一为
-   有文字名称的入口，少用的硬件参数默认同页折叠。旧周期数据继续兼容，
+3. 乐器表达能力。新噪波音高使用琴键和原生乐器琶音，硬件音量/重启直接在
+   同页折叠的硬件设置内显示按钮及步数/未使用状态，不再经过中间菜单。
+   旧周期数据继续兼容，
    只在用户主动转换且能无损表示时迁移，否则说明原因并保留原样。R9 移除
-   独立周期编辑器/跟随开关，不改引擎或原生 DSP。软件包络衰减、完整七位
+   独立周期编辑器/跟随开关，R10 再简化两个硬件包络编辑器入口，均不改
+   引擎或原生 DSP。软件包络衰减、完整七位
    DPCM 初值、APU 起音相位、低字节饱和及硬件扫频也可以逐项提交。
 4. 曲式。样式播放延迟和同声部循环变奏，表达首次与重复演奏的真实差别。
    引擎仍导出普通音符/效果流，独立审查跨界事件归属、循环、旧出口与界面。
@@ -169,7 +200,7 @@ bringing the remaining features forward.
 可以共享；首次合入仍需审查原生 ABI、文件格式及引擎容量。移动端共享控件
 已准备，但桌面触摸事件测试不能代表 Android 真机验证。
 
-分支私用格式为 1007，R8 与 R9 不变；设置及剪贴板命名独立，支持读取旧
+分支私用格式为 1007，R8/R9/R10 不变；设置及剪贴板命名独立，支持读取旧
 官方/分支工程。
 这些版本号不是给上游预留的建议。新导出需要匹配的引擎；各可选功能默认
 关闭，需分别审查 ROM、RAM、CPU 及组合配置。已提供四种汇编器和多扩展
@@ -182,6 +213,12 @@ CA65 版本。原生层包含模拟器实例/立体声接口及输出率接口�
 Linux/macOS 托管编译与目标平台原生验证严格分开。尚未测试物理 FC/NES，
 也不宣称编辑器帧头写入与所有游戏 CPU 周期调度产生逐采样相同的声音。
 
+R10 直接控件已通过八次隔离界面运行（七语言 100%、中文 150%），共 1,981
+条 PASS，用户 INI 哈希不变。这些截图在独立品牌修改之前采集；之后品牌
+Windows 发布、Linux/macOS 托管编译均零错误。FamiSpectrum.exe 的命令行
+帮助和四秒 PCM 对比通过，最终发布版四曲各十二秒及原创 1×/2×/4× 示例
+音频与 R9 精确相同。
+以下证据属于明确标注的此前版本。
 R9 重跑八套后台回归共 2,896 项，并通过 1,836 项新增迁移检查，含 36 种
 场景及 PAL/NTSC、1×/2×/4× 下 72 份实际 NSF CPU 执行。独立私有四曲迁移
 中 53,314,344 个编辑器 PCM 采样完全相同，36,328 个 NSF 音乐 tick 中
