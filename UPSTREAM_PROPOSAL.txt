@@ -1,9 +1,9 @@
-Proposal draft / 上游提案草稿 — FamiSpectrum revision 10
+Proposal draft / 上游提案草稿 — FamiStudio Extended revision 10
 Status: prepared locally; not sent. / 状态：仅本地准备，尚未发送。
 Repository/branch link: add the verified public URL after publication.
 仓库/分支链接：发布后补入已核实的公开链接。
-Proposed name, pending confirmation. Independent fork based on FamiStudio 4.5.3.
-暂定名称待确认。基于 FamiStudio 4.5.3 的独立分支，非官方发行版。
+Display name: FamiStudio Extended. Repository/launcher slug: FamiStudio-Extended.
+展示名 FamiStudio Extended，基于 FamiStudio 4.5.3 的独立分支，非官方发行版。
 See UPSTREAM_INTEGRATION.txt for dependencies, source maps and historical commits.
 依赖、源码映射及历史提交拆分见 UPSTREAM_INTEGRATION.txt。
 
@@ -14,7 +14,7 @@ Title: Proposal: song/pattern tuning, chip curves, multi-NSF import and optional
        live mixing/update clocks as separate upstream changes
 
 Hi! I use FamiStudio for 8-bit composition and have built an experimental desktop
-fork named FamiSpectrum (proposed name) from 4.5.3. The initial need was to give songs and pattern columns their own
+fork named FamiStudio Extended from 4.5.3. The initial need was to give songs and pattern columns their own
 A4 reference and twelve-note temperament, while preserving those choices in the
 sound engine and NSF export. That work also produced several independent editor
 and playback improvements. Would any of the following be useful upstream?
@@ -115,14 +115,20 @@ there is no claim of physical-console or universal-player validation.
 
 R10 direct-control UI passes eight isolated runs (seven languages at 100%, Chinese
 at 150%) and 1,981 PASS records, with unchanged user INI hashes. Those captures
-predate the separate branding change. The branded Windows publish and Linux/macOS
-managed builds pass with zero errors. FamiSpectrum.exe passes CLI help and an
+predate branding. The first branding build (then FamiSpectrum) passed Windows
+publication and Linux/macOS managed builds with zero errors. Its old
+FamiSpectrum.exe passed CLI help and an
 exact four-second PCM comparison with the compatibility launcher; final release
-audio matches R9 across four 12-second excerpts and the original 1x/2x/4x example.
+audio matched R9 across four 12-second excerpts and the original 1x/2x/4x example.
+The separate naming-only commit f41abaa passes all three desktop builds (Unix
+managed compilation only). Actual FamiStudio-Extended.exe help and 1x/2x/4x
+four-second exports match the compatibility launcher and earlier R10 PCM exactly,
+with unchanged native DLL and user INI hashes. Full UI/four-song tests retain their
+earlier attribution rather than being claimed as repeated naming checks.
 The following evidence belongs to the indicated earlier revisions.
 Revision 9 passes 2,896 checks across eight repeated backend suites and 1,836
 new migration checks, including 36 scenarios and 72 actual NSF executions at
-PAL/NTSC and 1x/2x/4x. A separate private four-song migration comparison matches
+PAL/NTSC and 1x/2x/4x. A separate four-song migration comparison matches
 53,314,344 editor PCM samples and 258,397 ordered APU/S5B writes over 36,328 NSF
 music ticks. That evidence does not claim identical CPU write timestamps or NSF
 PCM. The final Windows EXE also matches four 12-second excerpts from the previous
@@ -138,9 +144,16 @@ tests. Logs and screenshots can accompany each corresponding PR.
 The Windows account could not create symbolic links, so Unix/link semantics still
 need target-platform runtime verification. Earlier revision reports remain
 identified by their revision, not reused as current proof.
-No newly extracted commercial-game ROM, sample, instrument, score or derived
-project will be included in the public patch or synthetic fixtures. Existing
-upstream examples and their licenses remain unchanged.
+The user also requested replacing the bundled Gimmick demonstration with a
+specific four-song version, keeping the original project name/author attribution
+and existing notices: Gimmick!, Masashi Kageyama,Naohisa Morota, and 1992 Sunsoft.
+The asset change is isolated in commit 4e02175. This music example is separate from the original synthetic
+fixtures; no new score license is asserted. The final fork source/history includes
+that demo change, while the feature-only patch through 52a246f does not. I suggest
+excluding it from functional PRs and reviewing it independently if desired.
+The demo uses fork format 1007 and requires matching feature/format support,
+so it cannot directly replace the official 4.5.3 demo.
+ROMs, other extraction intermediates and private projects are excluded.
 
 If this direction is useful, which review unit would you prefer first? I can
 prepare that unit independently and adapt its API, UX and engine design before
@@ -153,7 +166,7 @@ bringing the remaining features forward.
 标题建议：分项讨论歌曲/样式调音、芯片曲线、NSF 多曲导入及可选实时混音/更新率
 
 你好！我一直使用 FamiStudio 创作 8-bit 音乐，最近以 4.5.3 为基础做了一个
-实验性桌面分支，暂定名 FamiSpectrum。最初的需求是让每首歌和时间轴每列样式有独立的 A4 标准音
+实验性桌面分支，名为 FamiStudio Extended。最初的需求是让每首歌和时间轴每列样式有独立的 A4 标准音
 及十二音级律制，并能正确导出到声音引擎和 NSF。开发中也整理了一些彼此
 独立的编辑器和播放改进，想先了解其中哪些符合 FamiStudio 的发展方向。
 
@@ -214,13 +227,18 @@ Linux/macOS 托管编译与目标平台原生验证严格分开。尚未测试�
 也不宣称编辑器帧头写入与所有游戏 CPU 周期调度产生逐采样相同的声音。
 
 R10 直接控件已通过八次隔离界面运行（七语言 100%、中文 150%），共 1,981
-条 PASS，用户 INI 哈希不变。这些截图在独立品牌修改之前采集；之后品牌
-Windows 发布、Linux/macOS 托管编译均零错误。FamiSpectrum.exe 的命令行
+条 PASS，用户 INI 哈希不变。这些截图在品牌修改之前采集；首次品牌构建
+（当时名为 FamiSpectrum）的 Windows 发布、Linux/macOS 托管编译均零错误。
+旧 FamiSpectrum.exe 的命令行
 帮助和四秒 PCM 对比通过，最终发布版四曲各十二秒及原创 1×/2×/4× 示例
-音频与 R9 精确相同。
+音频与 R9 精确相同。这些是旧名称下的历史结果；随后只改为 FamiStudio
+Extended。名称提交 f41abaa 已通过三桌面构建（Unix 仅托管编译），新
+FamiStudio-Extended.exe 帮助和 1×/2×/4× 四秒导出与兼容启动器及旧 R10
+PCM 完全相同；原生 DLL 和用户 INI 哈希不变。全套界面/四曲测试保留此前
+归属，没有为改名重跑。
 以下证据属于明确标注的此前版本。
 R9 重跑八套后台回归共 2,896 项，并通过 1,836 项新增迁移检查，含 36 种
-场景及 PAL/NTSC、1×/2×/4× 下 72 份实际 NSF CPU 执行。独立私有四曲迁移
+场景及 PAL/NTSC、1×/2×/4× 下 72 份实际 NSF CPU 执行。独立四曲迁移
 中 53,314,344 个编辑器 PCM 采样完全相同，36,328 个 NSF 音乐 tick 中
 258,397 次有序 APU/S5B 写入完全相同；不宣称 CPU 写入时刻或 NSF PCM
 相同。最终 Windows EXE 的四曲各 12 秒片段与上一版本相同，原创示例在
@@ -231,9 +249,14 @@ Windows 自包含发布、Linux/macOS 托管编译均零错误，八个原生 DL
 相同。R9 不改引擎及原生 DSP，沿用 R8 的 64 种配置四汇编器一致、60 个
 模板的 31,956 项布局检查，不将它们算成本轮重跑。可随相关 PR 提供日志
 与截图。本机无创建符号链接权限，Unix/
-链接仍需目标平台运行验证；历史报告保留明确版本。新提取的商业游戏 ROM、
-样本、乐器、曲谱及派生工程均不
-进入公开源码或测试夹具，上游已存在的示例及其许可说明保留原样。
+链接仍需目标平台运行验证；历史报告保留明确版本。另应用户要求，随附
+Gimmick 示范会替换为指定四曲版，保留原 metadata：Gimmick! /
+Masashi Kageyama,Naohisa Morota / 1992 Sunsoft，独立提交为 4e02175。它是音乐
+示范素材，与原创合成夹具分开，不另作曲谱许可声明。最终源码/历史包含
+此示范变更，截止 52a246f 的功能补丁不包含它；建议功能 PR 排除此项，
+需要时另行审阅素材。ROM、其他提取中间文件及私人项目不公开。
+该示范使用分支格式 1007，需对应功能及格式支持，不能直接替换官方
+4.5.3 的示范文件。
 
 如果其中有适合的方向，你希望先审阅哪一部分？我可以先准备该部分的独立
 变更，并根据反馈调整接口、界面和引擎设计。

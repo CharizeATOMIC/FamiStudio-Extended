@@ -1,11 +1,18 @@
-FamiSpectrum — upstream integration plan / 上游整合说明
-Proposed name; independent fork based on FamiStudio 4.5.3, revision 10.
-暂定名称，基于 FamiStudio 4.5.3 的独立分支，修订版 10。
+FamiStudio Extended — upstream integration plan / 上游整合说明
+Display name: FamiStudio Extended. Slug: FamiStudio-Extended.
+基于 FamiStudio 4.5.3 的独立分支，修订版 10，保留原名并增加 Extended 后缀。
 
 Status and scope / 状态与范围
 ----------------------------
 Known base: c09dca64788606c09fcb5e70db28b9dd1f34be78 (4.5.3).
-R10 direct-controls commit: 52a246f. Separate branding commit: 69c62a8.
+R10 direct-controls commit: 52a246f. Initial branding commit: 69c62a8.
+A subsequent naming-only correction f41abaa616f0b811cddf6f8c50fac042abfe7333
+changes FamiSpectrum to FamiStudio Extended.
+The final optional branding patch must include both branding commits; its
+regeneration follows the final naming commit. The feature patch still ends at 52a246f.
+The user-selected four-song demo replacement is a separate commit,
+4e021755c5c5a7f48d119a508c52cedda816b744. It is included in final source/history,
+not in the feature-only patch or its application proof below.
 Public upstream checked on 2026-10-20:
   Latest official release: 4.5.3.
   master: 70625dd09d8acaef831bbce468d416fb0b596be1.
@@ -23,7 +30,7 @@ The resulting merged tree has not been independently built or run. This proves
 application to the observed public master only, not future/private branches or
 general API compatibility with unknown development work.
 Keep LICENSE, upstream copyright notices and third-party licenses intact.
-The proposed public name does not require renaming C# namespaces, assembly
+The public name does not require renaming C# namespaces, assembly
 entry points, engine symbols, existing settings paths or serialization keys.
 
 2026-10-20 通过浏览器及 fetch 核实：最新正式版仍是 4.5.3；公开 master 为
@@ -186,8 +193,12 @@ bd9fbe1  Atomic save/visible Save As and noise-follow UI share a commit. Save I/
 52a246f  R10 direct hardware-envelope controls are a separate UI-only follow-up.
          It expects the R9 hardware group and noise model; it is not standalone
          on unmodified 4.5.3. No DSP or engine change belongs to this commit.
-69c62a8  Public branding is a separate commit and need not be ported upstream.
-         Internal compatibility identifiers remain intact.
+69c62a8  Initial public branding, followed by the naming-only correction to
+         FamiStudio Extended. The final optional-branding.patch combines both
+         commits. Branding need not be ported upstream. Internal compatibility
+         identifiers remain intact. Final correction: f41abaa616f0b811cddf6f8c50fac042abfe7333.
+4e02175  User-selected four-song Gimmick demo replacement only. Retains original
+         project metadata. Review separately or omit it from functional PRs.
 
 可优先抽取的最小修复是 9158e13 中的 S5B 源码重置逻辑，而不是连 Windows
 二进制与分支专用测试 ABI 一起机械 cherry-pick。其他历史大提交混合了独立
@@ -196,24 +207,35 @@ bd9fbe1  Atomic save/visible Save As and noise-follow UI share a commit. Save I/
 
 Prepared author bundle / 已准备的作者补丁包
 ------------------------------------------
-FamiSpectrum-Upstream-r10/ contains:
+Final package naming: FamiStudio-Extended-Upstream-r10/. Regenerate the package
+and history bundle after the final naming/document commit. Planned contents:
   features-from-4.5.3.patch       full feature delta, base c09dca6 -> 52a246f
   r10-direct-noise-controls.patch isolated R10 UI follow-up on the R9 model/UI
-  optional-branding.patch         separate 69c62a8 public-name change
+  optional-branding.patch         69c62a8 plus f41abaa naming correction
+  optional-gimmick-demo.patch     isolated user-selected four-song demo replacement
   integration-verification.json  exact public target and application evidence
 The full feature patch SHA256 is
 87cbd577db99aaa82c5475eb533f214d0fc0a50b62c1dc623d1d1e0ac23b7999.
-Do not apply all three patches sequentially: the full feature patch already
+Do not apply every patch sequentially: the full feature patch already
 contains the direct-controls change. Branding is optional and unnecessary for
-upstream adoption. The full patch aids review/reproduction; smaller semantic PRs
+upstream adoption. The demo replacement is also independent and may be excluded
+from a functional PR. The full patch aids review/reproduction; smaller semantic PRs
 are still recommended. No bundle has been sent to the author.
 
 Acceptance checklist / 合入验收
 -------------------------------
 Record the actual upstream target SHA, compare its current equivalents, and
 port one unit onto a clean branch. Use upstream's own serialization/opcode/API
-choices. Keep synthetic fixtures public; newly extracted commercial-game ROM,
-sample, instrument, score and derived projects remain outside public patches.
+choices. Keep original synthetic fixtures separate from music demonstrations.
+The final source/history includes the user-selected four-song replacement at
+Setup/Demo Songs/Gimmick.fms. Retained metadata is Name="Gimmick!",
+Author="Masashi Kageyama,Naohisa Morota", Copyright="1992 Sunsoft". This is music
+demonstration material, not an original synthetic fixture or a new score license.
+Its SHA256 is 9b8ba001054c75ea6059f0126fb11ac1d4f5458d9fd556204eb871095f39168e
+(33,029 bytes). The feature patch ending at 52a246f excludes it. Review the demo
+separately if desired. It uses fork format 1007 and requires matching features;
+it is not a drop-in demo for official 4.5.3. ROMs, other extraction intermediates and private projects
+remain excluded from public packages.
 For each unit, verify default behavior, persistence, undo/clipboard, cancellation
 where relevant, all seven UI languages, and real exported CPU behavior when the
 unit affects playback. Recheck assembler parity and ROM/RAM layout when engine
@@ -221,11 +243,17 @@ code changes. Use Tests/RunUiSmoke.ps1 for isolated portable GUI execution.
 
 R10 direct-control UI passes eight isolated runs: seven languages at 100% and
 Chinese at 150%, with 1,981 PASS records and unchanged user INI hashes. This
-evidence predates the separate branding build. Branded Windows publication and
-Linux/macOS managed builds pass with zero errors. FamiSpectrum.exe passes -help
-and an exact four-second PCM comparison with FamiStudio.exe. Final release PCM
-matches R9 across four 12-second excerpts and the original 1x/2x/4x clock example.
-All eight native DLLs match R9 and the source directory. These builds test the
-local fork, not the separately produced merged tree. Target-OS native execution,
+evidence predates branding. The first branding build (then FamiSpectrum) passed
+Windows publication and Linux/macOS managed compilation with zero errors. Its
+old FamiSpectrum.exe passed -help and an exact four-second PCM comparison with
+FamiStudio.exe. That first release PCM matched R9 across four 12-second excerpts
+and the original 1x/2x/4x clock example.
+All eight native DLLs matched R9 and the source directory. The subsequent
+FamiStudio Extended naming commit f41abaa independently passes Windows publication
+and Linux/macOS managed compilation. FamiStudio-Extended.exe help and 1x/2x/4x
+four-second renders pass, with 176,400 PCM samples per run exactly matching the
+compatibility launcher and prior clock reference. Native DLL and user INI hashes
+remain unchanged. Full UI/four-song results are historical, not rerun rename tests.
+These builds test the local fork, not the separately produced merged tree. Target-OS native execution,
 device audio, signing/notarization, Android and physical NES/FC remain separate
 work. Source and CI are provided, but no remote CI run is claimed.

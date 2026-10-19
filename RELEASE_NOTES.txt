@@ -1,4 +1,4 @@
-FamiSpectrum — Revision 10 / 修订版 10
+FamiStudio Extended — Revision 10 / 修订版 10
 Based on FamiStudio 4.5.3 / 基于 FamiStudio 4.5.3
 Project format / 工程格式: 1007
 
@@ -6,12 +6,13 @@ Project format / 工程格式: 1007
 ====
 
 这是独立开发分支，不是 FamiStudio 官方发行版。保留上游版权和许可证。
-FamiSpectrum 为待确认的公开名称，内部命名空间、引擎符号和原分支设置路径
+展示名为 FamiStudio Extended，保留原词并增加后缀；仓库和包名使用
+FamiStudio-Extended。内部命名空间、引擎符号和原分支设置路径
 保持不变，以减少上游整合差异。完整功能补丁已在 2026-10-20 核实的公开
 master 70625dd 上三方应用成功，无冲突并保留最新更新日志；合并结果树未
 独立构建或运行，不代表未来或私有开发分支的兼容保证。
 GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚未发布或发送。
-Windows 解压完整目录后运行 FamiSpectrum.exe；FamiStudio.exe 兼容入口保留。
+Windows 解压完整目录后运行 FamiStudio-Extended.exe；FamiStudio.exe 兼容入口保留。
 
 本次改进
 --------
@@ -32,6 +33,9 @@ Windows 解压完整目录后运行 FamiSpectrum.exe；FamiStudio.exe 兼容入�
    原因并保留原样，不强行套用转换。
 5. 保留 R9 的七语言迁移提示及 INI 分号截断修复。R10 只调整既有编辑器
    入口，仍使用格式 1007，不改声音引擎格式、原生 DSP 或 ABI。
+6. 按用户指定，将随附 Gimmick 示范替换为四曲版本，工程名和作者信息
+   与原示范一致：Gimmick! / Masashi Kageyama,Naohisa Morota / 1992 Sunsoft。
+   这是音乐示范素材，不是原创合成测试夹具。
 
 R8 的原子保存修复继续保留：完整写入并刷新临时文件后再替换目标，取消/
 失败不改当前路径、脏状态或原文件，也不会继续关闭/切换工程。另存为成功
@@ -87,13 +91,14 @@ R8 的原子保存修复继续保留：完整写入并刷新临时文件后再�
 验证及平台状态
 --------------
 R10 直接硬件按钮已通过七语言 100% 和中文 150% 的八次隔离界面运行，
-共 1,981 条 PASS，日常用户 INI 的前后哈希不变。该界面证据采集于独立品牌
-修改之前；之后的品牌 Windows 自包含发布和 Linux/macOS 托管编译均零错误。
-FamiSpectrum.exe 的 -help 与四秒 WAV 实测通过，与兼容启动器的 PCM 完全
-相同。最终 R10 发布版四曲各十二秒、各 529,200 个采样与 R9 完全相同，
-原创时钟示例 1×/2×/4× 各 176,400 个采样也相同。八个原生 DLL 的哈希
-均与 R9 和源码目录一致。下列 R9 数据保留原版本归属，
-不能标作 R10 新跑结果；本轮未改引擎、原生 DSP 或工程格式。
+共 1,981 条 PASS。四曲各十二秒、各 529,200 个 PCM 采样与 R9 完全相同。
+本次仅改名称，沿用上述界面和四曲证明，不重复计为新跑检查。
+最终 Windows 自包含发布及 Linux/macOS 托管编译均零错误。新命名构建与
+启动器另行验证：FamiStudio-Extended.exe 的 -help 通过，兼容启动器 1×
+与新启动器 1×/2×/4× 共四次四秒导出，每次 176,400 个 PCM 采样完全
+相同，也等于已有的原创时钟参考。八个原生 DLL 和用户 INI 哈希不变。
+具体提交和测试归属见整合说明及验证报告。下列 R9 数据保留原版本归属；
+本轮未改引擎、原生 DSP 或工程格式。
 
 R9 已通过 4,732 项后台检查：重跑八套回归共 2,896 项（基础 1,506、
 发声播放 124、包络时钟 134、乐器发声属性 76、噪声包络 141、噪声跟随
@@ -102,7 +107,7 @@ PAL/NTSC 及 1×/2×/4× 下 72 份实际 NSF CPU 执行。七语言 100% 与中
 150% 的八次界面运行全部通过，共 1,869 条 PASS 记录，覆盖窄标签布局和
 旧噪波迁移入口。最终界面测试使用独立便携目录，非便携模式在应用初始化
 之前拒绝执行，避免测试写入日常使用的配置。
-独立的私有四曲迁移验证中，完整混音与单独噪声共 53,314,344 个编辑器
+独立的四曲迁移验证中，完整混音与单独噪声共 53,314,344 个编辑器
 PCM 采样完全相同。实际 NSF CPU 执行的 36,328 个音乐 tick 中，258,397
 次有序 APU/S5B 地址/数值写入完全相同；不宣称 CPU 写入时刻或 NSF PCM
 相同。最终自包含 EXE 另验证四曲各 12 秒、各 529,200 个采样与上一版本
@@ -116,22 +121,27 @@ Windows 账户不能创建
 符号链接，该检查明确跳过；Unix 权限/链接、原生播放、设备和签名/打包仍
 需在目标平台验证，不能以托管编译代替运行证据。Android
 尚缺本机匹配的 .NET 9 Android 工具链和设备验证。未在物理 FC/NES 上验证。
-商业游戏 ROM、提取乐器/曲谱及派生工程不进入公开应用、源码包或测试夹具；
-本地专项资料独立保存。上游已跟踪的原始示例及许可说明不作删除或改写。
+公开应用和源码包仅纳入上述用户指定的四曲 Gimmick 替代示范，保留原示范
+的工程名、作者及既有版权/许可说明，不为新曲谱另作许可声明。ROM、其他
+提取中间文件及私人项目不随包发布。其他上游示范保留原样。功能 PR 可以
+排除本次示范替换，作为单独素材改动审阅。
+示范使用分支格式 1007，需要对应格式及功能支持，不能直接作为官方
+4.5.3 的通用示范替换。
 
 
 English
 ========
 
 This is an independent development fork, not an official FamiStudio release.
-FamiSpectrum is the proposed public name, pending confirmation. Existing source
+The display name is FamiStudio Extended; the repository/package slug and launcher
+use FamiStudio-Extended. Existing source
 namespaces, engine symbols and settings paths remain to limit porting churn.
 The complete feature patch applies without conflicts to public master 70625dd,
 checked on 2026-10-20, and preserves its latest changelog. The resulting merge
 tree has not been independently built or run; future/private branches are not covered.
 Upstream copyright and license notices are retained. Repository publication and
 the upstream proposal remain preparation work; neither has been posted or sent.
-Extract the full Windows package and run FamiSpectrum.exe. FamiStudio.exe remains
+Extract the full Windows package and run FamiStudio-Extended.exe. FamiStudio.exe remains
 a compatible launcher.
 
 Revision 10 changes and retained editor workflow
@@ -159,6 +169,10 @@ Revision 10 changes and retained editor workflow
 • Revision 9's seven-language migration help and INI-semicolon fix remain.
   Revision 10 only changes access to existing editors. Format remains 1007,
   with no engine-stream, native DSP or ABI change.
+• The bundled Gimmick demo is replaced with the user-selected four-song version,
+  retaining the original metadata: Gimmick!, Masashi Kageyama,Naohisa Morota,
+  and 1992 Sunsoft. It is music
+  demonstration material, not an original synthetic test fixture.
 
 Revision 8's atomic save protection remains: cancelled/failed writes preserve
 the path, dirty state and original file and block pending close/open operations.
@@ -212,16 +226,17 @@ features they cannot preserve instead of silently dropping them.
 
 Verification and distribution
 -----------------------------
-R10 direct hardware controls pass eight isolated UI runs: seven languages at 100%
-and Chinese at 150%, with 1,981 PASS records and unchanged user INI hashes. This
-precedes the separate branding update. The branded Windows publish and Linux/macOS
-managed builds then complete with zero errors. FamiSpectrum.exe passes -help and
-a four-second render with PCM identical to the compatibility launcher. Final R10
-release PCM matches R9 for four 12-second excerpts (529,200 samples each), and the
-original clock example matches all 176,400 samples at 1x/2x/4x. All eight native
-DLL hashes match R9 and the repository. The following R9 results retain their
-original revision and are not new
-R10 checks. Engine, native DSP and project format are unchanged.
+R10 direct controls pass eight isolated UI runs: seven languages at 100% and
+Chinese at 150%, with 1,981 PASS records. Four 12-second excerpts match R9 PCM
+exactly (529,200 samples each). Those UI/four-song results are retained for this
+naming-only change, without counting them as rerun tests.
+Final Windows publication and Linux/macOS managed builds complete with zero
+errors. The renamed build and launcher are checked separately: -help succeeds,
+and four four-second exports (compatibility launcher at 1x, new launcher at
+1x/2x/4x) produce identical 176,400-sample PCM matching the existing clock reference.
+Eight native DLLs and user INI hashes remain unchanged. Exact commit/test
+attribution is in the integration notes and reports. The following R9 results
+retain their original revision. Engine, native DSP and project format are unchanged.
 
 R9 passes 4,732 backend checks: eight repeated suites total 2,896 (default 1,506,
 articulation playback 124, envelope clocks 134, instrument articulation 76, noise
@@ -231,7 +246,7 @@ migration checks cover 36 scenarios and 72 actual NSF executions at PAL/NTSC and
 1,869 PASS records, including narrow-label geometry and legacy-conversion access.
 The final GUI runs use an isolated portable directory. Non-portable test execution
 is refused before application initialization to protect everyday settings.
-A private four-song migration comparison matches 53,314,344 editor PCM samples
+A separate four-song migration comparison matches 53,314,344 editor PCM samples
 across the full mix and isolated noise. Actual NSF CPU execution matches 258,397
 ordered APU/S5B address/value writes over 36,328 music ticks. CPU write timestamps
 and NSF PCM are not claimed identical. The final self-contained EXE also matches
@@ -247,6 +262,11 @@ The Windows account cannot create symbolic links, so that test is explicitly
 skipped. Unix permissions/links, target-OS audio and packaging still need runtime
 validation. Rebuild the native ABI on each target OS. Android
 still needs the matching .NET 9 Android toolchain and device testing. No physical
-NES/FC console has been tested. Extracted commercial-game assets and derived
-projects remain private and are excluded from public application/source packages.
-Already tracked upstream examples and their notices remain unchanged.
+NES/FC console has been tested. Public application/source packages include only
+the designated four-song Gimmick replacement demo from this local music work,
+with the original project name/author and existing notices retained. No new
+license grant for the score is asserted. ROMs, other extraction intermediates and
+private projects are excluded; other upstream demos remain unchanged. Functional
+upstream PRs can exclude this demo replacement for separate asset review.
+The demo uses fork format 1007 and its corresponding features; it is not a
+drop-in replacement for official 4.5.3.

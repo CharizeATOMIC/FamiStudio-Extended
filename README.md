@@ -1,8 +1,10 @@
-# FamiSpectrum — independent desktop fork
+# FamiStudio Extended — independent desktop fork
 
 Based on FamiStudio 4.5.3, with song/pattern tuning, absolute chip curves, multi-subsong NSF import, live stereo/pan, optional repeated expansion chips and independent update clocks. This is not an official FamiStudio release. Original copyright and license notices are retained. See [features and compatibility](FORK_README.md), [release notes](RELEASE_NOTES.txt) and the [upstream integration plan](UPSTREAM_INTEGRATION.txt).
 
-For the Windows self-contained package, extract the entire directory and run **FamiSpectrum.exe**. **FamiStudio.exe** remains a compatible launcher. Windows has runtime evidence; Linux/macOS managed compilation does not establish native runtime support, and Android remains unverified.
+For the Windows self-contained package, extract the entire directory and run **FamiStudio-Extended.exe**. **FamiStudio.exe** remains a compatible launcher. Windows has runtime evidence; Linux/macOS managed compilation does not establish native runtime support, and Android remains unverified.
+
+The bundled Gimmick music demonstration is replaced with the user-selected four-song version. It retains the original metadata: **Gimmick!**, **Masashi Kageyama,Naohisa Morota**, **1992 Sunsoft**. It uses fork format 1007 and requires this fork's format/features; it is not a drop-in demo for official 4.5.3. It is demonstration music, separate from the original synthetic test fixtures. Game ROMs, other extraction intermediates and private projects are excluded.
 
 ## Original upstream README (retained)
 

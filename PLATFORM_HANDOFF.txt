@@ -1,13 +1,14 @@
-FamiSpectrum: platform and upstream integration notes (revision 10)
+FamiStudio Extended: platform and upstream integration notes (revision 10)
 
-Proposed public name, pending confirmation. Independent fork based on FamiStudio
+Display name: FamiStudio Extended. Repository/package/launcher slug:
+FamiStudio-Extended. Independent fork based on FamiStudio
 4.5.3; original copyright and license remain. Internal namespaces, engine symbols
 and settings paths are intentionally retained. UPSTREAM_INTEGRATION.txt maps
 feature dependencies, historical commits and a successful three-way application
 to checked public master 70625dd. That resulting tree was not independently built
 or run. No claim covers private or future upstream branches.
 
-The Windows package launches as FamiSpectrum.exe and keeps FamiStudio.exe as a
+The Windows package launches as FamiStudio-Extended.exe and keeps FamiStudio.exe as a
 byte-identical compatible apphost. The assembly remains FamiStudio.dll; do not
 rename assembly binding or persisted identifiers just for public branding.
 
@@ -44,12 +45,19 @@ punctuation because IniFile treats them as comments and truncated the help text.
 
 R10 direct controls pass all seven languages at 100% and Chinese at 150%: eight
 isolated UI runs, 1,981 PASS records and unchanged user INI hashes. Captures bind
-to the control update before the separate branding change. The branded Windows
-publish and Linux/macOS managed builds pass with zero errors. The new alias
-passes -help and a four-second WAV comparison against the compatibility launcher.
-Final release excerpts match R9 PCM (four times 529,200 samples), and the original
+to the control update before branding. The first branding build, then called
+FamiSpectrum, passed Windows publication and Linux/macOS managed compilation with
+zero errors. Its old FamiSpectrum.exe alias passed -help and a four-second WAV
+comparison against the compatibility launcher. Its release excerpts match R9 PCM
+(four times 529,200 samples), and the original
 clock example matches 176,400 samples per 1x/2x/4x rate. Eight native DLL hashes
-match R9 and the source directory. The R9/R8 results below retain their revision,
+match R9 and the source directory. The naming-only commit f41abaa then passes
+Windows publication and Linux/macOS managed compilation with zero errors. The
+actual FamiStudio-Extended.exe help and four renders (old launcher at 1x, new
+launcher at 1x/2x/4x) pass: 176,400 identical PCM samples per run, matching the
+earlier clock reference. Native DLL/user INI hashes are unchanged. Those are new
+alias checks, distinct from the retained full UI/four-song evidence.
+The R9/R8 results below retain their revision,
 not new R10 counts. No engine or native DSP rebuild is needed for this change.
 
 R9 passes 4,732 backend checks: 2,896 across eight repeated suites (default 1,506,
@@ -59,7 +67,7 @@ migration checks covering 36 scenarios and 72 actual NSF executions in PAL/NTSC
 at 1x/2x/4x. All seven UI languages at 100% plus Chinese at 150% pass in an isolated
 portable runtime: eight runs, 1,869 PASS records, including narrow-label geometry
 and legacy-conversion access. Non-portable GUI tests are refused before application
-initialization. A private four-song migration compares 53,314,344 editor PCM samples
+initialization. A separate four-song migration compares 53,314,344 editor PCM samples
 exactly and 258,397 ordered APU/S5B writes over 36,328 NSF music ticks. Write-cycle
 timestamps and NSF PCM are not claimed identical.
 
@@ -71,8 +79,10 @@ hosted compile checks, not target-OS native execution. All eight published nativ
 DLL hashes match both the repository and R8. Engine/native code is unchanged, so
 R8 assembler, layout and cartridge reports below are retained evidence, not new
 R9 test counts.
-Commercial-game migration inputs/outputs stay outside public application, source
-and synthetic test packages. Repository publication and upstream contact remain
+The designated four-song Gimmick music demo is included under the publication
+boundary below. ROM inputs, other extraction intermediates and private projects
+stay outside public packages. Synthetic test fixtures remain separate from this
+music demonstration. Repository publication and upstream contact remain
 preparation work. Platform/device limits below continue to apply.
 
 Revision 8 retained architecture and verification record
@@ -132,8 +142,8 @@ r8-noise-follow-rom-layout.log, r8-ui-<language>-100.log (Chinese: r8-ui-zho.log
 r8-ui-zho-150.log, r8-publish.log, r8-linux-build.log and r8-mac-build.log.
 The original mapper-timer cartridge also passes eight CPU loops and 660 video
 frames in an independent FCEUmm core for each 1x/2x/4x configuration. This is
-emulator evidence, not a physical-console test. No newly
-extracted commercial-game asset is required or permitted in public fixtures.
+emulator evidence, not a physical-console test. These original synthetic test
+fixtures do not depend on the separately bundled Gimmick music demonstration.
 
 Cross-platform work is still required: R7's output-rate native ABI and earlier
 multi-context/stereo functions must be rebuilt for Windows, Linux, macOS and
@@ -347,11 +357,19 @@ The separate full regression suite covers expansion tuning in NSF execution.
 
 Publication boundary
 
-Public source packages must exclude newly extracted Gimmick! ROM/music/instrument
-data and newly derived FMS projects. The requested converter remains a separate
-one-off tool, not an application importer; its newly extracted data and generated
-assets are excluded from public test fixtures. Already tracked upstream demo
-songs, including Setup/DemoSongs/Gimmick.fms, remain unchanged.
+At the user's request, Setup/Demo Songs/Gimmick.fms is replaced with the designated
+four-song version. The original metadata is retained exactly: Name="Gimmick!",
+Author="Masashi Kageyama,Naohisa Morota", Copyright="1992 Sunsoft". It contains
+Good Morning, Happy Birthday, Good Night and Strange Memories of Death. This is
+music demonstration material, not an original synthetic test fixture; no new
+license grant for the score is asserted. Other upstream demos remain unchanged.
+Game ROMs, other extraction intermediates and private projects are excluded.
+The converter remains a one-off engineering tool, not an application importer.
+The replacement is isolated in commit 4e021755c5c5a7f48d119a508c52cedda816b744;
+it is absent from the feature-only patch ending at 52a246f, but included in the
+final source/history. A functional upstream PR can omit it for separate review.
+The demo uses fork format 1007 and requires matching format/features; do not
+install it as a drop-in replacement in unmodified official 4.5.3.
 Tests/TuningRegression/Fixtures/format1001.fms contains the fork's own original
 tuning demo, not extracted game material. GitHub publication and the
 upstream proposal remain pending; no maintainer approval is implied.
@@ -388,8 +406,10 @@ or lengthen its introduction merely to obtain repeatable register state.
 Revision 4 desktop managed builds are tested on Windows only; Linux/macOS builds
 do not establish native/runtime compatibility. The prior Android toolchain blocker
 remains, and no physical mobile or NES hardware validation has been performed.
-Game-specific decoding scripts, extracted assets and projects stay outside the
-public application/source package. They are not a general game music importer.
+Game-specific decoding scripts, ROM inputs and extraction intermediates stay
+outside the public application/source package. The only designated music-data
+exception is the later four-song demo replacement described above. No general
+game music importer is provided.
 
 Revision 5 integration addendum
 
