@@ -27,6 +27,8 @@ namespace FamiStudio
         public extern static int ReadStatus(int apuIdx);
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuEndFrame")]
         public extern static void EndFrame(int apuIdx);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuSetUpdateRateMultiplier")]
+        public extern static void SetUpdateRateMultiplier(int apuIdx, int multiplier);
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuSkipCycles")]
         public extern static int SkipCycles(int apuIdx, int cycles);
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuReset")]

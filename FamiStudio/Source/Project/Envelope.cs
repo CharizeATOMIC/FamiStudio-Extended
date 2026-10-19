@@ -10,6 +10,7 @@ namespace FamiStudio
         int loop = -1;
         int release = -1;
         bool relative = false;
+        int tickRateMultiplier = 1;
 
         // These are replicated from instrument.
         int maxLength = 256;
@@ -24,6 +25,19 @@ namespace FamiStudio
         public bool CanResize => canResize;
         public bool CanLoop => canLoop;
         public bool CanRelease => canRelease;
+
+        // The authored clock is independent of the project's output frequency.
+        // Changing output quality must not change the duration of existing macros.
+        public int TickRateMultiplier
+        {
+            get => tickRateMultiplier;
+            set
+            {
+                if (value != 1 && value != 2 && value != 4)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Envelope tick rate must be 1, 2, or 4.");
+                tickRateMultiplier = value;
+            }
+        }
 
         private Envelope()
         {
@@ -290,6 +304,7 @@ namespace FamiStudio
             Array.Resize(ref env.values, sum);
             env.length = sum;
             env.maxLength = sum;
+            env.tickRateMultiplier = tickRateMultiplier;
 
             var idx = 0;
 
@@ -337,6 +352,7 @@ namespace FamiStudio
                 e1.loop      != e2.loop     ||
                 e1.release   != e2.release  ||
                 e1.relative  != e2.relative ||
+                e1.tickRateMultiplier != e2.tickRateMultiplier ||
                 e1.maxLength != e2.maxLength)
             {
                 return false;
@@ -412,6 +428,7 @@ namespace FamiStudio
             env.loop = loop;
             env.release = release;
             env.relative = relative;
+            env.tickRateMultiplier = tickRateMultiplier;
             env.maxLength = maxLength;
             env.chunkLength = chunkLength;
             env.canResize = canResize;
@@ -785,6 +802,12 @@ namespace FamiStudio
             if (buffer.Version >= 4)
                 buffer.Serialize(ref relative);
             buffer.Serialize(ref values);
+            if (buffer.Version >= Project.UpdateRateFormatVersion)
+                buffer.Serialize(ref tickRateMultiplier);
+            else if (buffer.IsReading)
+                tickRateMultiplier = 1;
+            if (buffer.IsReading)
+                TickRateMultiplier = tickRateMultiplier;
 
             if (buffer.IsReading && EnvelopeType.IsHardwareNoise(type) && relative)
                 throw new ArgumentException("Hardware noise envelopes cannot use relative values.");

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 
@@ -26,6 +26,19 @@ namespace FamiStudio
         protected Envelope[] envelopes = new Envelope[EnvelopeType.Count];
         protected int[] envelopeIdx = new int[EnvelopeType.Count];
         protected int[] envelopeValues = new int[EnvelopeType.Count];
+        readonly int[] envelopeClockCountdown = new int[EnvelopeType.Count];
+        int outputRateMultiplier = 1;
+        int logicRateMultiplier = 1;
+        protected bool logicalUpdate = true;
+
+        public void ConfigureUpdateRates(int outputRate, int logicRate)
+        {
+            if ((outputRate != 1 && outputRate != 2 && outputRate != 4) ||
+                (logicRate != 1 && logicRate != 2 && logicRate != 4) || logicRate > outputRate)
+                throw new ArgumentOutOfRangeException(nameof(outputRate));
+            outputRateMultiplier = outputRate;
+            logicRateMultiplier = logicRate;
+        }
         private int volumeEnvelopeDecayPeriod;
         private int volumeEnvelopeDecayCounter;
         private bool volumeEnvelopeDecayStartsOnAttack;
@@ -317,6 +330,8 @@ namespace FamiStudio
                 if (newNote.VibratoDepth != 0 && newNote.VibratoDepth != 0)
                 {
                     envelopes[EnvelopeType.Pitch] = Envelope.CreateVibratoEnvelope(newNote.VibratoSpeed, newNote.VibratoDepth);
+                    envelopes[EnvelopeType.Pitch].TickRateMultiplier = logicRateMultiplier;
+                    envelopeClockCountdown[EnvelopeType.Pitch] = 0;
                     envelopeIdx[EnvelopeType.Pitch] = 0;
                     envelopeValues[EnvelopeType.Pitch] = 0;
                     pitchEnvelopeOverride = true;
@@ -345,6 +360,7 @@ namespace FamiStudio
                             if (j == EnvelopeType.Volume)
                                 volumeEnvelopeDecayPeriod = 0;
                             envelopeIdx[j] = envelopes[j].Release;
+                            envelopeClockCountdown[j] = 0;
                             if (j == EnvelopeType.WaveformRepeat)
                                 envelopeValues[j] = envelopes[EnvelopeType.WaveformRepeat].Values[envelopeIdx[j]] + 1;
                         }
@@ -379,12 +395,14 @@ namespace FamiStudio
                     }
 
                     envelopeIdx[EnvelopeType.Arpeggio] = 0;
+                    envelopeClockCountdown[EnvelopeType.Arpeggio] = 0;
                     envelopeValues[EnvelopeType.Arpeggio] = 0;
                 }
                 // If same arpeggio, but note has an attack, reset it.
                 else if (noteHasAttack && arpeggioEnvelopeOverride)
                 {
                     envelopeIdx[EnvelopeType.Arpeggio] = 0;
+                    envelopeClockCountdown[EnvelopeType.Arpeggio] = 0;
                     envelopeValues[EnvelopeType.Arpeggio] = 0;
                 }
 
@@ -415,6 +433,7 @@ namespace FamiStudio
                     for (var j = 0; j < EnvelopeType.Count; j++)
                     {
                         envelopeIdx[j] = 0;
+                        envelopeClockCountdown[j] = 0;
                     }
 
                     envelopeValues[EnvelopeType.DutyCycle] = dutyCycle;
@@ -513,25 +532,32 @@ namespace FamiStudio
             }
         }
 
-        public void Update()
+        public void Update(bool logicalTick = true)
         {
-            while (scheduledEvents.Count != 0 && scheduledEvents[0].Frame <= playbackFrame)
+            logicalUpdate = logicalTick;
+            if (logicalTick)
             {
-                var scheduled = scheduledEvents[0];
-                scheduledEvents.RemoveAt(0);
-                if (scheduled.IsEnd && scheduled.Owner != activePlaybackOwner) continue;
-                if (!scheduled.IsEnd && scheduled.Owner != 0) activePlaybackOwner = scheduled.Owner;
-                PlayNote(scheduled.Note, scheduled.SlidePitch, scheduled.SlideStep, scheduled.VolumeSlideStep, false);
+                while (scheduledEvents.Count != 0 && scheduledEvents[0].Frame <= playbackFrame)
+                {
+                    var scheduled = scheduledEvents[0];
+                    scheduledEvents.RemoveAt(0);
+                    if (scheduled.IsEnd && scheduled.Owner != activePlaybackOwner) continue;
+                    if (!scheduled.IsEnd && scheduled.Owner != 0) activePlaybackOwner = scheduled.Owner;
+                    PlayNote(scheduled.Note, scheduled.SlidePitch, scheduled.SlideStep, scheduled.VolumeSlideStep, false);
+                }
+                UpdateDelayedNote();
             }
-            UpdateDelayedNote();
-            UpdateEnvelopes();
-            UpdateSlide();
-            UpdateVolumeSlide();
+            UpdateEnvelopes(logicalTick);
+            if (logicalTick)
+            {
+                UpdateSlide();
+                UpdateVolumeSlide();
+                playbackFrame++;
+            }
             UpdateAPU();
-            playbackFrame++;
         }
 
-        private void UpdateEnvelopes()
+        private void UpdateEnvelopes(bool logicalTick)
         {
             if (note.Instrument != null)
             {
@@ -548,7 +574,7 @@ namespace FamiStudio
                                 envelopeIdx[j] = initialEnvelope.Loop;
                             volumeEnvelopeDecayStartsOnAttack = false;
                         }
-                        if (--volumeEnvelopeDecayCounter == 0)
+                        if (logicalTick && --volumeEnvelopeDecayCounter == 0)
                         {
                             envelopeValues[j] = Math.Max(0, envelopeValues[j] - 1);
                             volumeEnvelopeDecayCounter = volumeEnvelopeDecayPeriod;
@@ -565,6 +591,17 @@ namespace FamiStudio
                     }
 
                     var env = envelopes[j];
+                    if (env.TickRateMultiplier > outputRateMultiplier)
+                        throw new InvalidOperationException("Envelope clock exceeds the project output rate.");
+                    if (envelopeClockCountdown[j] > 0)
+                    {
+                        envelopeClockCountdown[j]--;
+                        // Restart is an event, unlike an ordinary held macro value.
+                        if (j == EnvelopeType.NoiseEnvelopeRestart)
+                            envelopeValues[j] = 0;
+                        continue;
+                    }
+                    envelopeClockCountdown[j] = outputRateMultiplier / env.TickRateMultiplier - 1;
                     var idx = envelopeIdx[j];
 
                     // Relative envelopes hold their accumulator at the end. A

@@ -42,6 +42,7 @@ public:
     void write_register(cpu_addr_t addr,int data) { each([&](Simple_Apu& a){ a.write_register(addr,data); }); }
     void reset() { each([](Simple_Apu& a){ a.reset(); }); }
     void end_frame() { each([](Simple_Apu& a){ a.end_frame(); }); }
+    void set_update_rate_multiplier(int value) { each([&](Simple_Apu& a){ a.set_update_rate_multiplier(value); }); }
     int skip_cycles(long cycles) { int n=Simple_Apu::skip_cycles(cycles); for(auto& s:stems) s.apu->skip_cycles(cycles); return n; }
     void start_seeking() { each([](Simple_Apu& a){ a.start_seeking(); }); }
     void stop_seeking() { each([](Simple_Apu& a){ a.stop_seeking(); }); }

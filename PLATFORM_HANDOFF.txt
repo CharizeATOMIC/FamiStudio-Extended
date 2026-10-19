@@ -285,3 +285,28 @@ the same mapping state. The existing engine sample table already stores this
 full byte, so no engine opcode, extra runtime state or native ABI is introduced.
 Normal attacks can use the mapping reset without a duplicate note DAC command;
 no-attack and standalone explicit DAC commands must retain their semantics.
+
+
+Revision 7 handoff
+------------------
+Project format is now 1006: Project.UpdateRateMultiplier, Song.LogicRateMultiplier,
+Envelope.TickRateMultiplier, Instrument.PulseSweepRegister, and the Brotli payload
+marker. Existing songs/macros remain at their authored rate when the output rate
+changes. Old files retain 1x defaults. Undo/clipboard use their existing codec.
+
+Rebuild NesSndEmu on every platform: the managed player uses its new native
+output-rate entry point to subdivide a physical audio frame. Rebuild NotSoFatso
+for custom NSF/NSFe periods and the independently verified APU timing fixes.
+The default native PCM path is covered by the same-region 1x/2x/4x tests.
+
+Standalone assembly options FAMISTUDIO_USE_PULSE_SWEEP and
+FAMISTUDIO_USE_UPDATE_RATE default to zero. New data uses $63 and $64 respectively;
+follow each export's generated flag list. The bundled NSF kernels enable both.
+Bundled NES/FDS menus remain 1x; a separate synthetic mapper-timer cartridge
+demonstrates uniform high-rate game calls. All 60 templates build after UI code
+compaction; no EPSM song limit or FDS/song-data address was changed.
+
+Shared C# and all seven language files are updated. Desktop compilation is not
+Android device validation: rebuild native ABIs, run the mobile toolchain and test
+long-press, text input, scaling, audio scheduling and performance on devices.
+No real FC/NES console has been tested in this local revision.

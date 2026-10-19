@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -550,7 +550,7 @@ namespace FamiStudio
                     var location = NoteLocation.FromAbsoluteNoteIndex(song, CurrentFrame);
                     var numFrames  = song.CountFramesBetween(song.StartLocation, location, 0, false);
 
-                    return TimeSpan.FromMilliseconds(numFrames * 1000.0 / (song.Project.PalMode ? NesApu.FpsPAL : NesApu.FpsNTSC));
+                    return TimeSpan.FromMilliseconds(numFrames * 1000.0 / song.LogicUpdatesPerSecond);
                 }
                 else
                 {
@@ -1794,6 +1794,11 @@ namespace FamiStudio
             }
             set
             {
+                if (project.UpdateRateMultiplier > 1 && project.UsesFamiStudioTempo && value != project.PalMode)
+                {
+                    DisplayNotification(TuningStrings.UpdateRateRegionError, true, true);
+                    return;
+                }
                 // This is needed in case we change the PalPlayack while in the middle 
                 // of a transaction with ReinitializeAudio flag.
                 var playersWereValid = songPlayer != null;
@@ -2316,6 +2321,7 @@ namespace FamiStudio
 
         private void InitializeAudioPlayers()
         {
+            if (project.UpdateRateMultiplier > 1) palPlayback = project.PalMode;
             if (!suspended)
             {
                 // Initialize the instrument player first. On Android, this
@@ -2702,4 +2708,3 @@ namespace FamiStudio
         }
     }
 }
-

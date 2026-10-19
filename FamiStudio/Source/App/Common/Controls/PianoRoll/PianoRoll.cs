@@ -3433,6 +3433,9 @@ namespace FamiStudio
                 if (editEnvelope == EnvelopeType.Pitch)
                     envelopeString = (editInstrument.Envelopes[editEnvelope].Relative ? EnvelopeRelativeLabel : EnvelopeAbsoluteLabel) + " " + envelopeString;
 
+                if (editEnvelope != EnvelopeType.FdsModulation)
+                    envelopeString += " · " + GetEnvelopeClockText((EditRepeatEnvelope ?? EditEnvelope).TickRateMultiplier);
+
                 r.f.DrawText(EditingInstrumentEnvelopeLabel.Format(editInstrument.Name, envelopeString), r.fonts.FontVeryLarge, bigTextPosX, bigTextPosY, Theme.LightGreyColor1);
 
                 var textY = bigTextPosY + r.fonts.FontVeryLarge.LineHeight;
@@ -3455,7 +3458,7 @@ namespace FamiStudio
             }
             else
             {
-                r.f.DrawText(EditingArpeggioLabel.Format(editArpeggio.Name), r.fonts.FontVeryLarge, bigTextPosX, bigTextPosY, Theme.LightGreyColor1);
+                r.f.DrawText(EditingArpeggioLabel.Format(editArpeggio.Name) + " · " + GetEnvelopeClockText(EditEnvelope.TickRateMultiplier), r.fonts.FontVeryLarge, bigTextPosX, bigTextPosY, Theme.LightGreyColor1);
 
                 if (App.SelectedArpeggio != editArpeggio)
                 {
@@ -7307,6 +7310,42 @@ namespace FamiStudio
             App.UndoRedoManager.EndTransaction();
         }
 
+        private string GetEnvelopeClockText(int multiplier)
+        {
+            return multiplier + "× (" + ((App.Project.PalMode ? NesApu.FpsPAL : NesApu.FpsNTSC) * multiplier).ToString("0.00") + " Hz)";
+        }
+
+        private void EditEnvelopeClockProperties()
+        {
+            var instrument = editInstrument;
+            var arpeggio = editArpeggio;
+            var envelope = EditRepeatEnvelope ?? EditEnvelope;
+            int type = EditRepeatEnvelope != null ? EnvelopeType.WaveformRepeat : editEnvelope;
+            var rates = new[] { 1, 2, 4 }.Where(v => v <= App.Project.UpdateRateMultiplier).ToArray();
+            var labels = rates.Select(GetEnvelopeClockText).ToArray();
+            var dlg = new PropertyDialog(ParentWindow, TuningStrings.EnvelopeClockLabel, 440);
+            dlg.Properties.AddDropDownList(TuningStrings.EnvelopeClockLabel, labels, labels[Array.IndexOf(rates, envelope.TickRateMultiplier)], TuningStrings.EnvelopeClockTooltip);
+            dlg.Properties.Build();
+            dlg.ShowDialogAsync(result =>
+            {
+                if (result != DialogResult.OK) return;
+                int rate = rates[dlg.Properties.GetSelectedIndex(0)];
+                // Test on a clone so refusal never leaves a partial undo entry.
+                var converted = envelope.ShallowClone();
+                if (!EnvelopeClockConversion.TryConvert(converted, rate, type == EnvelopeType.WaveformRepeat, type == EnvelopeType.NoiseEnvelopeRestart))
+                {
+                    App.DisplayNotification(TuningStrings.EnvelopeClockConversionError, true, true);
+                    return;
+                }
+                App.UndoRedoManager.BeginTransaction(instrument != null ? TransactionScope.Instrument : TransactionScope.Arpeggio, instrument != null ? instrument.Id : arpeggio.Id);
+                EnvelopeClockConversion.TryConvert(envelope, rate, type == EnvelopeType.WaveformRepeat, type == EnvelopeType.NoiseEnvelopeRestart);
+                instrument?.NotifyEnvelopeChanged(type, false);
+                EnvelopeChanged?.Invoke(instrument, type);
+                App.UndoRedoManager.EndTransaction();
+                MarkDirty();
+            });
+        }
+
         private bool HandleContextMenuEnvelope(int x, int y)
         {
             if (Platform.IsMobile && IsPointInHeader(x, y) ||
@@ -7317,6 +7356,9 @@ namespace FamiStudio
                 var lastPixel = GetPixelXForAbsoluteNoteIndex(env.Length);
                 var menu = new List<ContextMenuOption>();
                 var absIdx = Utils.Clamp(GetAbsoluteNoteIndexForPixelX(x - pianoSizeX), 0, EditEnvelope.Length - 1);
+
+                if (editEnvelope != EnvelopeType.FdsModulation)
+                    menu.Add(new ContextMenuOption("MenuProperties", TuningStrings.EnvelopeClockLabel, EditEnvelopeClockProperties, ContextMenuSeparator.After));
 
                 if ((editMode == EditionMode.Envelope || editMode == EditionMode.Arpeggio) && x < lastPixel)
                 {

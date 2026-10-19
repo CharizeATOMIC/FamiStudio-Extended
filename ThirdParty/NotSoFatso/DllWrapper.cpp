@@ -54,7 +54,7 @@ extern "C" int __stdcall NsfIsPal(void* nsfPtr)
 extern "C" int __stdcall NsfGetClockSpeed(void* nsfPtr)
 {
 	NsfCoreFile* f = (NsfCoreFile*)nsfPtr;
-	return f->file.nIsPal ? f->file.nPAL_PlaySpeed : f->file.nNTSC_PlaySpeed;
+	return (f->file.nIsPal & 3) == 1 ? f->file.nPAL_PlaySpeed : f->file.nNTSC_PlaySpeed;
 }
 
 extern "C" int __stdcall NsfGetExpansion(void* nsfPtr)

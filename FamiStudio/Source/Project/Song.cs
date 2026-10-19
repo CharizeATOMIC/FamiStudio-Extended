@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -54,7 +54,7 @@ namespace FamiStudio
                     var note = entry.Value;
                     if (note.HasEnvelopeDecay) return true;
                     if (note.IsMusical && note.Instrument != null &&
-                        (channel.Type <= ChannelType.Square2 && note.Instrument.ResetPhaseOnAttack ||
+                        (channel.Type <= ChannelType.Square2 && (note.Instrument.ResetPhaseOnAttack || note.Instrument.PulseSweepRegister != 0x08) ||
                          channel.Type <= ChannelType.Triangle && note.Instrument.PitchClampToTimerByte)) return true;
                     if (channel.Type == ChannelType.Noise && note.IsMusical && note.Instrument != null)
                         for (int type = EnvelopeType.NoisePeriod; type <= EnvelopeType.NoiseEnvelopeRestart; type++)
@@ -76,6 +76,19 @@ namespace FamiStudio
         private int beatLength = 40;
         private string name;
         private int loopPoint = 0;
+        private int logicRateMultiplier = 1;
+        // Data clock is independent from the project's output/NSF call clock.
+        // Raising output quality never reinterprets an existing song's timing.
+        public int LogicRateMultiplier
+        {
+            get => logicRateMultiplier;
+            set
+            {
+                if (value != 1 && value != 2 && value != 4) throw new ArgumentOutOfRangeException(nameof(value));
+                logicRateMultiplier = value;
+            }
+        }
+        public double LogicUpdatesPerSecond => (project.PalMode ? NesApu.FpsPAL : NesApu.FpsNTSC) * logicRateMultiplier;
         private PatternCustomSetting[] patternCustomSettings = new PatternCustomSetting[Song.MaxLength];
         private int[] patternStartNote = new int[Song.MaxLength + 1];
 
@@ -128,6 +141,7 @@ namespace FamiStudio
             this.id = id;
             this.name = name;
             this.color = Theme.RandomCustomColor();
+            logicRateMultiplier = project.UpdateRateMultiplier;
 
             CreateCustomSettings();
             SetDefaultsForTempoMode(project.TempoMode);
@@ -657,7 +671,7 @@ namespace FamiStudio
             var newNoteLength = Utils.Min(newGroove);
 
             Debug.Assert(UsesFamiStudioTempo);
-            Debug.Assert(newNoteLength >= FamiStudioTempoUtils.MinNoteLength && newNoteLength <= FamiStudioTempoUtils.MaxNoteLength);
+            Debug.Assert(newNoteLength >= FamiStudioTempoUtils.MinNoteLength && newNoteLength <= FamiStudioTempoUtils.MaxNoteLength * 4);
 
             if (convert)
             {
@@ -691,9 +705,9 @@ namespace FamiStudio
             get
             {
                 if (UsesFamiStudioTempo)
-                    return ComputeFamiStudioBPM(project.PalMode, groove, beatLength / noteLength);
+                    return LogicRateMultiplier * ComputeFamiStudioBPM(project.PalMode, groove, beatLength / noteLength);
                 else
-                    return ComputeFamiTrackerBPM(project.PalMode, famitrackerSpeed, famitrackerTempo, beatLength);
+                    return LogicRateMultiplier * ComputeFamiTrackerBPM(project.PalMode, famitrackerSpeed, famitrackerTempo, beatLength);
             }
         }
 
@@ -728,7 +742,7 @@ namespace FamiStudio
 
         public TimeSpan GetTimeAtLocation(NoteLocation location)
         {
-            return project.UsesFamiStudioTempo ? TimeSpan.FromMilliseconds(location.ToAbsoluteNoteIndex(this) * 1000.0 / (project.PalMode ? NesApu.FpsPAL : NesApu.FpsNTSC)) : TimeSpan.Zero;
+            return project.UsesFamiStudioTempo ? TimeSpan.FromMilliseconds(location.ToAbsoluteNoteIndex(this) * 1000.0 / LogicUpdatesPerSecond) : TimeSpan.Zero;
         }
 
         public TimeSpan Duration
@@ -1462,6 +1476,13 @@ namespace FamiStudio
 
                 foreach (var channel in channels)
                     channel.Serialize(buffer);
+
+                if (buffer.Version >= Project.UpdateRateFormatVersion)
+                {
+                    buffer.Serialize(ref logicRateMultiplier);
+                    if (buffer.IsReading) LogicRateMultiplier = logicRateMultiplier;
+                }
+                else if (buffer.IsReading) logicRateMultiplier = 1;
 
                 if (buffer.IsReading && !buffer.IsForUndoRedo)
                     DeleteNotesPastMaxInstanceLength();

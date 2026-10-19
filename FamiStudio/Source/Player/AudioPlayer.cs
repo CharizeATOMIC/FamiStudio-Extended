@@ -69,7 +69,7 @@ namespace FamiStudio
             if (UsesEmulationThread)
             {
                 stopEvent = new ManualResetEvent(false);
-                emulationSemaphore = new Semaphore(numBufferedFrames, numBufferedFrames);
+                emulationSemaphore = new Semaphore(numBufferedFrames * updateRateMultiplier, numBufferedFrames * updateRateMultiplier);
                 emulationQueue = new ConcurrentQueue<FrameAudioData>();
             }
         }
@@ -158,7 +158,7 @@ namespace FamiStudio
             if (UsesEmulationThread)
             {
                 // Stream is about to start, wait for emulation to pre-fill its buffers.
-                while (emulationQueue.Count < numBufferedFrames && !reachedEnd)
+                while (emulationQueue.Count < numBufferedFrames * updateRateMultiplier && !reachedEnd)
                     Thread.Sleep(1);
             }
         }
@@ -166,7 +166,7 @@ namespace FamiStudio
         protected void ResetThreadingObjects()
         {
             stopEvent.Reset();
-            emulationSemaphore = new Semaphore(numBufferedFrames, numBufferedFrames);
+            emulationSemaphore = new Semaphore(numBufferedFrames * updateRateMultiplier, numBufferedFrames * updateRateMultiplier);
         }
 
         public override void Shutdown()

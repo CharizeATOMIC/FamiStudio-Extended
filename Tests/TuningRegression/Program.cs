@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -33,6 +33,13 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--engine-clock-demo") { EngineClockExportRegression.Demo(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--engine-clocks") { EngineClockExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--project-compression") { ProjectCompressionRegression.Run(args[1], args.Length > 2 ? args[2] : null); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--envelope-clock") { EnvelopeClockRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--update-rate") { UpdateRateRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pulse-sweep") { PulseSweepRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pulse-sweep-nsf") { PulseSweepRegression.RunNsf(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--dpcm-effects") { DpcmEffectRegression.Run(args[1]); GimmickEffectCleanup.Regression(); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--text-tempo") { TextTempoRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--articulation-playback") { InstrumentArticulationPlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }

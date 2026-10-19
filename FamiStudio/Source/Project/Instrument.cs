@@ -16,6 +16,7 @@ namespace FamiStudio
         private Project project;
         private bool resetPhaseOnAttack;
         private bool pitchClampToTimerByte;
+        private byte pulseSweepRegister = 0x08;
         private Dictionary<int, DPCMSampleMapping> samplesMapping;
 
         // FDS
@@ -78,6 +79,10 @@ namespace FamiStudio
         // Applies to the two APU pulse voices; tied/no-attack notes keep their phase.
         public bool ResetPhaseOnAttack { get => resetPhaseOnAttack; set => resetPhaseOnAttack = value; }
         public bool PitchClampToTimerByte { get => pitchClampToTimerByte; set => pitchClampToTimerByte = value; }
+        // Raw NES pulse sweep control (EPPP NSSS). $08 is the legacy disabled
+        // value; this belongs to the instrument, not to individual score notes.
+        public byte PulseSweepRegister { get => pulseSweepRegister; set => pulseSweepRegister = value; }
+        public bool PulseSweepEnabled => (pulseSweepRegister & 0x80) != 0 && (pulseSweepRegister & 7) != 0;
         public bool IsExpansionInstrument => expansion != ExpansionType.None;
         public Envelope[] Envelopes => envelopes;
         public Dictionary<int, DPCMSampleMapping> SamplesMapping => samplesMapping;
@@ -126,7 +131,7 @@ namespace FamiStudio
             for (int i = 0; i < EnvelopeType.Count; i++)
             {
                 if (IsEnvelopeActive(i))
-                    envelopes[i] = new Envelope(i);
+                    envelopes[i] = new Envelope(i) { TickRateMultiplier = project.UpdateRateMultiplier };
             }
 
             if (expansion == ExpansionType.Fds)
@@ -1186,6 +1191,11 @@ namespace FamiStudio
                 resetPhaseOnAttack = false;
                 pitchClampToTimerByte = false;
             }
+
+            if (buffer.Version >= Project.PulseSweepFormatVersion)
+                buffer.Serialize(ref pulseSweepRegister);
+            else if (buffer.IsReading)
+                pulseSweepRegister = 0x08;
 
             if (buffer.Version < 15 && (IsS5B || IsEpsm))
             {

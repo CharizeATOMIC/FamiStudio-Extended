@@ -37,6 +37,7 @@
 #define					CHUNKTYPE_TLBL			'lblt'
 #define					CHUNKTYPE_AUTH			'htua'
 #define					CHUNKTYPE_BANK			'KNAB'
+#define CHUNKTYPE_RATE 'ETAR'
 
 struct NESM_HEADER
 {

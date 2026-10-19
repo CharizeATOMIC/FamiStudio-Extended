@@ -74,6 +74,10 @@ extern "C" void __stdcall NesApuEndFrame(int apuIdx)
 {
 	get_apu(apuIdx).end_frame();
 }
+extern "C" void __stdcall NesApuSetUpdateRateMultiplier(int apuIdx, int value)
+{
+	get_apu(apuIdx).set_update_rate_multiplier(value);
+}
 
 extern "C" void __stdcall NesApuReset(int apuIdx)
 {

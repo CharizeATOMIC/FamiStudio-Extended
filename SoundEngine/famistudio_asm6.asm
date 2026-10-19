@@ -378,6 +378,14 @@ FAMISTUDIO_USE_ARPEGGIO          = 1
 .endif
 
 ; Three optional APU noise macros: raw period, raw control, and length/envelope restart.
+.ifndef FAMISTUDIO_USE_UPDATE_RATE
+    FAMISTUDIO_USE_UPDATE_RATE = 0
+.endif
+
+.ifndef FAMISTUDIO_USE_PULSE_SWEEP
+    FAMISTUDIO_USE_PULSE_SWEEP = 0
+.endif
+
 .ifndef FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
     FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS = 0
 .endif
@@ -863,6 +871,33 @@ famistudio_tuning_fraction_hi: .dsb FAMISTUDIO_NUM_PITCH_ENVELOPES
 .if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 ; APU pulse 1/2/triangle: bit 0 clamps pitch to the timer byte; bit 1 resets pulse attacks.
 famistudio_apu_instrument_flags: .dsb 3
+.endif
+
+.if FAMISTUDIO_USE_PULSE_SWEEP
+; Software timer caches must not be confused with the timer advanced by the APU.
+famistudio_pulse_sweep:          .dsb 2
+famistudio_pulse_sweep_prev:     .dsb 2
+famistudio_pulse_sweep_lo:       .dsb 2
+famistudio_pulse_sweep_hi:       .dsb 2
+famistudio_pulse_sweep_attack:   .dsb 2
+.if FAMISTUDIO_CFG_SFX_SUPPORT
+famistudio_pulse_sweep_sfx:      .dsb 2
+.endif
+.endif
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+; Dividers are 1, 2 or 4 output calls. Envelope data retains its original
+; bytecode; a divider byte immediately BEFORE its label defines its clock.
+famistudio_clock_enabled:       .dsb 1
+famistudio_clock_song_divider:  .dsb 1
+famistudio_clock_song_counter:  .dsb 1
+famistudio_clock_logic_due:     .dsb 1
+famistudio_clock_output_rate:   .dsb 1
+famistudio_clock_sfx_counter:   .dsb 1
+famistudio_clock_sfx_due:       .dsb 1
+famistudio_clock_restart_due:   .dsb 1
+famistudio_env_clock:           .dsb FAMISTUDIO_NUM_ENVELOPES
+famistudio_pitch_env_clock:     .dsb FAMISTUDIO_NUM_PITCH_ENVELOPES
 .endif
 
 famistudio_pitch_env_value_lo:    .dsb FAMISTUDIO_NUM_PITCH_ENVELOPES
@@ -1442,6 +1477,12 @@ famistudio_init:
     sta FAMISTUDIO_S5B_DATA
 .endif
 
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda #1
+    sta famistudio_clock_output_rate
+    sta famistudio_clock_sfx_counter
+    sta famistudio_clock_sfx_due
+.endif
     jmp famistudio_music_stop
 
 ;======================================================================================================================
@@ -1454,6 +1495,12 @@ famistudio_init:
 ;======================================================================================================================
 
 famistudio_music_stop:
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda #0
+    sta famistudio_clock_enabled
+    sta famistudio_clock_song_counter
+.endif
 
     lda #0
     sta famistudio_song_speed
@@ -1528,6 +1575,22 @@ ldx #0
     sta famistudio_apu_instrument_flags+2
 .endif
 
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda #$08
+    sta famistudio_pulse_sweep
+    sta famistudio_pulse_sweep+1
+    sta famistudio_pulse_sweep_prev
+    sta famistudio_pulse_sweep_prev+1
+    sta FAMISTUDIO_APU_PL1_SWEEP
+    sta FAMISTUDIO_APU_PL2_SWEEP
+    lda #0
+    sta famistudio_pulse_sweep_attack
+    sta famistudio_pulse_sweep_attack+1
+    lda #$80
+    sta famistudio_pulse_sweep_hi
+    sta famistudio_pulse_sweep_hi+1
+.endif
+
 @set_envelopes:
 
     lda #<famistudio_dummy_envelope
@@ -1542,6 +1605,14 @@ ldx #0
     sta famistudio_env_decay_counter,x
 .endif
     sta famistudio_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     inx
     cpx #FAMISTUDIO_NUM_ENVELOPES
     bne @set_envelopes
@@ -1566,6 +1637,14 @@ ldx #0
     .endif
     lda #1
     sta famistudio_pitch_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_pitch_env_clock,x
+    pla
+    plp
+.endif
     inx
     cpx #FAMISTUDIO_NUM_PITCH_ENVELOPES
     bne @set_pitch_envelopes
@@ -1597,6 +1676,14 @@ famistudio_music_play:
     rts ; Invalid song index.
 
 @valid_song:
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+    pha
+    lda #0
+    sta famistudio_clock_enabled
+    sta famistudio_clock_song_counter
+    pla
+.endif
 .if FAMISTUDIO_NUM_CHANNELS = 5
     ; Here we basically assume we have 17 songs or less (17 songs * 14 bytes per song + 5 bytes header < 256).
     asl
@@ -2180,6 +2267,95 @@ famistudio_apply_apu_pitch_flags:
     rts
 .endif
 
+
+.if FAMISTUDIO_USE_PULSE_SWEEP
+; X = pulse channel, ptr1 = requested software timer. Carry set means that
+; this routine handled the timer. Sweep timing is performed by the real APU.
+; SFX temporarily disables music sweep, restoring its base when music returns.
+famistudio_apply_pulse_sweep:
+    txa
+    asl a
+    asl a
+    tay
+    lda famistudio_pulse_sweep,x
+.if FAMISTUDIO_CFG_SFX_SUPPORT
+    sta famistudio_r0
+    lda famistudio_pulse_sweep_sfx,x
+    beq @music_control
+    lda #$08
+    bne @control_ready
+@music_control:
+    lda famistudio_r0
+@control_ready:
+.endif
+    sta famistudio_r0
+    cmp famistudio_pulse_sweep_prev,x
+    beq @same_control
+    lda famistudio_pulse_sweep_prev,x
+    bpl @write_control
+    and #7
+    beq @write_control
+    lda #$80
+    sta famistudio_pulse1_prev,x
+@write_control:
+    lda famistudio_r0
+    sta FAMISTUDIO_APU_PL1_SWEEP,y
+    sta famistudio_pulse_sweep_prev,x
+    lda #2
+    sta famistudio_pulse_sweep_attack,x
+@same_control:
+    lda famistudio_r0
+    cmp #$08
+    bne @custom_control
+    lda #0
+    sta famistudio_pulse_sweep_attack,x
+    clc
+    rts
+@custom_control:
+    lda famistudio_r0
+    bpl @inactive_sweep
+    and #7
+    beq @inactive_sweep
+    lda famistudio_pulse_sweep_attack,x
+    beq @check_timer
+    cmp #2
+    beq @reload_timer
+    lda famistudio_r0
+    sta FAMISTUDIO_APU_PL1_SWEEP,y
+    jmp @reload_timer
+@check_timer:
+    lda famistudio_ptr1
+    cmp famistudio_pulse_sweep_lo,x
+    bne @reload_timer
+    lda famistudio_ptr1+1
+    cmp famistudio_pulse_sweep_hi,x
+    beq @held_sweep
+@reload_timer:
+    lda famistudio_ptr1
+    sta FAMISTUDIO_APU_PL1_LO,y
+    sta famistudio_pulse_sweep_lo,x
+    lda famistudio_ptr1+1
+    sta FAMISTUDIO_APU_PL1_HI,y
+    sta famistudio_pulse1_prev,x
+    sta famistudio_pulse_sweep_hi,x
+@held_sweep:
+    lda #0
+    sta famistudio_pulse_sweep_attack,x
+    sec
+    rts
+@inactive_sweep:
+    ; Non-default disabled register values still have hardware muting meaning;
+    ; never borrow this sweep unit for the smooth-vibrato trick.
+    lda famistudio_ptr1
+    sta FAMISTUDIO_APU_PL1_LO,y
+    lda famistudio_ptr1+1
+    cmp famistudio_pulse1_prev,x
+    beq @held_sweep
+    sta FAMISTUDIO_APU_PL1_HI,y
+    sta famistudio_pulse1_prev,x
+    jmp @held_sweep
+.endif
+
 ;======================================================================================================================
 ; FAMISTUDIO_SMOOTH_VIBRATO (internal)
 ;
@@ -2202,6 +2378,16 @@ famistudio_apply_apu_pitch_flags:
     iny ; We only care about -1 ($ff) and 1. Adding one means we only check of 0 or 2, we already checked for zero (so < 3).
     cpy #$03
     bcs hi_delta_too_big
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda famistudio_pulse_sweep
+    and #$87
+    cmp #$81
+    bcs hi_delta_too_big
+    lda famistudio_pulse_sweep+1
+    and #$87
+    cmp #$81
+    bcs hi_delta_too_big
+.endif
     ldx #$40
     stx FAMISTUDIO_APU_FRAME_CNT ; Reset frame counter in case it was about to clock
     lda famistudio_smooth_vibrato_period_lo_lookup, y ; Be sure low 8 bits of timer period are $ff (for positive delta), or $00 (for negative delta)
@@ -2306,6 +2492,16 @@ no_noise_slide:
     .else
         jsr famistudio_get_note_pitch
     .endif
+
+.if FAMISTUDIO_USE_PULSE_SWEEP
+.if FAMISTUDIO_CFG_SFX_SUPPORT = 0
+.if idx < 2
+    ldx #idx
+    jsr famistudio_apply_pulse_sweep
+    bcs compute_volume
+.endif
+.endif
+.endif
 
     lda pitch+0
     sta reg_lo
@@ -2540,6 +2736,12 @@ famistudio_update_fds_channel_sound:
     lda #$80
     sta FAMISTUDIO_FDS_MOD_HI
     sta FAMISTUDIO_FDS_SWEEP_ENV
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_logic_due
+    bne @rate_fds_mod_tick
+    jmp @compute_volume
+@rate_fds_mod_tick:
+.endif
     dec famistudio_fds_mod_delay_counter
     bne @compute_volume
 
@@ -4156,6 +4358,12 @@ famistudio_update:
     pha
 .endif
 
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda #0
+    sta famistudio_clock_restart_due
+    lda #1
+    sta famistudio_clock_logic_due
+.endif
     lda famistudio_song_speed ; Speed 0 means that no music is playing currently
     bmi @pause ; Bit 7 set is the pause flag
     bne @update
@@ -4168,6 +4376,22 @@ famistudio_update:
 
 ;----------------------------------------------------------------------------------------------------------------------
 @update:
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_enabled
+    beq @rate_logic_ready
+    lda famistudio_clock_song_counter
+    beq @rate_logic_reload
+    dec famistudio_clock_song_counter
+    beq @rate_logic_reload
+    lda #0
+    sta famistudio_clock_logic_due
+    jmp @update_envelopes
+@rate_logic_reload:
+    lda famistudio_clock_song_divider
+    sta famistudio_clock_song_counter
+@rate_logic_ready:
+.endif
 
 .if FAMISTUDIO_USE_FAMITRACKER_TEMPO
 
@@ -4247,6 +4471,12 @@ famistudio_update:
     ldx #0
 
 @env_process:
+.if FAMISTUDIO_USE_UPDATE_RATE
+    jsr famistudio_clock_envelope_due
+    bcs @rate_env_ready
+    jmp @env_next
+@rate_env_ready:
+.endif
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     lda famistudio_env_decay_rate,x
     beq @decay_inactive
@@ -4307,6 +4537,12 @@ famistudio_update:
     jmp @pitch_env_process
 
 @pitch_env_process:
+.if FAMISTUDIO_USE_UPDATE_RATE
+    jsr famistudio_clock_pitch_due
+    bcs @rate_pitch_ready
+    jmp @pitch_env_next
+@rate_pitch_ready:
+.endif
     lda famistudio_pitch_env_repeat,x
     beq @pitch_env_read
     dec famistudio_pitch_env_repeat,x
@@ -4379,6 +4615,13 @@ famistudio_update:
 
     cpx #FAMISTUDIO_NUM_PITCH_ENVELOPES
     bne @pitch_env_process
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_logic_due
+    bne @rate_effects_ready
+    jmp @update_sound
+@rate_effects_ready:
+.endif
 
 .if FAMISTUDIO_USE_SLIDE_NOTES
 ;----------------------------------------------------------------------------------------------------------------------
@@ -4601,6 +4844,14 @@ famistudio_update:
     lda famistudio_noise_env_mask
     and #4
     beq @noise_restart_automatic
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_enabled
+    beq @rate_noise_pulse_ready
+    lda famistudio_clock_restart_due
+    bne @rate_noise_pulse_ready
+    jmp @noise_restart_clear
+@rate_noise_pulse_ready:
+.endif
     lda famistudio_env_value+FAMISTUDIO_NOISE_RESTART_ENV
     jmp @noise_restart_apply
 @noise_restart_automatic:
@@ -4619,6 +4870,12 @@ famistudio_update:
 .endif
 
 @update_sound_done:
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_logic_due
+    bne @rate_tempo_ready
+    jmp @skip_frame
+@rate_tempo_ready:
+.endif
 .if FAMISTUDIO_USE_FAMITRACKER_TEMPO
     lda famistudio_song_speed
     bmi @skip_famitracker_tempo_update ; bit 7 = paused
@@ -4642,6 +4899,24 @@ famistudio_update:
 ;----------------------------------------------------------------------------------------------------------------------
 .if FAMISTUDIO_CFG_SFX_SUPPORT
 
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda #0
+    sta famistudio_pulse_sweep_sfx
+    sta famistudio_pulse_sweep_sfx+1
+.endif
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda #0
+    sta famistudio_clock_sfx_due
+    dec famistudio_clock_sfx_counter
+    bne @rate_sfx_ready
+    lda famistudio_clock_output_rate
+    sta famistudio_clock_sfx_counter
+    lda #1
+    sta famistudio_clock_sfx_due
+@rate_sfx_ready:
+.endif
+
     ; Process all sound effect streams
     .if FAMISTUDIO_CFG_SFX_STREAMS > 0
     ldx #FAMISTUDIO_SFX_CH0
@@ -4664,6 +4939,15 @@ famistudio_update:
 
     lda famistudio_output_buf      ; Pulse 1 volume
     sta FAMISTUDIO_APU_PL1_VOL
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda famistudio_output_buf+1
+    sta famistudio_ptr1
+    lda famistudio_output_buf+2
+    sta famistudio_ptr1+1
+    ldx #0
+    jsr famistudio_apply_pulse_sweep
+    bcs @no_pulse1_upd
+.endif
     lda famistudio_output_buf+1    ; Pulse 1 period LSB
     sta FAMISTUDIO_APU_PL1_LO
     lda famistudio_output_buf+2    ; Pulse 1 period MSB, only applied when changed
@@ -4680,6 +4964,15 @@ famistudio_update:
 @no_pulse1_upd:
     lda famistudio_output_buf+3    ; Pulse 2 volume
     sta FAMISTUDIO_APU_PL2_VOL
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda famistudio_output_buf+4
+    sta famistudio_ptr1
+    lda famistudio_output_buf+5
+    sta famistudio_ptr1+1
+    ldx #1
+    jsr famistudio_apply_pulse_sweep
+    bcs @no_pulse2_upd
+.endif
     lda famistudio_output_buf+4    ; Pulse 2 period LSB
     sta FAMISTUDIO_APU_PL2_LO
     lda famistudio_output_buf+5    ; Pulse 2 period MSB, only applied when changed
@@ -4763,9 +5056,25 @@ famistudio_do_epsm_note_attack:
     lda #0
     sta famistudio_env_repeat+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
     sta famistudio_env_ptr+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
+    pla
+    plp
+.endif
     sta famistudio_env_value+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
     sta famistudio_env_repeat+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
     sta famistudio_env_ptr+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
+    pla
+    plp
+.endif
     sta famistudio_env_value+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
 
     ; Set hi-bit of envelope shape to remember to reset it.
@@ -4808,6 +5117,14 @@ famistudio_do_n163_note_attack:
     sta famistudio_env_repeat+FAMISTUDIO_ENV_N163_WAVE_IDX_OFF,x
     lda #1 ; Index 0 is release point, so envelope starts at 1.
     sta famistudio_env_ptr+FAMISTUDIO_ENV_N163_WAVE_IDX_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_N163_WAVE_IDX_OFF,x
+    pla
+    plp
+.endif
 
     ; Clear wave index to -1 to force reload.
     ldx chan_idx
@@ -4832,9 +5149,25 @@ famistudio_do_s5b_note_attack:
     lda #0
     sta famistudio_env_repeat+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
     sta famistudio_env_ptr+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
+    pla
+    plp
+.endif
     sta famistudio_env_value+FAMISTUDIO_ENV_MIXER_IDX_OFF,x
     sta famistudio_env_repeat+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
     sta famistudio_env_ptr+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
+    pla
+    plp
+.endif
     sta famistudio_env_value+FAMISTUDIO_ENV_NOISE_IDX_OFF,x
     ldx chan_idx
     ldy tmp_y
@@ -4871,6 +5204,14 @@ famistudio_do_fds_note_attack:
     sta famistudio_env_repeat+FAMISTUDIO_ENV_FDS_WAVE_IDX_OFF,x
     lda #1 ; Index 0 is release point, so envelope starts at 1.
     sta famistudio_env_ptr+FAMISTUDIO_ENV_FDS_WAVE_IDX_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_FDS_WAVE_IDX_OFF,x
+    pla
+    plp
+.endif
 
     ; Clear wave index to -1 to force reload.
     ldx chan_idx
@@ -4882,6 +5223,14 @@ famistudio_do_fds_note_attack:
 .endif
 
 famistudio_do_note_attack:
+
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    cpx #2
+    bcs @sweep_attack_done
+    lda #1
+    sta famistudio_pulse_sweep_attack,x
+@sweep_attack_done:
+.endif
 
 .if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
     cpx #2
@@ -4901,6 +5250,14 @@ famistudio_do_note_attack:
     lda #0
 @noise_attack_reset:
     sta famistudio_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     sta famistudio_env_repeat,x
     inx
     cpx #FAMISTUDIO_NUM_ENVELOPES
@@ -4940,6 +5297,14 @@ famistudio_do_note_attack:
     ; Volume envelope.
     lda #1
     sta famistudio_env_ptr,x ; Reset volume envelope pointer to 1 (volume have releases point in index 0)
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     lda #0
     sta famistudio_env_repeat,x
 
@@ -4964,6 +5329,14 @@ famistudio_do_note_attack:
     sta famistudio_env_value,x
     lda #2
     sta famistudio_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     ldy famistudio_r3
 @decay_attack_done:
     lda #0 ; The following arpeggio reset expects A=0.
@@ -4972,6 +5345,14 @@ famistudio_do_note_attack:
     ; Arpeggio envelope
     sta famistudio_env_repeat+FAMISTUDIO_ENV_NOTE_OFF,x
     sta famistudio_env_ptr+FAMISTUDIO_ENV_NOTE_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_NOTE_OFF,x
+    pla
+    plp
+.endif
 
     ; Duty envelope (optional)
     lda chan_idx
@@ -4985,6 +5366,14 @@ famistudio_do_note_attack:
     lda #0
     sta famistudio_env_repeat+FAMISTUDIO_ENV_DUTY_OFF,x
     sta famistudio_env_ptr+FAMISTUDIO_ENV_DUTY_OFF,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock+FAMISTUDIO_ENV_DUTY_OFF,x
+    pla
+    plp
+.endif
     .if FAMISTUDIO_USE_DUTYCYCLE_EFFECT
         stx tmp_x
         ldx chan_idx
@@ -5009,6 +5398,14 @@ famistudio_do_note_attack:
     sta famistudio_pitch_env_repeat,x
     lda #1
     sta famistudio_pitch_env_ptr,x     ; Reset pitch envelope pointer to 1 (pitch envelope have relative/absolute flag in the first byte) 
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_pitch_env_clock,x
+    pla
+    plp
+.endif
 
 @no_pitch:
 
@@ -6138,6 +6535,14 @@ famistudio_advance_channel:
     beq @env_has_no_release
 
     sta famistudio_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     lda #0
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     sta famistudio_env_decay_rate,x
@@ -6303,6 +6708,28 @@ famistudio_advance_channel:
     jmp @instrument_change
 .endif
 
+.if FAMISTUDIO_USE_UPDATE_RATE
+@opcode_update_rate:
+    lda (channel_data_ptr),y
+    iny
+    sta famistudio_clock_output_rate
+    lda (channel_data_ptr),y
+    iny
+    sta famistudio_clock_song_divider
+    sta famistudio_clock_song_counter
+    lda #1
+    sta famistudio_clock_enabled
+    jmp @read_byte
+.endif
+
+.if FAMISTUDIO_USE_PULSE_SWEEP
+@opcode_pulse_sweep:
+    lda (channel_data_ptr),y
+    iny
+    sta famistudio_pulse_sweep,x
+    jmp @read_byte
+.endif
+
 .if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
 @opcode_apu_instrument_flags:
     lda (channel_data_ptr),y
@@ -6414,6 +6841,14 @@ famistudio_advance_channel:
     sta famistudio_pitch_env_repeat,x
     lda #1
     sta famistudio_pitch_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_pitch_env_clock,x
+    pla
+    plp
+.endif
     ldx chan_idx
     jmp @read_byte 
 .endif
@@ -6441,6 +6876,14 @@ famistudio_advance_channel:
     sta famistudio_env_repeat,x ; Reset the envelope since this might be a no-attack note.
     sta famistudio_env_value,x
     sta famistudio_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     ldx chan_idx
     jmp @read_byte
 
@@ -6451,6 +6894,14 @@ famistudio_advance_channel:
     sta famistudio_env_repeat,x
     sta famistudio_env_value,x
     sta famistudio_env_ptr,x
+.if FAMISTUDIO_USE_UPDATE_RATE
+    php
+    pha
+    lda #0
+    sta famistudio_env_clock,x
+    pla
+    plp
+.endif
     ldx chan_idx
     jmp @read_byte
 .endif
@@ -6829,7 +7280,7 @@ famistudio_advance_channel:
     .byte <@opcode_invalid                      ; $5e
 .endif
 .endif
-.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_EXP_NONE
         .byte <@opcode_invalid
         .byte <@opcode_invalid
@@ -6848,22 +7299,36 @@ famistudio_advance_channel:
     .byte <@opcode_invalid
 .endif
 .endif
-.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_USE_NOISE_ENVELOPES
     .byte <@opcode_noise_envelopes ; $60
 .else
     .byte <@opcode_invalid
 .endif
 .endif
-.if FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.if FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     .byte <@opcode_envelope_decay ; $61
 .else
     .byte <@opcode_invalid
 .endif
 .endif
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
     .byte <@opcode_apu_instrument_flags ; $62
+.else
+    .byte <@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    .byte <@opcode_pulse_sweep ; $63
+.else
+    .byte <@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_UPDATE_RATE
+    .byte <@opcode_update_rate ; $64
 .endif
 
 
@@ -6993,7 +7458,7 @@ famistudio_advance_channel:
     .byte >@opcode_invalid                      ; $5e
 .endif
 .endif
-.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.if FAMISTUDIO_USE_CUSTOM_TUNING + FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_EXP_NONE
         .byte >@opcode_invalid
         .byte >@opcode_invalid
@@ -7012,22 +7477,36 @@ famistudio_advance_channel:
     .byte >@opcode_invalid
 .endif
 .endif
-.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.if FAMISTUDIO_USE_NOISE_ENVELOPES + FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_USE_NOISE_ENVELOPES
     .byte >@opcode_noise_envelopes ; $60
 .else
     .byte >@opcode_invalid
 .endif
 .endif
-.if FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
+.if FAMISTUDIO_USE_ENVELOPE_DECAY + FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     .byte >@opcode_envelope_decay ; $61
 .else
     .byte >@opcode_invalid
 .endif
 .endif
+.if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS + FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
 .if FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS
     .byte >@opcode_apu_instrument_flags ; $62
+.else
+    .byte >@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_PULSE_SWEEP + FAMISTUDIO_USE_UPDATE_RATE
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    .byte >@opcode_pulse_sweep ; $63
+.else
+    .byte >@opcode_invalid
+.endif
+.endif
+.if FAMISTUDIO_USE_UPDATE_RATE
+    .byte >@opcode_update_rate ; $64
 .endif
 
 
@@ -7281,6 +7760,12 @@ famistudio_sfx_update:
     tmpx = famistudio_r1
     effect_data_ptr = famistudio_ptr0
 
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_sfx_due
+    bne @rate_sfx_advance
+    jmp @update_buf
+@rate_sfx_advance:
+.endif
     lda famistudio_sfx_repeat,x ; Check if repeat counter is not zero
     beq @no_repeat
     dec famistudio_sfx_repeat,x ; Decrement and return
@@ -7342,6 +7827,10 @@ famistudio_sfx_update:
     and #$0f
     cmp tmp
     bcc @no_pulse1
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda #1
+    sta famistudio_pulse_sweep_sfx
+.endif
     lda famistudio_sfx_buffer+0,x
     sta famistudio_output_buf+0
     lda famistudio_sfx_buffer+1,x
@@ -7357,6 +7846,10 @@ famistudio_sfx_update:
     and #$0f
     cmp tmp
     bcc @no_pulse2
+.if FAMISTUDIO_USE_PULSE_SWEEP
+    lda #1
+    sta famistudio_pulse_sweep_sfx+1
+.endif
     lda famistudio_sfx_buffer+3,x
     sta famistudio_output_buf+3
     lda famistudio_sfx_buffer+4,x
@@ -7397,9 +7890,82 @@ famistudio_sfx_update:
 .endif
 
 ; Dummy envelope used to initialize all channels with silence
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+famistudio_clock_envelope_due:
+    lda famistudio_clock_enabled
+    beq @clock_env_due
+.if FAMISTUDIO_USE_ENVELOPE_DECAY
+    lda famistudio_env_decay_rate,x
+    beq @clock_env_macro
+    lda famistudio_clock_logic_due
+    bne @clock_env_due
+    clc
+    rts
+@clock_env_macro:
+.endif
+    lda famistudio_env_clock,x
+    beq @clock_env_reload
+    dec famistudio_env_clock,x
+    beq @clock_env_reload
+    clc
+    rts
+@clock_env_reload:
+    sec
+    lda famistudio_env_addr_lo,x
+    sbc #1
+    sta famistudio_ptr0
+    lda famistudio_env_addr_hi,x
+    sbc #0
+    sta famistudio_ptr0+1
+    ldy #0
+    lda (famistudio_ptr0),y
+    sta famistudio_env_clock,x
+@clock_env_due:
+.if FAMISTUDIO_USE_NOISE_ENVELOPES
+    cpx #FAMISTUDIO_NOISE_RESTART_ENV
+    bne @clock_env_due_done
+    lda #1
+    sta famistudio_clock_restart_due
+@clock_env_due_done:
+.endif
+    sec
+    rts
+
+famistudio_clock_pitch_due:
+    lda famistudio_clock_enabled
+    beq @clock_pitch_due
+    lda famistudio_pitch_env_clock,x
+    beq @clock_pitch_reload
+    dec famistudio_pitch_env_clock,x
+    beq @clock_pitch_reload
+    clc
+    rts
+@clock_pitch_reload:
+    sec
+    lda famistudio_pitch_env_addr_lo,x
+    sbc #1
+    sta famistudio_ptr0
+    lda famistudio_pitch_env_addr_hi,x
+    sbc #0
+    sta famistudio_ptr0+1
+    ldy #0
+    lda (famistudio_ptr0),y
+    sta famistudio_pitch_env_clock,x
+@clock_pitch_due:
+    sec
+    rts
+.endif
+
+.if FAMISTUDIO_USE_UPDATE_RATE
+.byte 1
+.endif
 famistudio_dummy_envelope:
     .byte $c0,$7f,$00,$00
 
+.if FAMISTUDIO_USE_UPDATE_RATE
+.byte 1
+.endif
 famistudio_dummy_pitch_envelope:
     .byte $00,$c0,$7f,$00,$01
 

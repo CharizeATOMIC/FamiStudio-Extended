@@ -165,6 +165,7 @@ void FASTCALL CNSFCore::WriteMemory_pAPU(WORD a,BYTE v)
 		mWave_Squares.nSweepTimer[0] = (v & 0x70) >> 4;
 		mWave_Squares.bSweepMode[0] = v & 0x08;
 		mWave_Squares.nSweepShift[0] = v & 0x07;
+		mWave_Squares.bSweepReload[0] = 1;
 		mWave_Squares.CheckSweepForcedSilence(0);
 		break;
 		
@@ -204,6 +205,7 @@ void FASTCALL CNSFCore::WriteMemory_pAPU(WORD a,BYTE v)
 		mWave_Squares.nSweepTimer[1] = (v & 0x70) >> 4;
 		mWave_Squares.bSweepMode[1] = v & 0x08;
 		mWave_Squares.nSweepShift[1] = v & 0x07;
+		mWave_Squares.bSweepReload[1] = 1;
 		mWave_Squares.CheckSweepForcedSilence(1);
 		break;
 		
@@ -358,8 +360,9 @@ void FASTCALL CNSFCore::WriteMemory_pAPU(WORD a,BYTE v)
 		nFrameCounterMax = (v & 0x80) ? 4 : 3;
 		fTicksUntilNextFrame = (bPALMode ? PAL_FRAME_COUNTER_FREQ : NTSC_FRAME_COUNTER_FREQ);
 
-		CLOCK_MAJOR();
-		if(v & 0x80) CLOCK_MINOR();
+		// Only five-step mode immediately clocks the quarter/half units.
+		// Four-step mode starts with a quarter tick after one divider period.
+		if(v & 0x80) { CLOCK_MAJOR(); CLOCK_MINOR(); }
 		break;
 	}
 
@@ -1181,6 +1184,10 @@ void CNSFCore::EmulateAPU(BYTE bBurnCPUCycles)
 			nFrameCounter++;
 			if(nFrameCounter > nFrameCounterMax)
 				nFrameCounter = 0;
+			// Preserve the divider's short intervals rather than drifting by
+			// fractional average quarter-frame lengths over sustained notes.
+			if(nFrameCounter == 1) fTicksUntilNextFrame -= 2;
+			if(nFrameCounterMax == 4 && nFrameCounter == 4) fTicksUntilNextFrame -= 6;
 
 			if(nFrameCounterMax == 4)
 			{
@@ -1194,10 +1201,10 @@ void CNSFCore::EmulateAPU(BYTE bBurnCPUCycles)
 			else
 			{
 				CLOCK_MAJOR();
-				if(nFrameCounter & 1)
+				if(!(nFrameCounter & 1))
 					CLOCK_MINOR();
 
-				if((nFrameCounter == 3) && bFrameIRQEnabled)
+				if((nFrameCounter == 0) && bFrameIRQEnabled)
 					bFrameIRQPending = 1;
 			}
 		}
@@ -1617,7 +1624,10 @@ int CNSFCore::LoadNSF(const CNSFFile* fl)
 	ZeroMemory(pSRAM,0x2000);
 
 	nExternalSound = fl->nChipExtensions;
-	fNSFPlaybackSpeed = (bPALMode ? PAL_NMIRATE : NTSC_NMIRATE);
+	const WORD playPeriod = bPALMode ? fl->nPAL_PlaySpeed : fl->nNTSC_PlaySpeed;
+	const WORD normalPeriod = bPALMode ? 19997 : 16639;
+	fNSFPlaybackSpeed = !playPeriod || playPeriod == normalPeriod ?
+		(bPALMode ? PAL_NMIRATE : NTSC_NMIRATE) : 1000000.0f / playPeriod;
 	
 	bFileLoaded = 1;
 
@@ -2722,6 +2732,7 @@ int CNSFCore::RunOneFrame()
 		}
 	}
 
+	nLastFrameCycles = nAPUCycle;
 	nCPUCycle = nAPUCycle = 0;
 	bIsGeneratingSamples = 0;
 
@@ -2753,6 +2764,10 @@ void CNSFCore::ResetFrameState()
 
 int CNSFCore::GetState(int channel, int state, int sub)
 {
+    // Diagnostic clocks are queried during register callbacks and after PLAY.
+    // They expose actual CPU timing without changing emulation or the ABI.
+    if(channel == -1 && state == 1000) return nAPUCycle;
+    if(channel == -1 && state == 1001) return nLastFrameCycles;
 	switch (channel)
 	{
 		case CHANNEL_SQUARE1:

@@ -68,6 +68,10 @@ namespace FamiStudio
         public const int EXTSOUND_S5B   = 0x20;
         public const int EXTSOUND_EPSM  = 0x80;
 
+        // Channel -1: current CPU write cycle and duration of the completed PLAY
+        // interval, for independent timing-aware APU validation.
+        public const int STATE_CPUCYCLE           = 1000;
+        public const int STATE_FRAMECYCLES        = 1001;
         public const int STATE_VOLUME             = 0;
         public const int STATE_PERIOD             = 1;
         public const int STATE_DUTYCYCLE          = 2;

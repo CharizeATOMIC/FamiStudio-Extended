@@ -70,6 +70,23 @@ namespace FamiStudio
         {
             if (project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
 
+            // Traditional SFX streams count video frames and have no independent
+            // clock field. A higher output rate is harmless for an old 1x effect,
+            // but capturing its output ticks directly would stretch its duration.
+            if (project.UpdateRateMultiplier != 1)
+            {
+                project = project.DeepClone();
+                project.DeleteAllSongsBut(songIds);
+                var error = project.GetUpdateRateError(1);
+                if (error != null)
+                {
+                    Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError);
+                    Log.LogMessage(LogSeverity.Error, error);
+                    return false;
+                }
+                project.UpdateRateMultiplier = 1;
+            }
+
             if (!project.EnsureSongAssemblyNamesAreUnique())
             {
                 return false;

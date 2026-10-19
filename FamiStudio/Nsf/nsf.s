@@ -4,6 +4,8 @@
     ; Enable all features.
     FAMISTUDIO_USE_ENVELOPE_DECAY           = 1
     FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS     = 1
+FAMISTUDIO_USE_PULSE_SWEEP              = 1
+FAMISTUDIO_USE_UPDATE_RATE              = 1
     FAMISTUDIO_USE_NOISE_ENVELOPES           = 1
     FAMISTUDIO_USE_CUSTOM_TUNING             = 1
     FAMISTUDIO_CFG_EXTERNAL                  = 1

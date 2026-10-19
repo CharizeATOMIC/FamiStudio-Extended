@@ -15,6 +15,7 @@ FAMISTUDIO_USE_VOLUME_SLIDES             = 1
 FAMISTUDIO_USE_PITCH_TRACK               = 1
 FAMISTUDIO_USE_ENVELOPE_DECAY           = 1
 FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS     = 1
+FAMISTUDIO_USE_PULSE_SWEEP              = 1
     FAMISTUDIO_USE_NOISE_ENVELOPES           = 1
 FAMISTUDIO_USE_CUSTOM_TUNING             = 1
 FAMISTUDIO_USE_SLIDE_NOTES               = 1
@@ -499,23 +500,13 @@ default_palette:
         lda #$44 ; Vertical mirrorring.
         sta MMC5_NMT_MAP
 
-        ; TODO : This could be a loop.
-        lda #0
-        sta MMC5_CHR_SELECT_0000
-        lda #1
-        sta MMC5_CHR_SELECT_0400
-        lda #2
-        sta MMC5_CHR_SELECT_0800
-        lda #3
-        sta MMC5_CHR_SELECT_0C00
-        lda #4
-        sta MMC5_CHR_SELECT_1000
-        lda #5
-        sta MMC5_CHR_SELECT_1400
-        lda #6
-        sta MMC5_CHR_SELECT_1800
-        lda #7
-        sta MMC5_CHR_SELECT_1C00
+        ldx #0
+        chr_bank_loop:
+            txa
+            sta MMC5_CHR_SELECT_0000,x
+            inx
+            cpx #8
+            bne chr_bank_loop
 
     .endif
 
@@ -566,8 +557,8 @@ default_palette:
             bne clear_stack_loop
     .endif
     ; place all sprites offscreen at Y=255
+    ; The preceding RAM/stack clear leaves X = 0.
     lda #255
-    ldx #0
     clear_oam_loop:
         sta oam, x
         inx
@@ -653,9 +644,8 @@ oam_dma:
 
 ; nametable update
 nmt_update:
-    lda nmt_update_mode 
-    bne do_update
-    jmp update_done
+    lda nmt_update_mode
+    beq update_done
     do_update:
         ldx #0
         cpx nmt_update_len
@@ -664,7 +654,6 @@ nmt_update:
         asl
         ora #%10000000
         sta $2000
-        ldx #0
         nmt_update_loop:
             lda nmt_update_data, x
             inx
@@ -687,78 +676,21 @@ nmt_update:
 palettes:
     lda nmt_update_mode
     cmp #2
-    beq palettes_need_update
-    jmp update_done
+    bne update_done
     palettes_need_update:
         lda $2002
         lda #$3F
         sta $2006
         ldx #0
         stx $2006 ; set PPU address to $3F00
-        lda palette+0
-        sta $2007
-        lda palette+1
-        sta $2007
-        lda palette+2
-        sta $2007
-        lda palette+3
-        sta $2007
-        lda palette+4
-        sta $2007
-        lda palette+5
-        sta $2007
-        lda palette+6
-        sta $2007
-        lda palette+7
-        sta $2007
-        lda palette+8
-        sta $2007
-        lda palette+9
-        sta $2007
-        lda palette+10
-        sta $2007
-        lda palette+11
-        sta $2007
-        lda palette+12
-        sta $2007
-        lda palette+13
-        sta $2007
-        lda palette+14
-        sta $2007
-        lda palette+15
-        sta $2007
-        lda palette+16
-        sta $2007
-        lda palette+17
-        sta $2007
-        lda palette+18
-        sta $2007
-        lda palette+19
-        sta $2007
-        lda palette+20
-        sta $2007
-        lda palette+21
-        sta $2007
-        lda palette+22
-        sta $2007
-        lda palette+23
-        sta $2007
-        lda palette+24
-        sta $2007
-        lda palette+25
-        sta $2007
-        lda palette+26
-        sta $2007
-        lda palette+27
-        sta $2007
-        lda palette+28
-        sta $2007
-        lda palette+29
-        sta $2007
-        lda palette+30
-        sta $2007
-        lda palette+31
-        sta $2007
+        ; Text and palette updates never share a frame with the equalizers.
+        ; This loop saves ROM space while remaining inside NTSC vblank.
+        palette_loop:
+            lda palette,x
+            sta $2007
+            inx
+            cpx #32
+            bne palette_loop
 
 update_done:
     ; Clear update mode.
@@ -795,15 +727,16 @@ nmi_end:
     pla
     rti
 
-.endproc 
+.endproc
 
 .proc irq
     rti
-.endproc 
+.endproc
 
 ; ppu_update: waits until next NMI, turns rendering on (if not already), uploads OAM, palette, and nametable update to PPU
 .proc ppu_update
     lda #1
+request:
     sta nmi_ready
     wait:
         lda nmi_ready
@@ -811,24 +744,11 @@ nmi_end:
     rts
 .endproc
 
-; ppu_skip: waits until next NMI, does not update PPU
-.proc ppu_skip
-    lda nmi_count
-    wait:
-        cmp nmi_count
-        beq wait
-    rts
-.endproc 
-
 ; ppu_off: waits until next NMI, turns rendering off (now safe to write PPU directly via $2007)
 .proc ppu_off
     lda #2
-    sta nmi_ready
-    wait:
-        lda nmi_ready
-        bne wait
-    rts
-.endproc 
+    jmp ppu_update::request ; Shared request-and-wait, retaining A = 2.
+.endproc
 
 ; ppu_address_tile: use with rendering off, sets memory address to tile at x/Y, ready for a $2007 write
 ;   Y =  0- 31 nametable $2000
@@ -854,7 +774,7 @@ nmi_end:
     ora r0
     sta $2006 ; low bits of Y + x
     rts
-.endproc 
+.endproc
 
 ;
 ; gamepad
@@ -890,7 +810,7 @@ PAD_R      = $80
         bne gamepad_loop
     sta gamepad
     rts
-.endproc 
+.endproc
 
 .proc gamepad_poll_dpcm_safe
     
@@ -1109,7 +1029,7 @@ load_success:
 done:
     rts
 
-.endproc 
+.endproc
 
 .if FAMISTUDIO_EXP_VRC6
     NUM_EQUALIZERS = 8
@@ -1195,30 +1115,6 @@ equalizer_ppu_addr_lo_lookup:
     .byte $57 ; DPCM
 .endif    
 
-equalizer_ppu_addr_hi_lookup:
-.if FAMISTUDIO_EXP_VRC6 || FAMISTUDIO_EXP_VRC7 || FAMISTUDIO_EXP_S5B || FAMISTUDIO_EXP_N163 || FAMISTUDIO_EXP_EPSM
-    .byte $21 ; Square 1
-    .byte $21 ; Square 2
-    .byte $21 ; Triangle
-    .byte $21 ; Noise
-    .byte $21 ; DPCM
-.else
-    .byte $22 ; Square 1
-    .byte $22 ; Square 2
-    .byte $22 ; Triangle
-    .byte $22 ; Noise
-    .byte $22 ; DPCM
-.endif
-    .byte $22
-    .byte $22
-    .byte $22
-    .byte $22
-    .byte $22
-    .byte $22
-    .byte $22
-    .byte $22
-    .byte $22
-
 ; Which 4 BG tiles to draw for each "volume" [0-7]
 equalizer_volume_lookup:
     .byte $e3, $e3, $e3, $e3 ; 0
@@ -1251,7 +1147,13 @@ equalizer_color_lookup:
 
     ; Write 2 addresses
     ldy nmt_update_len
-    lda equalizer_ppu_addr_hi_lookup, x
+    lda #$22
+.if ::FAMISTUDIO_EXP_VRC6 || ::FAMISTUDIO_EXP_VRC7 || ::FAMISTUDIO_EXP_S5B || ::FAMISTUDIO_EXP_N163 || ::FAMISTUDIO_EXP_EPSM
+    cpx #5
+    bcs high_address_ready
+    lda #$21
+high_address_ready:
+.endif
     sta nmt_update_data,y
     lda equalizer_ppu_addr_lo_lookup, x
     sta nmt_update_data+1,y
@@ -1266,19 +1168,17 @@ equalizer_color_lookup:
     asl
     tax
 
+    lda #4
+    sta r2
     clc
-    lda equalizer_volume_lookup, x
-    adc color_offset
-    sta nmt_update_data+3,y
-    lda equalizer_volume_lookup+1, x
-    adc color_offset
-    sta nmt_update_data+4,y
-    lda equalizer_volume_lookup+2, x
-    adc color_offset
-    sta nmt_update_data+5,y
-    lda equalizer_volume_lookup+3, x
-    adc color_offset
-    sta nmt_update_data+6,y
+    tile_loop:
+        lda equalizer_volume_lookup,x
+        adc color_offset
+        sta nmt_update_data+3,y
+        inx
+        iny
+        dec r2
+        bne tile_loop
     
     lda #7
     adc nmt_update_len
@@ -1350,9 +1250,7 @@ loop:
         ; next song.
         clc
         adc #1
-        sta song_index
-        jsr play_song
-        jmp draw_done ; Intentionally skipping equalizer update to keep NMI update small.
+        bne change_song ; MAX_SONGS is below 256, so increment cannot wrap.
 
     check_left:
         lda gamepad_pressed
@@ -1365,6 +1263,7 @@ loop:
 
         sec
         sbc #1
+    change_song:
         sta song_index
         jsr play_song
         jmp draw_done ; Intentionally skipping equalizer update to keep NMI update small.
@@ -1379,7 +1278,7 @@ draw_done:
     jsr ppu_update
     jmp loop
 
-.endproc 
+.endproc
 
 ; Shiru's code.
 ; x = lo byte of RLE data addr
@@ -1482,6 +1381,12 @@ done:
 
 .endproc
 
+; The logo's three sprites in native OAM order: Y, tile, attributes, X.
+logo_sprites:
+    .byte 15, $51, 1, 80
+    .byte 23, $60, 1, 72
+    .byte 23, $62, 1, 88
+
 .proc setup_background
 
     ; first nametable, start by clearing to empty
@@ -1497,32 +1402,12 @@ done:
     jsr rle_decompress
 
     ; Add a few sprites to the FamiStudio logo.
-    lda #80
-    sta oam+3
-    lda #15
-    sta oam+0
-    lda #$51
-    sta oam+1
-    lda #1
-    sta oam+2
-
-    lda #72
-    sta oam+7
-    lda #23
-    sta oam+4
-    lda #$60
-    sta oam+5
-    lda #1
-    sta oam+6
-
-    lda #88
-    sta oam+11
-    lda #23
-    sta oam+8
-    lda #$62
-    sta oam+9
-    lda #1
-    sta oam+10
+    ldx #11
+    sprite_loop:
+        lda logo_sprites,x
+        sta oam,x
+        dex
+        bpl sprite_loop
 
     ; Draw title
     ldx #2

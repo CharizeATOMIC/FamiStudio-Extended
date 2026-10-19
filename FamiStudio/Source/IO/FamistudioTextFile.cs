@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -37,6 +37,7 @@ namespace FamiStudio
 
             var versionString = Utils.SplitVersionNumber(Platform.ApplicationVersion, out _);
             var projectLine = $"Project";
+            if (project.UpdateRateMultiplier != 1) projectLine += GenerateAttribute("UpdateRateMultiplier", project.UpdateRateMultiplier);
             if (!noVersion)
                 projectLine += $"{GenerateAttribute("Version", versionString)}";
             projectLine += $"{GenerateAttribute("TempoMode", TempoType.Names[project.TempoMode])}";
@@ -127,6 +128,7 @@ namespace FamiStudio
 
                 if (instrument.ResetPhaseOnAttack) instrumentLine += GenerateAttribute("ResetPhaseOnAttack", true);
                 if (instrument.PitchClampToTimerByte) instrumentLine += GenerateAttribute("PitchClampToTimerByte", true);
+                if (instrument.PulseSweepRegister != 0x08) instrumentLine += GenerateAttribute("PulseSweepRegister", instrument.PulseSweepRegister);
 
                 if (instrument.IsExpansionInstrument)
                 {
@@ -222,13 +224,14 @@ namespace FamiStudio
                     // Duty zero and a disabled duty macro have the same song-player
                     // fallback semantics, but distinct editable lengths/loops and
                     // instrument-preview behavior. Preserve both explicitly.
-                    if (env != null && (i == EnvelopeType.DutyCycle || !env.IsEmpty(i)))
+                    if (env != null && (i == EnvelopeType.DutyCycle || !env.IsEmpty(i) || env.TickRateMultiplier != 1))
                     {
                         var envelopeLine = $"\t\tEnvelope{GenerateAttribute("Type", EnvelopeType.InternalNames[i])}{GenerateAttribute("Length", env.Length)}";
 
                         if (env.Loop     >= 0) envelopeLine += GenerateAttribute("Loop", env.Loop);
                         if (env.Release  >= 0) envelopeLine += GenerateAttribute("Release", env.Release);
                         if (env.Relative)      envelopeLine += GenerateAttribute("Relative", env.Relative);
+                        if (env.TickRateMultiplier != 1) envelopeLine += GenerateAttribute("TickRateMultiplier", env.TickRateMultiplier);
 
                         envelopeLine += GenerateAttribute("Values", String.Join(",", env.Values.Take(env.Length)));
 
@@ -243,6 +246,7 @@ namespace FamiStudio
                 var env = arpeggio.Envelope;
                 var arpeggioLine = $"\tArpeggio{GenerateAttribute("Name", arpeggio.Name)}{ConditionalGenerateAttribute("Color", arpeggio.Color.ToHexString(), !noColors)}{GenerateAttributeIfNonEmpty("Folder", arpeggio.FolderName)}{GenerateAttribute("Length", env.Length)}";
                 if (env.Loop >= 0) arpeggioLine += GenerateAttribute("Loop", env.Loop);
+                if (env.TickRateMultiplier != 1) arpeggioLine += GenerateAttribute("TickRateMultiplier", env.TickRateMultiplier);
                 arpeggioLine += GenerateAttribute("Values", String.Join(",", env.Values.Take(env.Length)));
                 lines.Add(arpeggioLine);
             }
@@ -251,6 +255,7 @@ namespace FamiStudio
             foreach (var song in project.Songs)
             {
                 var songStr = $"\tSong{GenerateAttribute("Name", song.Name)}{ConditionalGenerateAttribute("Color", song.Color.ToHexString(), !noColors)}{GenerateAttributeIfNonEmpty("Folder", song.FolderName)}{GenerateAttribute("Length", song.Length)}{GenerateAttribute("LoopPoint", song.LoopPoint)}";
+                if (song.LogicRateMultiplier != 1) songStr += GenerateAttribute("LogicRateMultiplier", song.LogicRateMultiplier);
 
                 if (song.UsesFamiTrackerTempo)
                 {
@@ -465,6 +470,7 @@ namespace FamiStudio
                             if (parameters.TryGetValue("Copyright", out var copyright)) project.Copyright = copyright;
                             if (parameters.TryGetValue("TempoMode", out var tempoMode)) project.TempoMode = TempoType.GetValueForName(tempoMode);
                             if (parameters.TryGetValue("PAL", out var pal)) project.PalMode = bool.Parse(pal);
+                            if (parameters.TryGetValue("UpdateRateMultiplier", out var rate)) project.UpdateRateMultiplier = int.Parse(rate);
                             if (parameters.TryGetValue("ChipInstances", out var chipInstances)) project.SetExpansionInstances(chipInstances.Split(',').Select(int.Parse).ToArray());
                             if (parameters.TryGetValue("Tuning", out var tuning)) project.Tuning = int.Parse(tuning);
                             if (parameters.TryGetValue("Expansions", out var expansions))
@@ -551,6 +557,7 @@ namespace FamiStudio
                             instrument = project.CreateInstrument(instrumentExp, parameters["Name"]);
                             if (parameters.TryGetValue("ResetPhaseOnAttack", out var resetPhaseStr)) instrument.ResetPhaseOnAttack = bool.Parse(resetPhaseStr);
                             if (parameters.TryGetValue("PitchClampToTimerByte", out var clampPitchStr)) instrument.PitchClampToTimerByte = bool.Parse(clampPitchStr);
+                            if (parameters.TryGetValue("PulseSweepRegister", out var sweepStr)) instrument.PulseSweepRegister = byte.Parse(sweepStr);
                             if (parameters.TryGetValue("Folder", out var folderName) && project.CreateFolder(FolderType.Instrument, folderName) != null)
                                 instrument.FolderName = folderName;
                             if (parameters.TryGetValue("Color", out var hexColor))
@@ -661,6 +668,7 @@ namespace FamiStudio
                         {
                             arpeggio = project.CreateArpeggio(parameters["Name"]);
                             arpeggio.Envelope.Length = int.Parse(parameters["Length"]);
+                            arpeggio.Envelope.TickRateMultiplier = parameters.TryGetValue("TickRateMultiplier", out var arpTickRate) ? int.Parse(arpTickRate) : 1;
                             
                             if (parameters.TryGetValue("Folder", out var folderName) && project.CreateFolder(FolderType.Arpeggio, folderName) != null)
                                 arpeggio.FolderName = folderName;
@@ -679,6 +687,7 @@ namespace FamiStudio
                             var env = instrument.Envelopes[EnvelopeType.GetValueForInternalName(parameters["Type"])];
                             if (env != null)
                             {
+                                env.TickRateMultiplier = parameters.TryGetValue("TickRateMultiplier", out var envTickRate) ? int.Parse(envTickRate) : 1;
                                 if (env.CanResize)
                                     env.Length = int.Parse(parameters["Length"]);
 
@@ -695,6 +704,7 @@ namespace FamiStudio
                         case "Song":
                         {
                             song = project.CreateSong(parameters["Name"]);
+                            song.LogicRateMultiplier = parameters.TryGetValue("LogicRateMultiplier", out var logicRate) ? int.Parse(logicRate) : 1;
                             song.SetLength(int.Parse(parameters["Length"]));
                             if (parameters.TryGetValue("Tuning", out var tuningHz))
                                 song.TuningSettings = new TuningSettings { Override = true, ReferenceHz = int.Parse(tuningHz), Cents = parameters["Cents"].Split(',').Select(int.Parse).ToArray() };
@@ -881,6 +891,13 @@ namespace FamiStudio
 
                 project.AutoSortSongs = false;
                 project.ConditionalSortEverything();
+                var updateRateError = project.GetUpdateRateError(project.UpdateRateMultiplier);
+                if (updateRateError != null)
+                {
+                    Log.LogMessage(LogSeverity.Error, updateRateError);
+                    ResetCulture();
+                    return null;
+                }
                 project.ValidateIntegrity();
 
                 ResetCulture();

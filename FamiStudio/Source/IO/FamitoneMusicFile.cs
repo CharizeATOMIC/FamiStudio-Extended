@@ -31,13 +31,14 @@ namespace FamiStudio
 
         private int machine = MachineType.NTSC;
         private int assemblyFormat = AssemblyFormat.NESASM;
-        private Dictionary<byte, string> vibratoEnvelopeNames = new Dictionary<byte, string>();
+        private Dictionary<(byte Vibrato, int Rate), string> vibratoEnvelopeNames = new Dictionary<(byte, int), string>();
         private Dictionary<Arpeggio, string> arpeggioEnvelopeNames = new Dictionary<Arpeggio, string>();
         private Dictionary<Envelope, string> instrumentArpeggioNames = new Dictionary<Envelope, string>();
         private Dictionary<Envelope, string> noiseEnvelopeNames = new Dictionary<Envelope, string>();
         private bool usesNoiseEnvelopes;
         private bool usesEnvelopeDecay;
         private bool usesApuInstrumentFlags;
+        private bool usesPulseSweep;
         private Dictionary<Instrument, int> instrumentIndices = new Dictionary<Instrument, int>();
         private Dictionary<DPCMSampleMapping, int> sampleMappingIndices = new Dictionary<DPCMSampleMapping, int>();
         private string noArpeggioEnvelopeName;
@@ -90,6 +91,8 @@ namespace FamiStudio
         private const byte OpcodeNoiseEnvelopes        = 0x60; // Three optional APU noise macros
         private const byte OpcodeEnvelopeDecay        = 0x61;
         private const byte OpcodeApuInstrumentFlags   = 0x62;
+        private const byte OpcodePulseSweep           = 0x63;
+        private const byte OpcodeUpdateRate           = 0x64;
 
         private const byte OpcodeSetReferenceFT2       = 0xff; // FT2
         private const byte OpcodeLoopFT2               = 0xfd; // FT2
@@ -452,23 +455,39 @@ namespace FamiStudio
             return m1.Pitch.CompareTo(m2.Pitch);
         }
 
+        private int GetUpdateDivider(int tickRate)
+        {
+            var outputRate = project.UpdateRateMultiplier;
+            if (tickRate < 1 || tickRate > outputRate || outputRate % tickRate != 0)
+                throw new InvalidOperationException("An envelope or song clock exceeds the project output clock.");
+            return outputRate / tickRate;
+        }
+
+        private ulong GetEnvelopeKey(byte[] data, int tickRate = 1, bool executable = true)
+        {
+            // At 1x the CRC and sorted order are unchanged. At higher rates the
+            // upper word distinguishes executable clocks from unclocked wave data.
+            var divider = project.UpdateRateMultiplier > 1 && executable ? GetUpdateDivider(tickRate) : 0;
+            return ((ulong)divider << 32) | CRC32.Compute(data);
+        }
+
         private int OutputInstruments()
         {
             // Process all envelope, make unique, etc.
-            var uniqueEnvelopes = new SortedList<uint, byte[]>();
-            var instrumentEnvelopes = new Dictionary<Envelope, uint>();
-            var instrumentWaveforms = new Dictionary<Instrument, uint[]>();
+            var uniqueEnvelopes = new SortedList<ulong, byte[]>();
+            var instrumentEnvelopes = new Dictionary<Envelope, ulong>();
+            var instrumentWaveforms = new Dictionary<Instrument, ulong[]>();
 
             var defaultEnv = new byte[] { 0xc0, 0x7f, 0x00, 0x01 };
             var defaultDutyEnv = new byte[] { 0x7f, 0x00, 0x00 }; // This is a "do nothing" envelope, simply loops, never sets a value.
             var defaultPitchOrReleaseEnv = new byte[] { 0x00, 0xc0, 0x7f, 0x00, 0x02 }; // For pitch, first byte means absolute, for other envelope, it means no release.
-            var defaultEnvCRC = CRC32.Compute(defaultEnv);
-            var defaultDutyEnvCRC = CRC32.Compute(defaultDutyEnv);
-            var defaultPitchOrReleaseEnvCRC = CRC32.Compute(defaultPitchOrReleaseEnv);
+            var defaultEnvCRC = GetEnvelopeKey(defaultEnv);
+            var defaultDutyEnvCRC = GetEnvelopeKey(defaultDutyEnv);
+            var defaultPitchOrReleaseEnvCRC = GetEnvelopeKey(defaultPitchOrReleaseEnv);
             var defaultEnvName = "";
             var defaultPitchEnvName = "";
-            var vibToCrc = new Dictionary<byte, uint>();
-            var arpToCrc = new Dictionary<Arpeggio, uint>();
+            var vibToCrc = new Dictionary<(byte Vibrato, int Rate), ulong>();
+            var arpToCrc = new Dictionary<Arpeggio, ulong>();
 
             project.AutoAssignN163WavePositions(out var n163AutoWavPosMap);
 
@@ -480,12 +499,12 @@ namespace FamiStudio
                 uniqueEnvelopes.Add(defaultDutyEnvCRC, defaultDutyEnv);
             }
 
-            Action<Envelope, byte[]> AddProcessedEnvelope = (env, processed) => 
+            void AddProcessedEnvelope(Envelope env, byte[] processed, bool executable = true)
             {
-                uint crc = CRC32.Compute(processed);
+                var crc = GetEnvelopeKey(processed, env.TickRateMultiplier, executable);
                 uniqueEnvelopes[crc] = processed;
                 instrumentEnvelopes[env] = crc;
-            };
+            }
 
             foreach (var instrument in project.Instruments)
             {
@@ -538,7 +557,7 @@ namespace FamiStudio
                     }
                     else
                     {
-                        AddProcessedEnvelope(env, processed);
+                        AddProcessedEnvelope(env, processed, i != EnvelopeType.FdsModulation);
                     }
                 }
 
@@ -556,12 +575,12 @@ namespace FamiStudio
                     else
                         instrumentEnvelopes[envRepeat] = defaultPitchOrReleaseEnvCRC;
 
-                    var waveforms = new uint[subWaveforms.GetLength(0)];
+                    var waveforms = new ulong[subWaveforms.GetLength(0)];
 
                     for (int i = 0; i < subWaveforms.GetLength(0); i++)
                     {
                         var wav = subWaveforms[i];
-                        var crc = CRC32.Compute(wav);
+                        var crc = GetEnvelopeKey(wav, executable: false);
                         uniqueEnvelopes[crc] = wav;
                         waveforms[i] = crc;
                     }
@@ -576,13 +595,13 @@ namespace FamiStudio
                 foreach (var arpeggio in project.Arpeggios)
                 {
                     var processed = ProcessEnvelope(arpeggio.Envelope, false, false);
-                    uint crc = CRC32.Compute(processed);
+                    var crc = GetEnvelopeKey(processed, arpeggio.Envelope.TickRateMultiplier);
                     arpToCrc[arpeggio] = crc;
                     uniqueEnvelopes[crc] = processed;
                 }
 
                 // Create all the unique vibrato envelopes.
-                var uniqueVibratos = new HashSet<byte>();
+                var uniqueVibratos = new HashSet<(byte Vibrato, int Rate)>();
 
                 foreach (var s in project.Songs)
                 {
@@ -594,7 +613,7 @@ namespace FamiStudio
                             {
                                 if (note.HasVibrato)
                                 {
-                                    uniqueVibratos.Add(note.RawVibrato);
+                                    uniqueVibratos.Add((note.RawVibrato, s.LogicRateMultiplier));
                                 }
                             }
                         }
@@ -604,14 +623,15 @@ namespace FamiStudio
                 foreach (var vib in uniqueVibratos)
                 {
                     // TODO : Create a pack/unpack function. We dont need to know how its encoded here.
-                    var depth = (vib >> 0) & 0xf;
-                    var speed = (vib >> 4) & 0xf;
+                    var depth = (vib.Vibrato >> 0) & 0xf;
+                    var speed = (vib.Vibrato >> 4) & 0xf;
 
                     if (speed != 0 && depth != 0)
                     {
                         var env = Envelope.CreateVibratoEnvelope(speed, depth);
+                        env.TickRateMultiplier = vib.Rate;
                         var processed = ProcessEnvelope(env, false, true);
-                        uint crc = CRC32.Compute(processed);
+                        var crc = GetEnvelopeKey(processed, env.TickRateMultiplier);
 
                         vibToCrc.Add(vib, crc);
 
@@ -834,6 +854,14 @@ namespace FamiStudio
             foreach (var kv in uniqueEnvelopes)
             {
                 var labelname = $"{llp}env{idx++}";
+                var divider = (int)(kv.Key >> 32);
+                if (divider != 0)
+                {
+                    // The pointer and all loop/release indices still address
+                    // the first original byte; the clock is at pointer - 1.
+                    lines.Add($"\t{db} {hexp}{divider:x2} ; envelope update divider");
+                    size++;
+                }
                 lines.Add($"{labelname}:");
                 lines.Add($"\t{db} {String.Join(",", kv.Value.Select(i => $"{hexp}{i:x2}"))}");
 
@@ -880,7 +908,8 @@ namespace FamiStudio
             }
 
             // Setup the vibrato envelopes.
-            vibratoEnvelopeNames[0] = defaultPitchEnvName;
+            foreach (var song in project.Songs)
+                vibratoEnvelopeNames[(0, song.LogicRateMultiplier)] = defaultPitchEnvName;
 
             foreach (var kv in vibToCrc)
             {
@@ -1205,6 +1234,10 @@ namespace FamiStudio
                 var sawVolumeChanged = false;
                 var lastVolume = 15;
                 var lastApuInstrumentFlags = 0;
+                var lastPulseSweep = 0x08;
+                var channelUsesPulseSweep = channel.Type <= ChannelType.Square2 && channel.Patterns.Any(p =>
+                    p.Notes.Values.Any(n => n.IsMusical && n.Instrument?.PulseSweepRegister != null && n.Instrument.PulseSweepRegister != 0x08));
+                usesPulseSweep |= channelUsesPulseSweep;
                 var channelUsesApuInstrumentFlags = channel.Type <= ChannelType.Triangle && channel.Patterns.Any(p =>
                     p.Notes.Values.Any(n => n.IsMusical && n.Instrument != null &&
                     (n.Instrument.PitchClampToTimerByte || channel.Type <= ChannelType.Square2 && n.Instrument.ResetPhaseOnAttack)));
@@ -1216,6 +1249,14 @@ namespace FamiStudio
                 allChannelData.Add(channelData);
 
                 channelData.Add($"{llp}song{songIdx}ch{c}:");
+
+                if (c == 0 && project.UpdateRateMultiplier > 1)
+                {
+                    // Configure once at song entry, before the actual loop label.
+                    channelData.Add($"{hexp}{OpcodeUpdateRate:x2}+");
+                    channelData.Add($"{hexp}{project.UpdateRateMultiplier:x2}");
+                    channelData.Add($"{hexp}{GetUpdateDivider(song.LogicRateMultiplier):x2}");
+                }
 
                 if (isSpeedChannel && project.UsesFamiTrackerTempo)
                 {
@@ -1264,6 +1305,7 @@ namespace FamiStudio
                         //arpeggio = null;
                         lastVolume = -1;
                         lastApuInstrumentFlags = -1;
+                        lastPulseSweep = -1;
 
                         if (sawVolumeChanged)
                             sawVolume = -1;
@@ -1397,8 +1439,8 @@ namespace FamiStudio
 
                             // TODO: If note has attack, no point in setting the default vibrato envelope, instrument will do it anyway.
                             channelData.Add($"{hexp}{OpcodeOverridePitchEnv:x2}+");
-                            channelData.Add($"{lo}({vibratoEnvelopeNames[vib]})");
-                            channelData.Add($"{hi}({vibratoEnvelopeNames[vib]})");
+                            channelData.Add($"{lo}({vibratoEnvelopeNames[(vib, song.LogicRateMultiplier)]})");
+                            channelData.Add($"{hi}({vibratoEnvelopeNames[(vib, song.LogicRateMultiplier)]})");
 
                             if (vib == 0)
                             {
@@ -1424,6 +1466,17 @@ namespace FamiStudio
                                 usesApuInstrumentFlags = true;
                             }
                             lastApuInstrumentFlags = flags;
+                        }
+
+                        if (note.IsMusical && note.Instrument != null && channelUsesPulseSweep)
+                        {
+                            int sweep = note.Instrument.PulseSweepRegister;
+                            if (sweep != lastPulseSweep)
+                            {
+                                channelData.Add($"{hexp}{OpcodePulseSweep:x2}+");
+                                channelData.Add($"{hexp}{sweep:x2}");
+                                lastPulseSweep = sweep;
+                            }
                         }
 
                         if (note.HasPhaseReset)
@@ -2449,6 +2502,10 @@ namespace FamiStudio
                 flags.Add("Envelope decay requires FAMISTUDIO_USE_ENVELOPE_DECAY = 1 and the enhanced sound engine.");
             if (usesApuInstrumentFlags)
                 flags.Add("APU instrument pitch clamp and attack phase reset require FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS = 1 and the enhanced sound engine.");
+            if (usesPulseSweep)
+                flags.Add("APU hardware pulse sweep requires FAMISTUDIO_USE_PULSE_SWEEP = 1 and the matching sound engine.");
+            if (project.UpdateRateMultiplier != 1)
+                flags.Add($"Music update clock is {project.UpdateRateMultiplier}x and requires FAMISTUDIO_USE_UPDATE_RATE = 1. Schedule famistudio_update evenly {project.UpdateRateMultiplier} times per video frame using a timer/IRQ. Consecutive calls at one NMI are not equivalent. Song and envelope clocks use their own exported dividers.");
             if (usesVibrato)
                 flags.Add("Vibrato effect is used, you must set FAMISTUDIO_USE_VIBRATO = 1.");
             if (usesArpeggio)
@@ -2485,6 +2542,11 @@ namespace FamiStudio
         public bool Save(Project originalProject, int[] songIds, int format, int maxDpcmBankSize, bool separateSongs, string filename, string dmcFilename, int dmcExportMode, bool exportUnusedMappings, string includeFilename, int machine)
         {
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+            if (kernel != FamiToneKernel.FamiStudio && originalProject.UpdateRateMultiplier != 1)
+            {
+                Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError);
+                return false;
+            }
             if (kernel == FamiToneKernel.FamiTone2 && originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesOddDpcmMappingDac()))
             {
                 Log.LogMessage(LogSeverity.Error, TuningStrings.ExtendedFormatExportError);
@@ -2508,6 +2570,7 @@ namespace FamiStudio
 
             usesEnvelopeDecay = false;
             usesApuInstrumentFlags = false;
+            usesPulseSweep = false;
             try { SetupProject(originalProject, songIds, dmcExportMode); }
             catch (InvalidOperationException exception)
             {
@@ -2516,9 +2579,9 @@ namespace FamiStudio
             }
             noiseEnvelopeNames.Clear();
             usesNoiseEnvelopes = project.Instruments.Any(i => GetNoiseEnvelopeMask(i) != 0);
-            if (kernel != FamiToneKernel.FamiStudio && project.Instruments.Any(i => i.PitchClampToTimerByte || i.ResetPhaseOnAttack))
+            if (kernel != FamiToneKernel.FamiStudio && project.Instruments.Any(i => i.PitchClampToTimerByte || i.ResetPhaseOnAttack || i.PulseSweepRegister != 0x08))
             {
-                Log.LogMessage(LogSeverity.Error, "APU instrument pitch clamp and attack phase reset require the FamiStudio sound engine.");
+                Log.LogMessage(LogSeverity.Error, TuningStrings.ExtendedFormatExportError);
                 return false;
             }
             if (usesNoiseEnvelopes && kernel != FamiToneKernel.FamiStudio)
@@ -2562,6 +2625,11 @@ namespace FamiStudio
             (
                 usedFlags.SelectMany(flag => Regex.Matches(flag, pattern).Cast<Match>()).Select(match => $"; {match.Value}")
             );
+            if (project.UpdateRateMultiplier > 1)
+            {
+                flagComments.Add($"; Schedule famistudio_update at {project.UpdateRateMultiplier} uniformly spaced timer/IRQ calls per video frame.");
+                flagComments.Add("; Calling it repeatedly at a single NMI does not preserve subframe audio timing.");
+            }
 
             lines.InsertRange(1, flagComments);
 

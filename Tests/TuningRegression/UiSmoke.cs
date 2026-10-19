@@ -95,6 +95,7 @@ static class UiSmoke
         if (language == "zho" || language == "eng") LoopVariantUiTests.Run(window, language, output, Capture);
         InstrumentArticulationRegression.Ui(window, language, output, Capture);
         DpcmMappingUiTests.Run(window, language, output, Capture);
+        UpdateRateUiTests.Run(window, language, output, Capture);
         Invoke(app, "ShutdownAudioPlayers", true);
         Invoke(window, "DestroyWindow");
         Init.ShutdownBaseSystems();

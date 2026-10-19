@@ -7,6 +7,8 @@ namespace FamiStudio
     {
         int regOffset = 0;
         int prevPeriodHi = 0x80;
+        int prevPeriod = -1;
+        int prevSweep = 0x08;
 
         public ChannelStateSquare(IPlayerInterface player, int apuIdx, int channelType, int tuning, bool pal) : base(player, apuIdx, channelType, tuning, pal)
         {
@@ -36,13 +38,56 @@ namespace FamiStudio
                 var periodLo = (period >> 0) & 0xff;
                 int deltaHi  = periodHi - prevPeriodHi;
 
+                var sweep = note.Instrument?.PulseSweepRegister ?? 0x08;
+                var sweepEnabled = (sweep & 0x80) != 0 && (sweep & 7) != 0;
+                var sweepChanged = sweep != prevSweep;
+
+                // The hardware changes its timer independently of the last
+                // software pitch. Rewriting the low byte on every frame would
+                // erase those changes and turn a real sweep into a steady note.
+                // A changed software pitch remains an intentional timer update.
+                if (sweepEnabled)
+                {
+                    // Writing the sweep reload flag on every tick would prevent
+                    // divider periods greater than one frame from progressing.
+                    if (noteTriggered || sweepChanged)
+                        WriteRegister(NesApu.APU_PL1_SWEEP + regOffset, sweep);
+                    if (noteTriggered || sweepChanged || period != prevPeriod)
+                    {
+                        WriteRegister(NesApu.APU_PL1_LO + regOffset, periodLo);
+                        // A sweep may have changed both hardware bytes even
+                        // when only the software low byte changed this tick.
+                        WriteRegister(NesApu.APU_PL1_HI + regOffset, periodHi);
+                    }
+                    prevPeriodHi = periodHi;
+                    prevPeriod = period;
+                    prevSweep = sweep;
+                    WriteRegister(NesApu.APU_PL1_VOL + regOffset, (duty << 6) | 0x30 | volume);
+                    base.UpdateAPU();
+                    return;
+                }
+
+                if (sweepChanged)
+                {
+                    WriteRegister(NesApu.APU_PL1_SWEEP + regOffset, sweep);
+                    // The former sweep may have changed the hardware high byte.
+                    // Restore the full software timer even if its cached value
+                    // happens to be unchanged when the sweep is disabled.
+                    if ((prevSweep & 0x80) != 0 && (prevSweep & 7) != 0)
+                        deltaHi = 0x80;
+                }
+                prevSweep = sweep;
+                prevPeriod = period;
+
                 // Write low first, this matches the NSF driver.
                 WriteRegister(NesApu.APU_PL1_LO + regOffset, periodLo);
 
                 if (deltaHi != 0) // Avoid resetting the sequence.
                 {
                     // TODO : We should not reference settings from here.
-                    if (Settings.SquareSmoothVibrato && Math.Abs(deltaHi) == 1 && !IsSeeking)
+                    var otherPulse = player.GetChannelByType(channelType == ChannelType.Square1 ? ChannelType.Square2 : ChannelType.Square1, apuIdx) as ChannelStateSquare;
+                    bool otherPulseSweeps = otherPulse != null && otherPulse.note.IsMusical && otherPulse.note.Instrument?.PulseSweepEnabled == true;
+                    if (sweep == 0x08 && !otherPulseSweeps && Settings.SquareSmoothVibrato && Math.Abs(deltaHi) == 1 && !IsSeeking)
                     {
                         // Blaarg's smooth vibrato technique using the sweep to avoid resetting the phase. Cool stuff.
                         // http://forums.nesdev.com/viewtopic.php?t=231

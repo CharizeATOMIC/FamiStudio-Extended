@@ -114,6 +114,7 @@ static class GimmickConversion
             Require(instrument != null, $"Duplicate instrument name {name}.");
             instrument.ResetPhaseOnAttack = Bool(source, "reset_phase_on_attack");
             instrument.PitchClampToTimerByte = Bool(source, "pitch_clamp_to_timer_byte");
+            instrument.PulseSweepRegister = (byte)Int(source, "pulse_sweep_register", 0x08);
             instrument.FolderName = name.Split(' ')[0];
             Require(new[] { "Pulse", "Triangle", "Noise", "S5B" }.Contains(instrument.FolderName), $"Unexpected instrument family {name}.");
             foreach (var entry in source.GetProperty("envelopes").EnumerateObject())
@@ -189,7 +190,10 @@ static class GimmickConversion
                     grid = tempo.GetProperty("constant_groove_preserving_all_frames")[0].GetInt32();
                     while (grid > 1 && (length % grid != 0 || beat % grid != 0)) grid--;
                 }
-                song.SetPatternCustomSettings(i, length, beat, new[] { grid });
+                // The source layout describes every column, but an ordinary
+                // bar should inherit the song's tempo and length in the UI.
+                if (length != baseLength || beat != baseBeat || grid != baseGrid)
+                    song.SetPatternCustomSettings(i, length, beat, new[] { grid });
             }
             song.SetLoopPoint(loop < 0 ? -1 : Array.IndexOf(starts, loop));
             int PatternIndex(int time) { int i = Array.BinarySearch(starts, time); return i < 0 ? ~i - 1 : i; }
@@ -456,6 +460,8 @@ static class GimmickConversion
                         $"Text round trip changed playback registers: {entry.Song.Name}, frame {frame}.");
                     Require(player.Writes[frame].SelectMany(w => w.Take(2)).SequenceEqual(textPlayer.Writes[frame].SelectMany(w => w.Take(2))),
                         $"Text round trip changed register write timing: {entry.Song.Name}, frame {frame}.");
+                    Require(player.NativePulsePeriods[frame].SequenceEqual(textPlayer.NativePulsePeriods[frame]),
+                        $"Text round trip changed actual hardware sweep timer: {entry.Song.Name}, frame {frame}.");
                     int binarySample = player.DpcmSamples[frame], textSample = textPlayer.DpcmSamples[frame];
                     Require((binarySample < 0 && textSample < 0) || (binarySample >= 0 && textSample >= 0 &&
                         restored.GetSample(binarySample).Name == textRestored.GetSample(textSample).Name),
@@ -501,6 +507,7 @@ static class GimmickConversion
             using (var gzip = new GZipStream(file, CompressionLevel.Optimal))
                 JsonSerializer.Serialize(gzip, new { source_id = entry.Id, name = entry.Song.Name, frames = entry.Frames, loop = entry.Loop,
                     register_frames = player.Frames, flat_register_frames = player.RawFrames, writes = player.Writes,
+                    native_pulse_periods = player.NativePulsePeriods, native_pulse_sweep_controls = player.NativePulseSweepControls,
                     sample_ids = sourceSampleIds, dpcm_sample_frames = player.DpcmSamples });
             if (preview) WaveFile.Save(player.Audio.ToArray(), Path.Combine(output, $"fms-{entry.Id:x2}-10s.wav"), 44100, 1);
             traces.Add(new { id = entry.Id, name = entry.Song.Name, frames = entry.Frames, loop = entry.Loop, notes = entry.Notes, patterns = entry.Song.Length, trace = Path.GetFileName(tracePath) });
@@ -521,6 +528,8 @@ static class GimmickConversion
             duty_cycle_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasDutyCycle)))),
             envelope_decay_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasEnvelopeDecay)))),
             patterns_with_playback_delay = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count(p => p.PlaybackDelay != 0))),
+            custom_pattern_columns = project.Songs.Sum(s => Enumerable.Range(0, s.Length).Count(s.PatternHasCustomSettings)),
+            inherited_pattern_columns = project.Songs.Sum(s => Enumerable.Range(0, s.Length).Count(p => !s.PatternHasCustomSettings(p))),
             fine_pitch_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasFinePitch)))),
             family_counts = project.Instruments.GroupBy(i => i.FolderName).ToDictionary(g => g.Key, g => g.Count()),
             binary_roundtrip_exact = true, text_structural_counts_match = true, text_inspection_only = !textEditable,
@@ -544,6 +553,8 @@ static class GimmickConversion
         public readonly List<int[][]> Frames = new();
         public readonly List<Dictionary<int, int>> RawFrames = new();
         public readonly List<int[][]> Writes = new();
+        public readonly List<int[]> NativePulsePeriods = new();
+        public readonly List<int[]> NativePulseSweepControls = new();
         public readonly List<int> DpcmSamples = new();
         public readonly List<short> Audio = new();
         public TracePlayer(int preview) : base(NesApu.APU_WAV_EXPORT, false, false) { Loop = LoopMode.None; previewFrames = preview; }
@@ -567,6 +578,10 @@ static class GimmickConversion
         protected override short[] EndFrame()
         {
             var audio = base.EndFrame();
+            var native = new NesApu.NesRegisterValues();
+            native.ReadRegisterValues(NesApu.APU_WAV_EXPORT);
+            NativePulsePeriods.Add(new[] { native.GetMergedRegisterValue(0, 0x4002, 0x4003, 7), native.GetMergedRegisterValue(0, 0x4006, 0x4007, 7) });
+            NativePulseSweepControls.Add(new[] { (int)native.GetRegisterValue(0, 0x4001), (int)native.GetRegisterValue(0, 0x4005) });
             if (Frames.Count < previewFrames) Audio.AddRange(audio);
             var frame = new int[8][];
             for (int channel = 0; channel < 2; channel++)

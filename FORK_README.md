@@ -1,6 +1,6 @@
 # FamiStudio Tuning
 
-An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 6 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
+An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 7 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
 
 ## Features
 
@@ -28,6 +28,24 @@ Sound-engine export of playback delay requires FamiStudio tempo. Loop variants w
 
 FamiTracker text and MIDI export reject the new delay, loop-variant, decay and hardware-noise semantics instead of silently dropping them. VGM export rejects pattern delay and loop variants because its current loop construction cannot preserve their boundary behavior; ordinary noise/decay register playback remains available.
 
+## Revision 7: independent clocks and hardware pulse sweep
+
+The project output clock can run at 1x, 2x or 4x. Changing this setting preserves the authored clocks of existing songs and envelopes, including their actual tempo, releases, vibrato, relative pitch, delays, envelope decay and slides. Existing song grids retain their original resolution; the song properties display that data clock. Newly created songs and envelopes use the currently selected output clock. This separation avoids overflowing the 256-step envelope limit merely by changing the output rate.
+
+Envelope properties expose their step clock through the existing right-click/long-press menu. Changing an envelope's authored clock resamples its data while preserving its duration, loop and release points. Relative pitch and hardware-restart macros insert zero steps rather than repeat a delta or trigger. A conversion that cannot be represented exactly, or exceeds the supported envelope length/value limits, is rejected before changing the project. Lowering the project output clock below a used song/envelope clock is also rejected with the affected resource names. All seven languages include these controls and messages.
+
+Same-region playback, audio export and FamiStudio sound-engine/NSF/NSFe export support the new clocks. High-rate playback/export across NTSC and PAL, high-rate standalone NES/FDS export templates, FamiTracker/FamiTone2, MIDI and VGM are currently rejected explicitly; ordinary 1x support remains. The separate cartridge example demonstrates how to integrate clocked engine data into a game with a suitable mapper timer. A video-frame callback alone cannot evenly schedule four hardware updates during that frame.
+
+Engine option `FAMISTUDIO_USE_UPDATE_RATE = 1` enables instruction `$64` with output-rate and song-divider bytes. Macro labels retain their original bytecode and index semantics; a divider byte immediately before each exported macro label supplies its independent clock. The source option defaults to zero, so ordinary builds incur no clock state or update-loop cost. Clocked games must call `famistudio_update` evenly at the selected rate using their timer/IRQ. The optional scheduler preserves existing SFX stream speed while mixing their held output on intervening calls. Required options are printed in each music export header. High rates consume more CPU time; the accompanying synthetic cartridge reports its own measured budget rather than claiming every game fits the same budget.
+
+APU pulse instruments also expose the hardware sweep enable, direction, divider and shift. Held notes retain the timer advanced by the physical APU, while new attacks and software pitch changes reload the software base. This exports through optional `FAMISTUDIO_USE_PULSE_SWEEP = 1` and instruction `$63`. Both pulse channels are considered when deciding whether smooth-vibrato emulation may touch the shared APU frame counter. Unsupported legacy exporters reject the new instrument semantics.
+
+The NSF importer/emulator now honors the NSF timing fields and NSFe RATE chunk. Its hardware sweep reload, four-step half-frame phase, `$4017` immediate-clock behavior and PAL clock constants have also been corrected. Sweep validation compares a real CPU execution against an independent APU at the actual register-write cycles. Frame-head editor playback is checked separately: hardware sweep can legitimately differ when a CPU writes near a half-frame boundary, so these tests do not claim sample-identical scheduling between an editor and every cartridge program.
+
+Format 1006 adds the clock/sweep fields and lossless Brotli project storage. The uncompressed-size field's high bit identifies the new codec; positive-size 1006 files still accept the previous Deflate payload. Older formats remain readable. Only project-file compression changes; undo and clipboard compression retain their prior format. Compression does not affect playback or sound-engine data. On the large local test project, the new codec reduced the saved file from roughly 104 KB to 75 KB, with approximately 0.9 seconds to compress and 1.3 ms to decompress on the tested machine; these are measurements, not performance guarantees.
+
+The bundled NES/FDS menus were compacted without reducing song capacity or moving data boundaries. All 60 template configurations build, including the existing 32-song EPSM layout. Synthetic CPU tests check navigation, PPU writes, register preservation and the vblank budget. Native libraries must be rebuilt on each target OS because the audio emulator exposes the output-rate setting.
+
 ## Format and installation
 
 Revision 5 adds two optional regular-instrument properties. **Reset phase on attack** applies to the APU pulse channels and uses the normal timer-high write once per attack, including attacks that also cross a high-byte boundary. Legato, release and stop do not trigger it. Explicit note phase-reset effects retain their separate behavior. **Clamp pitch to timer byte** applies to APU pulse and triangle channels: pitch-envelope modulation saturates the timer's low byte instead of carrying or borrowing into its high byte. The base timer still includes tuning, fine pitch and slides. Both properties default to off, have controls in all seven languages, and survive binary/text, clipboard and undo operations.
@@ -42,7 +60,7 @@ FamiTone2, FamiTracker text and MIDI export reject an odd mapping initial value 
 
 The Windows x64 package is self-contained: extract the whole directory and run `FamiStudio.exe`. It does not require installing .NET. Settings use `%LOCALAPPDATA%/FamiStudio-Tuning`; the installed official application and its settings are not replaced. Upstream update notifications default to off because official releases do not include these additions.
 
-Official project formats through version 19 and this fork's previous formats 1001, 1002, 1003 and 1004 can be read. Revision 6 saves format **1005**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
+Official project formats through version 19 and this fork's previous formats 1001 through 1005 can be read. Revision 7 saves format **1006**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
 
 Curves are global to a project. Importing songs from a project with different curves on its active chips is rejected before either song is retuned; first make the curves match. An empty destination adopts the imported curves. Importing instruments alone does not require matching curves. Curves for inactive chips are preserved for when those chips are enabled.
 

@@ -50,6 +50,9 @@ namespace FamiStudio
         private bool hasLoopedSong;
         protected int maxLoopCount = -1;
         protected int frameNumber = 0;
+        protected int updateRateMultiplier = 1;
+        private int logicStepCounter;
+        private int logicStepDivider = 1;
         protected int playbackRate = 1; // 1 = normal, 2 = 1/2, 4 = 1/4, etc.
         protected int playbackRateCounter = 1;
         protected int minSelectedPattern = -1;
@@ -244,12 +247,12 @@ namespace FamiStudio
             }
         }
 
-        protected void UpdateChannels()
+        protected void UpdateChannels(bool logicalTick = true)
         {
             // Main channel update, advance song, update APU, etc.
             foreach (var channel in channelStates)
             {
-                channel.Update();
+                channel.Update(logicalTick);
             }
 
             // This will do the phase resets (if any) this attempts to mimic the sound engine a bit more closely.
@@ -269,6 +272,11 @@ namespace FamiStudio
 
         protected void InitAndResetApu(Project project)
         {
+            updateRateMultiplier = project.UpdateRateMultiplier;
+            if (updateRateMultiplier > 1 && palPlayback != project.PalMode)
+                throw new InvalidOperationException(TuningStrings.UpdateRateRegionError);
+            foreach (var channel in channelStates)
+                channel.ConfigureUpdateRates(updateRateMultiplier, song?.LogicRateMultiplier ?? updateRateMultiplier);
             var expMixerSettings = new ExpansionMixer[ExpansionType.Count];
 
             // Apply project overrides.
@@ -299,6 +307,7 @@ namespace FamiStudio
                     project.ExpansionAudioMask,
                     project.ExpansionNumN163Channels,
                     dmcCallback);
+                NesApu.SetUpdateRateMultiplier(nativeApu, project.UpdateRateMultiplier);
                 for (int type = 0; type < ChannelType.Count; type++) if (project.IsChannelActive(type)) EnableChannelType(type, false, nativeApu);
             }
         }
@@ -336,6 +345,9 @@ namespace FamiStudio
             reachedEnd = false;
             playbackRateCounter = 1;
             tempoEnvelopeCounter = 0;
+            logicStepDivider = song.Project.UpdateRateMultiplier / song.LogicRateMultiplier;
+            if (logicStepDivider < 1) throw new InvalidOperationException(TuningStrings.UpdateRateIncompatibleError.Format(song.Project.UpdateRateMultiplier, song.Name));
+            logicStepCounter = 0;
 
             InitAndResetApu(song.Project);
             UpdateChannelsMuting();
@@ -394,6 +406,15 @@ namespace FamiStudio
 
             if (PlaybackRateShouldSkipFrame(seeking))
                 return true;
+
+            if (logicStepCounter != 0)
+            {
+                UpdateChannels(false);
+                logicStepCounter = (logicStepCounter + 1) % logicStepDivider;
+                frameNumber++;
+                return true;
+            }
+            logicStepCounter = (logicStepCounter + 1) % logicStepDivider;
 
             int numFramesToRun = UpdateFamiStudioTempo();
 

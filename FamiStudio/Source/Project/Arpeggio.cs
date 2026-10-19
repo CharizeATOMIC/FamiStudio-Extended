@@ -33,6 +33,7 @@ namespace FamiStudio
             this.id = id;
             this.name = name;
             this.color = Theme.RandomCustomColor();
+            this.envelope.TickRateMultiplier = project.UpdateRateMultiplier;
 
             // Make a major chord by default.
             this.envelope.Values[0] = 0;

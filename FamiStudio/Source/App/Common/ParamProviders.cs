@@ -95,6 +95,11 @@ namespace FamiStudio
         static LocalizedString ResetPhaseOnAttackTooltip;
         static LocalizedString PitchClampToTimerByteLabel;
         static LocalizedString PitchClampToTimerByteTooltip;
+        static LocalizedString PulseSweepEnabledLabel;
+        static LocalizedString PulseSweepPeriodLabel;
+        static LocalizedString PulseSweepUpLabel;
+        static LocalizedString PulseSweepShiftLabel;
+        static LocalizedString PulseSweepTooltip;
         static LocalizedString AbsoluteLabel;
         static LocalizedString RelativeLabel;
         static LocalizedString OffLabel;
@@ -229,6 +234,30 @@ namespace FamiStudio
                 {
                     GetValue = () => instrument.PitchClampToTimerByte ? 1 : 0,
                     SetValue = v => instrument.PitchClampToTimerByte = v != 0
+                });
+                paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepEnabledLabel, 0, 1, 0, PulseSweepTooltip)
+                {
+                    GetValue = () => (instrument.PulseSweepRegister & 0x80) != 0 ? 1 : 0,
+                    SetValue = v => instrument.PulseSweepRegister = v == 0 ? (byte)0x08 :
+                        (byte)(instrument.PulseSweepRegister == 0x08 ? 0x86 : instrument.PulseSweepRegister | 0x80)
+                });
+                paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepPeriodLabel, 1, 8, 1, PulseSweepTooltip)
+                {
+                    GetValue = () => ((instrument.PulseSweepRegister >> 4) & 7) + 1,
+                    SetValue = v => instrument.PulseSweepRegister = (byte)((instrument.PulseSweepRegister & 0x8f) | ((v - 1) << 4)),
+                    IsEnabled = () => (instrument.PulseSweepRegister & 0x80) != 0
+                });
+                paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepUpLabel, 0, 1, 0, PulseSweepTooltip)
+                {
+                    GetValue = () => (instrument.PulseSweepRegister >> 3) & 1,
+                    SetValue = v => instrument.PulseSweepRegister = (byte)((instrument.PulseSweepRegister & 0xf7) | (v << 3)),
+                    IsEnabled = () => (instrument.PulseSweepRegister & 0x80) != 0
+                });
+                paramInfos.Add(new InstrumentParamInfo(instrument, PulseSweepShiftLabel, 1, 7, 6, PulseSweepTooltip)
+                {
+                    GetValue = () => Math.Max(1, instrument.PulseSweepRegister & 7),
+                    SetValue = v => instrument.PulseSweepRegister = (byte)((instrument.PulseSweepRegister & 0xf8) | v),
+                    IsEnabled = () => (instrument.PulseSweepRegister & 0x80) != 0
                 });
             }
 

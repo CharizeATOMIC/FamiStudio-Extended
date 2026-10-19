@@ -133,6 +133,8 @@ namespace FamiStudio
 
         public unsafe bool Save(Project originalProject, int kernel, string filename, int[] songIds, string name, string author, string copyright, int machine, bool nsfe)
         {
+            if (originalProject.UpdateRateMultiplier > 1 && machine != (originalProject.PalMode ? MachineType.PAL : MachineType.NTSC))
+            { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateRegionError); return false; }
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
 
 #if !DEBUG
@@ -371,6 +373,18 @@ namespace FamiStudio
                         infoChunk->startSong = 0;
                         p += sizeof(NsfeInfoChunk);
                         
+                        // RATE is mandatory for custom timing. Keep it absent at 1x
+                        // so legacy NSFe players retain the original path.
+                        if (project.UpdateRateMultiplier != 1)
+                        {
+                            var rateHeader = (NsfeChunkHeader*)p;
+                            rateHeader->SetId("RATE"); rateHeader->size = 4;
+                            p += sizeof(NsfeChunkHeader);
+                            ((ushort*)p)[0] = (ushort)Math.Round(16639.0 / project.UpdateRateMultiplier);
+                            ((ushort*)p)[1] = (ushort)Math.Round(19997.0 / project.UpdateRateMultiplier);
+                            p += 4;
+                        }
+
                         // BANK chunk
                         NsfeChunkHeader* bankHeader = (NsfeChunkHeader*)p;
                         bankHeader->SetId("BANK");
@@ -413,7 +427,7 @@ namespace FamiStudio
                             var pal = machine == MachineType.PAL;
                             var song = project.Songs[i];
                             var frames = song.CountFramesBetween(new NoteLocation(0, 0), song.EndLocation, song.FamitrackerSpeed, pal);
-                            var time = (int)(frames / (double)(pal ? NesApu.FpsPAL : NesApu.FpsNTSC) * 1000.0);
+                            var time = (int)(frames / ((double)(pal ? NesApu.FpsPAL : NesApu.FpsNTSC) * project.UpdateRateMultiplier) * 1000.0);
                             var timeBytes = BitConverter.GetBytes(time);
 
                             p[0] = timeBytes[0];
@@ -476,8 +490,8 @@ namespace FamiStudio
                     header.loadAddr = (ushort)(codeBaseAddr);
                     header.initAddr = (ushort)(codeBaseAddr + NsfInitOffset);
                     header.playAddr = (ushort)(codeBaseAddr + NsfPlayOffset);
-                    header.playSpeedNTSC = 16639;
-                    header.playSpeedPAL = 19997;
+                    header.playSpeedNTSC = (ushort)Math.Round(16639.0 / project.UpdateRateMultiplier);
+                    header.playSpeedPAL = (ushort)Math.Round(19997.0 / project.UpdateRateMultiplier);
                     header.palNtscFlags = (byte)machine;
                     header.extensionFlags = GetNsfExtensionFlags(project.ExpansionAudioMask);
 
@@ -1582,20 +1596,18 @@ namespace FamiStudio
             preserveDpcmPadding = preserveDpcmPad;
             importDmcValues = importDmcVal;
 
-            var palSource = (NotSoFatso.NsfIsPal(nsf) & 1) == 1;
-            var roundedFrames = MathF.Round(duration * (palSource ? 50.006982f : 60.098814f));
-            // Compare as double: converting int.MaxValue to float rounds it up to 2^31.
-            if (!float.IsFinite(roundedFrames) || (double)roundedFrames > int.MaxValue)
-                return null;
-            var numFrames = (int)roundedFrames;
+            var palSource = (NotSoFatso.NsfIsPal(nsf) & 3) == 1;
             var clockSpeed = NotSoFatso.NsfGetClockSpeed(nsf);
-
-            // Clock speed sanity check.
-            if (( palSource && Math.Abs(clockSpeed - 19997) > 100) ||
-                (!palSource && Math.Abs(clockSpeed - 16639) > 100))
+            var basePeriod = palSource ? 19997 : 16639;
+            var multiplier = new[] { 1, 2, 4 }.FirstOrDefault(m => clockSpeed == 0 && m == 1 || Math.Abs(clockSpeed - (int)Math.Round((double)basePeriod / m)) <= 1);
+            if (multiplier == 0)
             {
-                Log.LogMessage(LogSeverity.Warning, "NSF uses non-standard clock speed and will play at the wrong speed.");
+                Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateImportError);
+                return null;
             }
+            var roundedFrames = Math.Round(duration * (palSource ? 50.006982 : 60.098814) * multiplier);
+            if (!double.IsFinite(roundedFrames) || roundedFrames > int.MaxValue) return null;
+            var numFrames = (int)roundedFrames;
 
             project = new Project();
 
@@ -1603,6 +1615,7 @@ namespace FamiStudio
             project.Author    = Utils.PtrToStringAnsi(NotSoFatso.NsfGetArtist(nsf));
             project.Copyright = Utils.PtrToStringAnsi(NotSoFatso.NsfGetCopyright(nsf));
             project.PalMode   = palSource;
+            project.UpdateRateMultiplier = multiplier;
             project.Tuning    = tuning;
 
             // Our expansion mask is the same as NSF.

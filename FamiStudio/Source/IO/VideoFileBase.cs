@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -43,7 +43,7 @@ namespace FamiStudio
         protected float[] UpdateOscilloscope(VideoChannelState state, int frameIndex)
         {
             var meta = metadata[frameIndex];
-            var newTrigger = meta.channelData[state.songChannelIndex].trigger;
+            var newTrigger = project.UpdateRateMultiplier == 1 ? meta.channelData[state.songChannelIndex].trigger : NesApu.TRIGGER_NONE;
 
             if (!state.useEmuTriggers)
                 newTrigger = NesApu.TRIGGER_NONE;
@@ -512,7 +512,7 @@ namespace FamiStudio
 
                     Log.ReportProgress(f / (float)(metadata.Length - 1));
 
-                    if (halfFrameRate && (f & 1) != 0)
+                    if ((f % (song.Project.UpdateRateMultiplier * (halfFrameRate ? 2 : 1))) != 0)
                         continue;
 
                     var frame = metadata[f];

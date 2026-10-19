@@ -7,6 +7,11 @@ using FamiStudio;
 
 static class InstrumentArticulationRegression
 {
+    sealed class Version1003Writer : ProjectSaveBuffer, ProjectBuffer
+    {
+        public Version1003Writer(Project project) : base(project) { }
+        int ProjectBuffer.Version => 1003;
+    }
     static int checks;
     static void Check(bool condition,string label) { if(!condition) throw new Exception(label); checks++; Console.WriteLine("PASS instrument articulation: "+label); }
     static object Invoke(object target,string name,params object[] args) => target.GetType().GetMethod(name,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(target,args);
@@ -59,8 +64,10 @@ static class InstrumentArticulationRegression
             Check(Matches(destination.GetInstrument("Articulation"),flags),"clipboard import preserves flags "+flags);
         }
         Check(crc.Count==4,"instrument CRC distinguishes all four articulation combinations");
-        Set(instrument,3);var serialized=new ProjectSaveBuffer(project);instrument.Serialize(serialized);
-        var oldBytes=serialized.GetBuffer()[..^2];
+        // Serialize the actual older layout; truncating today's final fields
+        // cannot remove newer fields embedded inside each envelope.
+        Set(instrument,3);var serialized=new Version1003Writer(project);instrument.Serialize(serialized);
+        var oldBytes=serialized.GetBuffer();
         instrument.Serialize(new ProjectLoadBuffer(project,oldBytes,1003));
         Check(Matches(instrument,0),"reading old instrument data into an existing object explicitly clears new flags");
         Localization.LocalizeStatic(typeof(InstrumentParamProvider));

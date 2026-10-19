@@ -75,6 +75,7 @@ namespace FamiStudio
         public int    TempoMode => InfoPage.GetSelectedIndex(3);
         public int    Machine   => InfoPage.GetSelectedIndex(4);
         public int    Tuning    => InfoPage.GetPropertyValue<int>(5);
+        public int UpdateRateMultiplier => new[] { 1, 2, 4 }[InfoPage.GetSelectedIndex(7)];
 
         public MixerProperties MixerProperties => mixerProperties;
 
@@ -127,6 +128,8 @@ namespace FamiStudio
                     page.AddDropDownList(MachineLabel.Colon, Localization.ToStringArray(MachineType.LocalizedNames, MachineType.CountNoDual), MachineType.LocalizedNames[project.PalMode ? MachineType.PAL : MachineType.NTSC], AuthoringMachineTooltip); // 4
                     page.AddNumericUpDown(TuningLabel, project.Tuning, 300, 580, 1, TuningTooltip); // 5
                     page.AddButton(null, TuningStrings.CurveTitle, TuningStrings.CurveTooltip); // 6
+                    var rates = new[] { "1× (NTSC 60 / PAL 50 Hz)", "2× (NTSC 120 / PAL 100 Hz)", "4× (NTSC 240 / PAL 200 Hz)" };
+                    page.AddDropDownList(TuningStrings.UpdateRateLabel, rates, rates[project.UpdateRateMultiplier == 4 ? 2 : project.UpdateRateMultiplier - 1], TuningStrings.UpdateRateTooltip); // 7
                     page.PropertyClicked += (p, click, index, row, column) =>
                     {
                         if (index != 6) return;
@@ -202,6 +205,15 @@ namespace FamiStudio
 
         private void Info_PropertyChanged(PropertyPage props, int propIdx, int rowIdx, int colIdx, object value)
         {
+            if (propIdx == 7)
+            {
+                var error = project.GetUpdateRateError(UpdateRateMultiplier);
+                if (error != null)
+                {
+                    props.SetDropDownListIndex(7, project.UpdateRateMultiplier == 4 ? 2 : project.UpdateRateMultiplier - 1);
+                    dialog.ParentWindow.FamiStudio.DisplayNotification(error, true, true);
+                }
+            }
             if (propIdx == 3) // Tempo Mode
             {
                 // Machine setting only makes sense in FamiStudio tempo.

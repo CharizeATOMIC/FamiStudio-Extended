@@ -1,5 +1,59 @@
 namespace FamiStudio
 {
+    static class EnvelopeClockConversion
+    {
+        // Validate the complete conversion before mutating an editable resource.
+        public static bool TryConvert(Envelope envelope, int targetRate, bool waveformRepeat, bool pulse = false)
+        {
+            if (targetRate != 1 && targetRate != 2 && targetRate != 4) return false;
+            int sourceRate = envelope.TickRateMultiplier;
+            if (sourceRate == targetRate) return true;
+            int length = envelope.Length, loop = envelope.Loop, release = envelope.Release;
+            var converted = new sbyte[envelope.Values.Length];
+            if (waveformRepeat)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    int numerator = envelope.Values[i] * targetRate;
+                    if (numerator % sourceRate != 0) return false;
+                    int value = numerator / sourceRate;
+                    if (value < 1 || value > 15) return false;
+                    converted[i] = (sbyte)value;
+                }
+            }
+            else if (targetRate > sourceRate)
+            {
+                int factor = targetRate / sourceRate;
+                if (length * factor > converted.Length) return false;
+                for (int i = 0; i < length; i++)
+                    for (int j = 0; j < factor; j++)
+                        converted[i * factor + j] = (envelope.Relative || pulse) && j != 0 ? (sbyte)0 : envelope.Values[i];
+                length *= factor;
+                if (loop >= 0) loop *= factor;
+                if (release >= 0) release *= factor;
+            }
+            else
+            {
+                int factor = sourceRate / targetRate;
+                if (length % factor != 0 || loop >= 0 && loop % factor != 0 || release >= 0 && release % factor != 0) return false;
+                for (int i = 0; i < length; i += factor)
+                {
+                    var value = envelope.Values[i];
+                    for (int j = 1; j < factor; j++)
+                        if (envelope.Values[i + j] != (envelope.Relative || pulse ? 0 : value)) return false;
+                    converted[i / factor] = value;
+                }
+                length /= factor;
+                if (loop >= 0) loop /= factor;
+                if (release >= 0) release /= factor;
+            }
+            envelope.Release = -1; envelope.Loop = -1; envelope.Length = length;
+            System.Array.Copy(converted, envelope.Values, converted.Length);
+            envelope.Loop = loop; envelope.Release = release; envelope.TickRateMultiplier = targetRate;
+            return true;
+        }
+    }
+
     sealed class TuningProperties
     {
         readonly PropertyPage props;
@@ -43,6 +97,9 @@ namespace FamiStudio
         public static LocalizedString MixerLabel, ChannelLabel, StereoLabel, PanLabel, MixerTooltip;
         public static LocalizedString InstancesLabel, ChipLabel, CountLabel, InstancesTooltip, ChannelLimitError, HardwareExportError, EngineExportError, FormatExportError;
         public static LocalizedString ExtendedFormatExportError, ScheduledVgmExportError;
+        public static LocalizedString UpdateRateLabel, UpdateRateTooltip, UpdateRateExportError, UpdateRateImportError, UpdateRateMergeError;
+        public static LocalizedString UpdateRateIncompatibleError, UpdateRateRegionError, SongClockLabel, SongClockTooltip;
+        public static LocalizedString EnvelopeClockLabel, EnvelopeClockTooltip, EnvelopeClockConversionError;
         public static LocalizedString CurveTitle, CurveZoomLabel, CurveUnitLabel, CurveValueLabel, CurveResetNote, CurveResetChip, CurveTooltip, CurveHelp, CurveMergeError;
         public static LocalizedString CurveTimerUnit, CurvePeriodUnit, CurveFrequencyUnit, CurveFmUnit, CurveDefaultLabel, CurveBoundsLabel;
         static TuningStrings() { Localization.LocalizeStatic(typeof(TuningStrings)); }

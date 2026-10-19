@@ -198,6 +198,13 @@ int CNSFFile::LoadFile_NSFE(FILE* file,BYTE needdata)
 			nNTSC_PlaySpeed =		(WORD)(1000000 / NTSC_NMIRATE);		//blarg
 			break;
 
+        case CHUNKTYPE_RATE:
+            if (!bInfoFound || nChunkSize < 2 || (nChunkSize & 1)) return -1;
+            if (fread(&nNTSC_PlaySpeed, 2, 1, file) != 1) return -1;
+            if (nChunkSize >= 4 && fread(&nPAL_PlaySpeed, 2, 1, file) != 1) return -1;
+            if (nChunkSize > 4) fseek(file, nChunkSize - 4, SEEK_CUR);
+            break;
+
 		case CHUNKTYPE_DATA:
 			if(!bInfoFound)						return -1;
 			if(nDataPos)						return -1;

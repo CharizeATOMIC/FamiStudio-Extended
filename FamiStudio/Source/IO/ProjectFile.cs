@@ -17,14 +17,14 @@ namespace FamiStudio
                 using (var stream = File.OpenRead(filename))
                 {
                     var data = new byte[4];
-                    stream.Read(data, 0, 4);
+                    stream.ReadExactly(data, 0, 4);
                     if (BitConverter.ToUInt32(data, 0) != MagicNumber)
                     {
                         stream.Close();
                         return null;
                     }
 
-                    stream.Read(data, 0, 4);
+                    stream.ReadExactly(data, 0, 4);
                     int loadVersion = BitConverter.ToInt32(data, 0);
 
                     if (loadVersion > Project.Version || (loadVersion > 19 && loadVersion < Project.TuningFormatVersion))
@@ -34,8 +34,8 @@ namespace FamiStudio
                     }
 
                     var buffer = new byte[stream.Length - stream.Position];
-                    stream.Read(buffer, 0, buffer.Length);
-                    buffer = Compression.DecompressBytes(buffer);
+                    stream.ReadExactly(buffer, 0, buffer.Length);
+                    buffer = Compression.DecompressProjectBytes(buffer, loadVersion);
 
                     var project = new Project();
                     var serializer = new ProjectLoadBuffer(project, buffer, loadVersion);
@@ -80,7 +80,7 @@ namespace FamiStudio
                     stream.Write(BitConverter.GetBytes(MagicNumber), 0, 4);
                     stream.Write(BitConverter.GetBytes(Project.Version), 0, 4);
 
-                    buffer = Compression.CompressBytes(buffer, CompressionLevel.Optimal);
+                    buffer = Compression.CompressProjectBytes(buffer);
                     stream.Write(buffer, 0, buffer.Length);
                     stream.Flush();
                     stream.Close();

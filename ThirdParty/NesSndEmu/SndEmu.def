@@ -27,3 +27,4 @@ NesApuCreate
 NesApuDestroy
 NesApuConfigureOutput
 NesApuSetPan
+NesApuSetUpdateRateMultiplier

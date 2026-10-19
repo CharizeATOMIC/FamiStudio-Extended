@@ -53,6 +53,7 @@ public:
 	BYTE		nSweepTimer[2];
 	BYTE		nSweepCount[2];
 	BYTE		nSweepShift[2];
+	BYTE		bSweepReload[2];
 
 	///////////////////////////////////
 	// Duty Cycle
@@ -120,19 +121,24 @@ public:
 			if(bLengthEnabled[i] && nLengthCount[i])
 				nLengthCount[i]--;
 
-			if(!bSweepEnable[i] || !nLengthCount[i] || bSweepForceSilence[i] || !nSweepShift[i])
-				continue;
-
-			if(nSweepCount[i])
-				nSweepCount[i]--;
-			else
+			// The divider runs independently of audibility and the enable bit.
+			// A register write reloads it at the next half-frame; an already
+			// expired divider still performs its sweep before that reload.
+			bool expired = nSweepCount[i] == 0;
+			if(expired && bSweepEnable[i] && !bSweepForceSilence[i] && nSweepShift[i])
 			{
-				nSweepCount[i] = nSweepTimer[i];
 				if(bSweepMode[i])	nFreqTimer[i].W -= (nFreqTimer[i].W >> nSweepShift[i]) + !i;
 				else				nFreqTimer[i].W += (nFreqTimer[i].W >> nSweepShift[i]);
 
 				CheckSweepForcedSilence(i);
 			}
+			if(expired || bSweepReload[i])
+			{
+				nSweepCount[i] = nSweepTimer[i];
+				bSweepReload[i] = 0;
+			}
+			else
+				nSweepCount[i]--;
 		}
 	}
 

@@ -1623,6 +1623,7 @@ namespace FamiStudio
 
         public bool Save(Project originalProject, string filename, int songId, int instrumentMode, int[] instrumentMapping, bool volumeAsVelocity, bool slideToPitchWheel, int pitchWheelRange)
         {
+            if (originalProject.UpdateRateMultiplier != 1) { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError); return false; }
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
             if (originalProject.GetSong(songId).UsesCustomTuning) { Log.LogMessage(LogSeverity.Error, TuningStrings.FormatExportError); return false; }
             if (originalProject.GetSong(songId).UsesExtendedPlayback(true)) { Log.LogMessage(LogSeverity.Error, TuningStrings.ExtendedFormatExportError); return false; }

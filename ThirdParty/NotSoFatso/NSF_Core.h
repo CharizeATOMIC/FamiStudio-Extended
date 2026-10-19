@@ -81,13 +81,15 @@ struct NSF_ADVANCEDOPTIONS
 };
 
 #define NTSC_FREQUENCY			 1789772.727273f
-#define PAL_FREQUENCY			 1652097.692308f
+#define PAL_FREQUENCY			 1662607.125f
 #define NTSC_NMIRATE			      60.098814f
 #define PAL_NMIRATE				      50.006982f
 
 #define NES_FREQUENCY				21477270
-#define NTSC_FRAME_COUNTER_FREQ		(NTSC_FREQUENCY / (NES_FREQUENCY / 89490.0f))
-#define PAL_FRAME_COUNTER_FREQ		(PAL_FREQUENCY / (NES_FREQUENCY / 89490.0f))
+// Independent APU frame-divider periods, in CPU cycles. PAL does not use
+// the NTSC 240 Hz divider scaled by the CPU clock.
+#define NTSC_FRAME_COUNTER_FREQ		7458.0f
+#define PAL_FRAME_COUNTER_FREQ		8314.0f
 
 
 #define EXTSOUND_VRC6			0x01
@@ -445,6 +447,7 @@ protected:
 
 	UINT		nCPUCycle;
 	UINT		nAPUCycle;
+	UINT        nLastFrameCycles; // Read-only cycle trace for independent APU validation.
 	UINT		nTotalPlays;			//number of times the play subroutine has been called (for tracking output time)
 
 

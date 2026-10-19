@@ -28,20 +28,21 @@ namespace FamiStudio
 
         // This essentially build a table very similar to this:
         // http://famitracker.com/wiki/index.php?title=Common_tempo_values
-        public static TempoInfo[] GetAvailableTempos(bool pal, int notesPerBeat)
+        public static TempoInfo[] GetAvailableTempos(bool pal, int notesPerBeat, int multiplier = 1)
         {
+            int maxNoteLength = MaxNoteLength * multiplier;
             List<TempoInfo>[] tempos = new List<TempoInfo>[2] { new List<TempoInfo>(), new List<TempoInfo>() };
 
             // We build both NTSC/PAL in parallel since we need to make sure that all grooves
             // present in one is in the other as well, since use may convert their project
             // from/to NTSC/PAL at run-time. A groove missing in one or the other will lead to
             // a crash.
-            tempos[0].Add(new TempoInfo(new int[] { MaxNoteLength }, false, notesPerBeat));
-            tempos[1].Add(new TempoInfo(new int[] { MaxNoteLength }, true,  notesPerBeat));
+            tempos[0].Add(new TempoInfo(new int[] { maxNoteLength }, false, notesPerBeat));
+            tempos[1].Add(new TempoInfo(new int[] { maxNoteLength }, true,  notesPerBeat));
 
             foreach (var pattern in GroovePatterns)
             {
-                for (int noteLen = MaxNoteLength - 1; noteLen >= MinNoteLength; noteLen--)
+                for (int noteLen = maxNoteLength - 1; noteLen >= MinNoteLength; noteLen--)
                 {
                     var groove = pattern.Clone() as int[];
 
@@ -178,7 +179,7 @@ namespace FamiStudio
                 valid =
                     groove.Length == 1 &&
                     min >= MinNoteLength &&
-                    min <= MaxNoteLength;
+                    min <= MaxNoteLength * 4;
             }
             else
             {
@@ -186,9 +187,9 @@ namespace FamiStudio
                     groove.Length <= 8 &&
                     (max - min) <= 1 &&
                     min >= MinNoteLength &&
-                    min <= MaxNoteLength &&
+                    min <= MaxNoteLength * 4 &&
                     max >= MinNoteLength &&
-                    min <= MaxNoteLength;
+                    min <= MaxNoteLength * 4;
             }
 
             return valid;

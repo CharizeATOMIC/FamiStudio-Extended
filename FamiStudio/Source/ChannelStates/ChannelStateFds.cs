@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 
 namespace FamiStudio
@@ -6,6 +6,7 @@ namespace FamiStudio
     class ChannelStateFds : ChannelState
     {
         private byte    modDelayCounter;
+        private bool    modDelayActive;
         private ushort  modDepth;
         private ushort  modSpeed;
         private int     prevPeriodHi;
@@ -164,7 +165,10 @@ namespace FamiStudio
                     }
                 }
 
-                if (modDelayCounter == 0)
+                if (logicalUpdate || noteTriggered)
+                    modDelayActive = modDelayCounter != 0;
+
+                if (!modDelayActive)
                 {
                     var finalModSpeed = instrument != null && instrument.FdsAutoMod && modDepth > 0 ?
                         (ushort)Math.Min(period * instrument.FdsAutoModNumer / instrument.FdsAutoModDenom, 0xfff) : 
@@ -177,7 +181,8 @@ namespace FamiStudio
                 else
                 {
                     ResetModulation();
-                    modDelayCounter--;
+                    if (logicalUpdate)
+                        modDelayCounter--;
                 }
             }
 

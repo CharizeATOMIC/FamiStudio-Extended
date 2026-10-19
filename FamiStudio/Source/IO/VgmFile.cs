@@ -76,6 +76,7 @@ namespace FamiStudio
         };
         public unsafe static bool Save(Song song, string filename, string trackTitle, string gameName, string system, string composer, string releaseDate, string VGMby, string notes, bool smoothLoop)
         {   //This is a mess, works somehow tho
+            if (song.Project.UpdateRateMultiplier != 1) { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError); return false; }
             if (song.Project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
             if (song.UsesExtendedPlayback(false)) { Log.LogMessage(LogSeverity.Error, TuningStrings.ScheduledVgmExportError); return false; }
             var project = song.Project.DeepClone();

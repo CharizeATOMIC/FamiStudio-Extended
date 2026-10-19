@@ -51,6 +51,8 @@ blargg_err_t Simple_Apu::sample_rate( long sample_rate, bool pal, int tnd_mode )
 	separate_tnd_channel_enabled[1] = true;
 	separate_tnd_channel_enabled[2] = true;
 	frame_length = pal ? 33247 : 29780;
+	update_rate_multiplier = 1;
+	update_subframe = 0;
 
 	if (separate_tnd_mode)
 	{
@@ -346,46 +348,57 @@ int Simple_Apu::get_fds_wave_pos()
 	return fds.get_wave_pos();
 }
 
+void Simple_Apu::set_update_rate_multiplier(int value)
+{
+	assert(value == 1 || value == 2 || value == 4);
+	update_rate_multiplier = value;
+	update_subframe = 0;
+}
+
 void Simple_Apu::end_frame()
 {
-	assert(time <= frame_length);
+	// Subdivide real emulated CPU time, without changing the chip clock/pitch.
+	if (update_subframe == 0) frame_length ^= 1;
+	const auto cycles = ((update_subframe + 1) * frame_length) / update_rate_multiplier -
+	                    (update_subframe * frame_length) / update_rate_multiplier;
+	update_subframe = (update_subframe + 1) % update_rate_multiplier;
+	assert(time <= cycles);
 
 	time = 0;
-	frame_length ^= 1;
 
-	apu.end_frame(frame_length);
+	apu.end_frame(cycles);
 
-	if (expansions & expansion_mask_vrc6) vrc6.end_frame(frame_length);
-	if (expansions & expansion_mask_vrc7) vrc7.end_frame(frame_length);
-	if (expansions & expansion_mask_fds) fds.end_frame(frame_length); 
-	if (expansions & expansion_mask_mmc5) mmc5.end_frame(frame_length); 
-	if (expansions & expansion_mask_namco) namco.end_frame(frame_length); 
-	if (expansions & expansion_mask_sunsoft) sunsoft.end_frame(frame_length); 
-	if (expansions & expansion_mask_epsm) epsm.end_frame(frame_length); 
+	if (expansions & expansion_mask_vrc6) vrc6.end_frame(cycles);
+	if (expansions & expansion_mask_vrc7) vrc7.end_frame(cycles);
+	if (expansions & expansion_mask_fds) fds.end_frame(cycles);
+	if (expansions & expansion_mask_mmc5) mmc5.end_frame(cycles);
+	if (expansions & expansion_mask_namco) namco.end_frame(cycles);
+	if (expansions & expansion_mask_sunsoft) sunsoft.end_frame(cycles);
+	if (expansions & expansion_mask_epsm) epsm.end_frame(cycles);
 
-	buf.end_frame(frame_length);
-	buf_tnd[0].end_frame(frame_length);
+	buf.end_frame(cycles);
+	buf_tnd[0].end_frame(cycles);
 
 	if (expansions & expansion_mask_fds)
 	{
-		buf_fds.end_frame(frame_length);
+		buf_fds.end_frame(cycles);
 	}
 
 	if (expansions & (expansion_mask_vrc6 | expansion_mask_vrc7 | expansion_mask_mmc5 | expansion_mask_namco | expansion_mask_sunsoft))
 	{
-		buf_exp.end_frame(frame_length);
+		buf_exp.end_frame(cycles);
 	}
 
 	if ((expansions & expansion_mask_epsm) != 0)
 	{
-		buf_epsm_left.end_frame(frame_length);
-		buf_epsm_right.end_frame(frame_length);
+		buf_epsm_left.end_frame(cycles);
+		buf_epsm_right.end_frame(cycles);
 	}
 
 	if (separate_tnd_mode)
 	{
-		buf_tnd[1].end_frame(frame_length);
-		buf_tnd[2].end_frame(frame_length);
+		buf_tnd[1].end_frame(cycles);
+		buf_tnd[2].end_frame(cycles);
 	}
 }
 

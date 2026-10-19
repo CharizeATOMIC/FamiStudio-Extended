@@ -31,12 +31,50 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1005;
+        public const int Version = 1006;
         public const int TuningFormatVersion = 1001;
         public const int ChipTuningFormatVersion = 1002;
         public const int NoiseEnvelopeFormatVersion = 1003;
         public const int InstrumentArticulationFormatVersion = 1004;
         public const int DpcmMappingDacFormatVersion = 1005;
+        public const int PulseSweepFormatVersion = 1006;
+        public const int UpdateRateFormatVersion = 1006;
+        private int updateRateMultiplier = 1;
+        public int UpdateRateMultiplier
+        {
+            get => updateRateMultiplier;
+            set
+            {
+                if (value != 1 && value != 2 && value != 4) throw new ArgumentOutOfRangeException(nameof(value));
+                var error = GetUpdateRateError(value);
+                if (error != null) throw new ArgumentException(error, nameof(value));
+                updateRateMultiplier = value;
+                foreach (var instrument in instruments)
+                    foreach (var envelope in instrument.Envelopes)
+                        if (envelope != null && envelope.Length == 0 && envelope.TickRateMultiplier > value) envelope.TickRateMultiplier = value;
+                foreach (var arpeggio in arpeggios)
+                    if (arpeggio.Envelope.Length == 0 && arpeggio.Envelope.TickRateMultiplier > value) arpeggio.Envelope.TickRateMultiplier = value;
+            }
+        }
+        public double UpdatesPerSecond => (PalMode ? NesApu.FpsPAL : NesApu.FpsNTSC) * updateRateMultiplier;
+        public string GetUpdateRateError(int outputRate)
+        {
+            var incompatible = new List<string>();
+            foreach (var song in songs)
+                if (song.LogicRateMultiplier > outputRate) incompatible.Add(song.Name + " (" + song.LogicRateMultiplier + "×)");
+            foreach (var instrument in instruments)
+                for (int type = 0; type < EnvelopeType.Count; type++)
+                {
+                    if (type == EnvelopeType.FdsModulation || type == EnvelopeType.FdsWaveform || type == EnvelopeType.N163Waveform) continue;
+                    var envelope = instrument.Envelopes[type];
+                    if (envelope?.Length > 0 && envelope.TickRateMultiplier > outputRate)
+                        incompatible.Add(instrument.Name + " / " + EnvelopeType.LocalizedNames[type] + " (" + envelope.TickRateMultiplier + "×)");
+                }
+            foreach (var arpeggio in arpeggios)
+                if (arpeggio.Envelope.Length > 0 && arpeggio.Envelope.TickRateMultiplier > outputRate)
+                    incompatible.Add(arpeggio.Name + " (" + arpeggio.Envelope.TickRateMultiplier + "×)");
+            return incompatible.Count == 0 ? null : TuningStrings.UpdateRateIncompatibleError.Format(outputRate, string.Join(", ", incompatible.Take(6)) + (incompatible.Count > 6 ? "…" : ""));
+        }
         public const int MaxMappedSampleSize = 0x40000;
         public const int MaxDPCMBanks = 64;
         public const int MaxSampleAddress = 255 * 64;
@@ -1595,6 +1633,17 @@ namespace FamiStudio
 
         public bool MergeProject(Project otherProject)
         {
+            // Instrument-only imports carry independent envelope clocks too. An
+            // empty song list may adopt a faster output clock, but must never
+            // lower the clock of instruments that are already in this project.
+            var mergedUpdateRate = songs.Count == 0 ? Math.Max(UpdateRateMultiplier, otherProject.UpdateRateMultiplier) : UpdateRateMultiplier;
+            var updateRateError = otherProject.GetUpdateRateError(mergedUpdateRate);
+            if (updateRateError != null)
+            {
+                Log.LogMessage(LogSeverity.Error, updateRateError);
+                return false;
+            }
+
             // These validations only make sense when merging songs.
             if (otherProject.Songs.Count > 0)
             {
@@ -1629,6 +1678,8 @@ namespace FamiStudio
                     foreach (var imported in otherProject.Songs)
                         if (!imported.TuningSettings.Override) imported.TuningSettings = new TuningSettings { Override = true, ReferenceHz = otherProject.tuning };
             }
+
+            UpdateRateMultiplier = mergedUpdateRate;
 
             // Change all the IDs in the source project.
             List<int> allOtherIds = new List<int>();
@@ -2719,6 +2770,13 @@ namespace FamiStudio
             {
                 song.Serialize(buffer);
             }
+
+            if (buffer.Version >= UpdateRateFormatVersion)
+            {
+                buffer.Serialize(ref updateRateMultiplier);
+                if (buffer.IsReading) UpdateRateMultiplier = updateRateMultiplier;
+            }
+            else if (buffer.IsReading) updateRateMultiplier = 1;
 
             CreateLegacyDPCMInstrument(legacyMappings);
 

@@ -70,6 +70,7 @@ public:
 	
 	// Write to register (0x4000-0x4017, except 0x4014 and 0x4016)
 	void write_register( cpu_addr_t, int data );
+	void set_update_rate_multiplier(int value);
 	void get_register_values(int exp, void* regs);
 
 	int get_namco_wave_pos(int n163ChanIndex);
@@ -147,6 +148,8 @@ private:
 	Blip_Buffer buf_epsm_right;
 	blip_time_t time;
 	blip_time_t frame_length;
+	int update_rate_multiplier = 1;
+	int update_subframe = 0;
 	blip_time_t clock(blip_time_t t = 4) { return time += t; }
 
 	const long fds_filter_bits = 12;
