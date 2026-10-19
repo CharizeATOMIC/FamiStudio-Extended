@@ -41,6 +41,9 @@ static class InstrumentLayoutUiRegression
         (PanelContainer)Invoke(explorer, "FindInstrumentPanel", instrument);
     internal static Button Tagged(ProjectExplorer explorer, string tag) =>
         Descendants(explorer).OfType<Button>().SingleOrDefault(b => Equals(b.UserData, tag));
+    internal static Button HardwareMacro(ProjectExplorer explorer, int type) => Tagged(explorer,
+        type == EnvelopeType.NoiseEnvelope ? "HardwareNoiseEnvelope" : "HardwareNoiseRestart");
+    internal static string VisibleText(Button button) => (Field(button, "TextEvent") as Button.StringDelegate)?.Invoke(button) ?? button.Text;
     internal static void ExpandInstrument(ProjectExplorer explorer, Instrument instrument)
     {
         if (!ReferenceEquals(Field(explorer, "expandedInstrument"), instrument))
@@ -76,15 +79,15 @@ static class InstrumentLayoutUiRegression
     static string ParamLabel(string key) => typeof(InstrumentParamProvider).GetField(key, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null).ToString();
     static ParamInfo Info(ParamControl control) => (ParamInfo)typeof(ParamControl).GetField("param", Private).GetValue(control);
     static ParamControl Param(ProjectExplorer explorer, string key) => Descendants(explorer).OfType<ParamControl>().SingleOrDefault(c => Info(c).Name == ParamLabel(key));
-    internal static void CheckCommonRow(ProjectExplorer explorer, Instrument instrument, bool hardware)
+    internal static void CheckCommonRow(ProjectExplorer explorer, Instrument instrument)
     {
         var panel = Panel(explorer, instrument);
         var buttons = panel.Controls.OfType<Button>().ToArray();
         string[] common = { "Volume", "Arpeggio", "Pitch", "DutyCycle" };
         Check(buttons.Count(b => b.UserData is string name && common.Contains(name)) == 4,
             "main row retains exactly the four ordinary envelope buttons");
-        Check(buttons.Length == (hardware ? 8 : 7), "main row has only the original controls plus one hardware shortcut when used");
-        Check(buttons.Count(b => Equals(b.UserData, "HardwareNoise")) == (hardware ? 1 : 0), "hardware shortcut reflects actual macro use");
+        Check(buttons.Length == 7, "main row always has only the original instrument controls");
+        Check(!buttons.Any(b => Equals(b.UserData, "HardwareNoise")), "hardware noise does not add another main-row icon");
         foreach (int type in new[] { EnvelopeType.NoisePeriod, EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
             Check(!buttons.Any(b => Equals(b.UserData, EnvelopeType.InternalNames[type])), "no duplicated hardware envelope icon " + type);
         var ordered = buttons.OrderBy(b => b.Left).ToArray();
@@ -102,9 +105,10 @@ static class InstrumentLayoutUiRegression
         explorer.RefreshButtons();
         Localization.LocalizeStatic(typeof(InstrumentParamProvider));
         uint initial = instrument.ComputeCRC();
-        CheckCommonRow(explorer, instrument, false);
+        CheckCommonRow(explorer, instrument);
         ExpandInstrument(explorer, instrument);
-        Check(Tagged(explorer, "HardwareSettings") != null && Tagged(explorer, "NoiseSettings") == null,
+        Check(Tagged(explorer, "HardwareSettings") != null && HardwareMacro(explorer, EnvelopeType.NoiseEnvelope) == null &&
+            HardwareMacro(explorer, EnvelopeType.NoiseEnvelopeRestart) == null,
             language + " advanced controls start collapsed behind a visible header");
         Check(!Descendants(explorer).OfType<ParamControl>().Any(c => Info(c).Advanced), "ordinary instrument parameters are not crowded by advanced controls");
         Check(Tagged(explorer, "HardwareSettings").Text == NoiseEditorStrings.HardwareSettingsLabel.ToString(), "default instrument header has no active-setting badge");
@@ -112,7 +116,14 @@ static class InstrumentLayoutUiRegression
         capture(window, Path.Combine(output, language + "-instrument-common.ppm"));
         ExpandHardware(explorer, instrument);
         Check(instrument.ComputeCRC() == initial, "opening hardware settings does not alter instrument data");
-        Check(Tagged(explorer, "NoiseSettings")?.ImageName == null, "empty hardware macros have a text entry without a duplicate icon");
+        Check(Tagged(explorer, "NoiseSettings") == null, "hardware settings contain no intermediate noise submenu button");
+        foreach (int type in new[] { EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
+        {
+            var button = HardwareMacro(explorer, type);
+            Check(button != null && button.ImageName == null && VisibleText(button) == NoiseEditorStrings.UnusedMacroLabel.Format(EnvelopeType.LocalizedNames[type]),
+                "empty macro has its own direct text button " + type);
+        }
+        Check(Tagged(explorer, "ConvertLegacyNoisePitch") == null, "ordinary instruments have no unused legacy conversion action");
 
         foreach (string key in new[] { "PulseSweepPeriodLabel", "PulseSweepUpLabel", "PulseSweepShiftLabel" })
             Check(Param(explorer, key) == null, "disabled sweep hides its dependent control " + key);
@@ -142,8 +153,8 @@ static class InstrumentLayoutUiRegression
             {
                 explorer.Resize(DpiScaling.ScaleForWindow(logicalWidth), originalHeight);
                 ExpandHardware(explorer, instrument);
-                CheckCommonRow(explorer, instrument, false);
-                foreach (string tag in new[] { "HardwareSettings", "NoiseSettings" })
+                CheckCommonRow(explorer, instrument);
+                foreach (string tag in new[] { "HardwareSettings", "HardwareNoiseEnvelope", "HardwareNoiseRestart" })
                 {
                     var button = Tagged(explorer, tag);
                     Check(button != null && button.Width > 0 && button.Height >= DpiScaling.ScaleForWindow(20) &&
@@ -155,14 +166,15 @@ static class InstrumentLayoutUiRegression
                     Check(label.Width > 0 && label.Right <= control.Left && label.Ellipsis,
                         language + " parameter label stays outside its control at " + logicalWidth + "px: " + Info(control).Name);
                 }
-                Click(Tagged(explorer, "NoiseSettings"), true);
-                var menu = Options(window);
-                Check(menu.Length == 2 && menu.All(o => o.Image == null), "empty macros remain reachable through two text-only menu options");
-                Choose(window, o => o.Text == NoiseEditorStrings.UnusedMacroLabel.Format(EnvelopeType.LocalizedNames[EnvelopeType.NoiseEnvelope]), true);
-                Check(ReferenceEquals(Field(window.PianoRoll, "editInstrument"), instrument) &&
-                    (int)Field(window.PianoRoll, "editEnvelope") == EnvelopeType.NoiseEnvelope && instrument.NoiseControlEnvelope.Length == 0,
-                    "touch opens the correct empty macro without populating or changing it");
-                CheckCommonRow(explorer, instrument, false);
+                foreach (int type in new[] { EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
+                {
+                    uint beforeOpen = instrument.ComputeCRC();
+                    Click(HardwareMacro(explorer, type), true);
+                    Check(!window.IsContextMenuActive && ReferenceEquals(Field(window.PianoRoll, "editInstrument"), instrument) &&
+                        (int)Field(window.PianoRoll, "editEnvelope") == type && instrument.Envelopes[type].Length == 0 && instrument.ComputeCRC() == beforeOpen,
+                        "one touch directly opens the correct empty macro without a menu or data changes: " + type);
+                }
+                CheckCommonRow(explorer, instrument);
                 if (logicalWidth == 240) capture(window, Path.Combine(output, language + "-hardware-settings-narrow.ppm"));
             }
         }

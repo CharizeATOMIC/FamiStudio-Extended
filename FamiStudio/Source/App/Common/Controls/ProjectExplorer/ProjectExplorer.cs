@@ -838,19 +838,6 @@ namespace FamiStudio
                 }
             }
 
-            // Keep the familiar common envelopes in their original order. Only
-            // instruments that actually use hardware noise need a row shortcut.
-            if (instrument.IsRegular && HasHardwareNoise(instrument))
-            {
-                x -= spacingX + props.Width;
-                var noise = CreateImageButton(panel, x, "EnvelopeNoise");
-                noise.UserData = "HardwareNoise";
-                noise.ToolTip = NoiseEditorStrings.NoiseSettingsTooltip;
-                noise.Click += _ => ShowHardwareNoiseMenu(instrument);
-                noise.MarkHandledOnClick = Platform.IsMobile;
-                lastEnv = noise;
-            }
-
             var label = CreateLabel(panel, instrument.Name, true, icon.Right + marginX, 0, Math.Max(1, lastEnv.Left - icon.Right - marginX * 2), true);
             label.Font = App.SelectedInstrument == instrument ? fonts.FontMediumBold : fonts.FontMedium;
             label.MouseDoubleClick += (s, e) => EditInstrumentProperties(instrument);
@@ -877,12 +864,6 @@ namespace FamiStudio
             App.StartEditInstrument(instrument, envelopeType);
         }
 
-        private static bool HasHardwareNoise(Instrument instrument)
-        {
-            return instrument.IsRegular && (instrument.NoisePeriodEnvelope.Length > 0 ||
-                instrument.NoiseControlEnvelope.Length > 0 || instrument.NoiseRestartEnvelope.Length > 0);
-        }
-
         private void EditHardwareNoiseEnvelope(Instrument instrument, int type)
         {
             App.SelectedInstrument = instrument;
@@ -892,21 +873,46 @@ namespace FamiStudio
             App.StartEditInstrument(instrument, type);
         }
 
-        private void ShowHardwareNoiseMenu(Instrument instrument)
+        private string GetHardwareNoiseLabel(Instrument instrument, int type)
         {
-            var options = new List<ContextMenuOption>();
-            if (instrument.NoisePeriodEnvelope.Length > 0)
-                options.Add(new ContextMenuOption(null, NoiseEditorStrings.ConvertLegacyPitchLabel, NoiseEditorStrings.LegacyPitchHint,
-                    () => ConvertLegacyNoisePitch(instrument), ContextMenuSeparator.After));
+            int length = instrument.Envelopes[type].Length;
+            return length > 0 ? NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[type], length) :
+                NoiseEditorStrings.UnusedMacroLabel.Format(EnvelopeType.LocalizedNames[type]);
+        }
+
+        private void CreateHardwareNoiseControls(PanelContainer panel, Instrument instrument, int x, ref int y)
+        {
             foreach (int type in new[] { EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
             {
                 int target = type;
-                int length = instrument.Envelopes[type].Length;
-                string label = length > 0 ? NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[type], length) :
-                    NoiseEditorStrings.UnusedMacroLabel.Format(EnvelopeType.LocalizedNames[type]);
-                options.Add(new ContextMenuOption(null, label, NoiseEditorStrings.GetHint(instrument, type, true), () => EditHardwareNoiseEnvelope(instrument, target)));
+                var button = CreateHardwareActionButton(panel, x, y, GetHardwareNoiseLabel(instrument, type),
+                    type == EnvelopeType.NoiseEnvelope ? "HardwareNoiseEnvelope" : "HardwareNoiseRestart",
+                    NoiseEditorStrings.GetHint(instrument, type, true));
+                button.TextEvent += _ => GetHardwareNoiseLabel(instrument, target);
+                button.Click += _ => EditHardwareNoiseEnvelope(instrument, target);
+                y += panelSizeY;
             }
-            App.ShowContextMenuAsync(options.ToArray());
+            if (instrument.NoisePeriodEnvelope.Length > 0)
+            {
+                var button = CreateHardwareActionButton(panel, x, y, NoiseEditorStrings.ConvertLegacyPitchLabel,
+                    "ConvertLegacyNoisePitch", NoiseEditorStrings.LegacyPitchHint);
+                button.Click += _ => ConvertLegacyNoisePitch(instrument);
+                y += panelSizeY;
+            }
+        }
+
+        private Button CreateHardwareActionButton(PanelContainer panel, int x, int y, string label, string tag, string tooltip)
+        {
+            var button = new Button(null, label);
+            button.UserData = tag;
+            button.ToolTip = tooltip;
+            button.Transparent = true;
+            button.ForegroundColor = Theme.BlackColor;
+            button.Ellipsis = true;
+            button.VibrateOnClick = true;
+            panel.AddControl(button);
+            button.Move(x, y, panel.Width - x - marginX, panelSizeY);
+            return button;
         }
 
         public void ConvertLegacyNoisePitch(Instrument instrument)
@@ -994,9 +1000,6 @@ namespace FamiStudio
                             menu.Add(new ContextMenuOption("MenuCopy", CopyRegisterValueContext, () => { CopyRegisterValues(inst); }, ContextMenuSeparator.Before));
                             menu.Add(new ContextMenuOption("MenuPaste", PasteRegisterValueContext, () => { PasteRegisterValues(inst); }));
                         }
-
-                        if (inst.IsRegular)
-                            menu.Add(new ContextMenuOption("EnvelopeNoise", NoiseEditorStrings.NoiseSettingsLabel, () => ShowHardwareNoiseMenu(inst)));
 
                         menu.Add(new ContextMenuOption("MenuDuplicate", DuplicateContext, () => { DuplicateInstrument(inst); }, ContextMenuSeparator.Before));
                         menu.Add(new ContextMenuOption("MenuReplace", ReplaceWithContext, () => { AskReplaceInstrument(inst); }, ContextMenuSeparator.After));
@@ -1327,19 +1330,7 @@ namespace FamiStudio
                             CreateHardwareSettingsHeader(panel, parameterInstrument, indentX, y);
                             y += panelSizeY;
                             if (expandedHardwareInstruments.Contains(parameterInstrument.Id))
-                            {
-                                var noiseSettings = new Button(null, NoiseEditorStrings.NoiseSettingsLabel);
-                                noiseSettings.UserData = "NoiseSettings";
-                                noiseSettings.ToolTip = NoiseEditorStrings.NoiseSettingsTooltip;
-                                noiseSettings.Transparent = true;
-                                noiseSettings.ForegroundColor = Theme.BlackColor;
-                                noiseSettings.Ellipsis = true;
-                                noiseSettings.VibrateOnClick = true;
-                                panel.AddControl(noiseSettings);
-                                noiseSettings.Move(indentX, y, panel.Width - indentX - marginX, panelSizeY);
-                                noiseSettings.Click += _ => ShowHardwareNoiseMenu(parameterInstrument);
-                                y += panelSizeY;
-                            }
+                                CreateHardwareNoiseControls(panel, parameterInstrument, indentX, ref y);
                             hardwareHeaderCreated = true;
                         }
                         if (!expandedHardwareInstruments.Contains(parameterInstrument.Id))
@@ -1826,9 +1817,7 @@ namespace FamiStudio
                 // Arpeggios trigger this, but with null instruments.
                 if (instrument != null)
                 {
-                    var instrumentPanel = FindInstrumentPanel(instrument);
-                    if (instrumentPanel != null && EnvelopeType.IsHardwareNoise(envType) &&
-                        ((instrumentPanel.FindControlByUserData("HardwareNoise") != null) != HasHardwareNoise(instrument)))
+                    if (expandedInstrument == instrument && envType == EnvelopeType.NoisePeriod)
                     {
                         RecreateAllControls();
                         return;

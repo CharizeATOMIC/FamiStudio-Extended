@@ -15,8 +15,6 @@ static class NoiseEditorUiRegression
     }
     static Button MacroButton(ProjectExplorer explorer, Instrument instrument, int type) =>
         (Button)Invoke(explorer, "FindInstrumentEnvelopeButton", instrument, type);
-    static Button Shortcut(ProjectExplorer explorer, Instrument instrument) =>
-        InstrumentLayoutUiRegression.Panel(explorer, instrument).Controls.OfType<Button>().Single(b => Equals(b.UserData, "HardwareNoise"));
     static bool Edits(FamiStudioWindow window, Instrument instrument, int type) => window.PianoRoll.IsEditingInstrument &&
         ReferenceEquals(Field(window.PianoRoll, "editInstrument"), instrument) && (int)Field(window.PianoRoll, "editEnvelope") == type;
     static void DrawValue(PianoRoll roll, int value)
@@ -59,22 +57,47 @@ static class NoiseEditorUiRegression
         app.SelectedArpeggio = null;
         var explorer = window.ProjectExplorer;
         explorer.RefreshButtons();
-        InstrumentLayoutUiRegression.CheckCommonRow(explorer, inst, true);
+        InstrumentLayoutUiRegression.CheckCommonRow(explorer, inst);
+        var row = InstrumentLayoutUiRegression.Panel(explorer, inst);
+        row.SendPointerUp(new PointerEventArgs(PointerEventArgs.ButtonRight, row.Width / 2, row.Height / 2));
+        Check(window.IsContextMenuActive && !InstrumentLayoutUiRegression.Options(window).Any(o => o.Text == NoiseEditorStrings.NoiseSettingsLabel.ToString()),
+            "instrument context menu has no duplicate noise submenu entry");
+        app.HideContextMenu();
+        InstrumentLayoutUiRegression.ExpandHardware(explorer, inst);
 
         // An unselected row must edit its own instrument, not the currently
         // selected one. Test mouse and touch activation of the two text items.
         foreach (int type in new[] { EnvelopeType.NoiseEnvelope, EnvelopeType.NoiseEnvelopeRestart })
         {
             app.SelectedInstrument = app.Project.Instruments.First(i => i != inst);
-            InstrumentLayoutUiRegression.Click(Shortcut(explorer, inst), type == EnvelopeType.NoiseEnvelopeRestart);
-            var options = InstrumentLayoutUiRegression.Options(window);
-            Check(options.Length == 3 && options.All(o => o.Image == null), "legacy noise exposes conversion and only two text macro entries");
-            Check(options[0].Text == NoiseEditorStrings.ConvertLegacyPitchLabel.ToString(), "legacy pitch has an explicit conversion action instead of a third envelope icon");
-            InstrumentLayoutUiRegression.Choose(window, o => o.Text == NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[type], 4), type == EnvelopeType.NoiseEnvelopeRestart);
-            Check(Edits(window, inst, type) && ReferenceEquals(app.SelectedInstrument, inst) && ReferenceEquals(Field(explorer, "expandedInstrument"), inst),
-                "text menu selects and edits the originating instrument macro " + type);
+            var button = InstrumentLayoutUiRegression.HardwareMacro(explorer, type);
+            var conversion = InstrumentLayoutUiRegression.Tagged(explorer, "ConvertLegacyNoisePitch");
+            Check(button != null && button.ImageName == null && InstrumentLayoutUiRegression.VisibleText(button) == NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[type], 4),
+                "populated macro appears directly in hardware settings as a text button " + type);
+            Check(conversion != null && conversion.ImageName == null && InstrumentLayoutUiRegression.VisibleText(conversion) == NoiseEditorStrings.ConvertLegacyPitchLabel.ToString(),
+                "legacy pitch has a direct conversion button alongside the two macros");
+            InstrumentLayoutUiRegression.Click(button, type == EnvelopeType.NoiseEnvelopeRestart);
+            Check(!window.IsContextMenuActive && Edits(window, inst, type) && ReferenceEquals(app.SelectedInstrument, inst) && ReferenceEquals(Field(explorer, "expandedInstrument"), inst),
+                "one direct click selects and edits the originating instrument macro without a submenu " + type);
+            Check(InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelope) != null &&
+                InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelopeRestart) != null,
+                "direct editing keeps both hardware controls visible");
             capture(window, Path.Combine(output, language + "-noise-macro-" + type + ".ppm"));
         }
+
+        int normalWidth = explorer.Width;
+        try
+        {
+            explorer.Resize(DpiScaling.ScaleForWindow(240), explorer.Height);
+            InstrumentLayoutUiRegression.ExpandHardware(explorer, inst);
+            var direct = new[] { "HardwareNoiseEnvelope", "HardwareNoiseRestart", "ConvertLegacyNoisePitch" }
+                .Select(tag => InstrumentLayoutUiRegression.Tagged(explorer, tag)).ToArray();
+            Check(direct.All(button => button != null && button.Width > 0 && button.Left >= 0 && button.Right <= button.ParentContainer.Width && button.Ellipsis) &&
+                direct.Select(button => button.Top).Distinct().Count() == 3,
+                language + " populated macros and legacy conversion each have a separate accessible row at 240px");
+            InstrumentLayoutUiRegression.CheckCommonRow(explorer, inst);
+        }
+        finally { explorer.Resize(normalWidth, explorer.Height); }
 
         var roll = window.PianoRoll;
         app.StartEditInstrument(inst, EnvelopeType.NoiseEnvelope);
@@ -102,15 +125,17 @@ static class NoiseEditorUiRegression
         app.StartEditInstrument(inst, EnvelopeType.NoisePeriod);
         Check(Edits(window, inst, EnvelopeType.Arpeggio), "an old workspace envelope selection opens the native arpeggio editor");
         uint beforeMigration = inst.ComputeCRC();
-        InstrumentLayoutUiRegression.Click(Shortcut(explorer, inst), true);
-        InstrumentLayoutUiRegression.Choose(window, o => o.Text == NoiseEditorStrings.ConvertLegacyPitchLabel.ToString(), true);
+        InstrumentLayoutUiRegression.ExpandHardware(explorer, inst);
+        InstrumentLayoutUiRegression.Click(InstrumentLayoutUiRegression.Tagged(explorer, "ConvertLegacyNoisePitch"), true);
         Check(inst.NoisePeriodEnvelope.Length == 0 && !inst.NoisePeriodFollowsNote && inst.ArpeggioEnvelope.Length == 4 && inst.ArpeggioEnvelope.Loop == 2 &&
             inst.ArpeggioEnvelope.Values.Take(4).SequenceEqual(new sbyte[] { 4, 7, 10, 12 }), "migration stores the native 14-minus-period arpeggio and preserves its loop");
-        Check(Edits(window, inst, EnvelopeType.Arpeggio) && ReferenceEquals(app.SelectedInstrument, inst), "migration opens the same instrument's native arpeggio");
+        Check(!window.IsContextMenuActive && Edits(window, inst, EnvelopeType.Arpeggio) && ReferenceEquals(app.SelectedInstrument, inst), "direct migration opens the same instrument's native arpeggio without a submenu");
+        Check(InstrumentLayoutUiRegression.Tagged(explorer, "ConvertLegacyNoisePitch") == null, "successful conversion removes its obsolete direct action");
         Check(NoiseEditorStrings.GetHint(inst, EnvelopeType.Arpeggio, true) == null &&
             !MacroButton(explorer, inst, EnvelopeType.Arpeggio).ToolTip.Contains(NoiseEditorStrings.LegacyPitchHint.ToString()), "migration immediately removes the obsolete legacy hint");
         app.UndoRedoManager.Undo();
         Check(inst.ComputeCRC() == beforeMigration && inst.NoisePeriodFollowsNote, "migration undo restores every original macro and mode");
+        Check(InstrumentLayoutUiRegression.Tagged(explorer, "ConvertLegacyNoisePitch") != null, "migration undo restores the reachable conversion button");
         app.UndoRedoManager.Redo();
         Check(inst.NoisePeriodEnvelope.Length == 0 && inst.ArpeggioEnvelope.Values[0] == 4, "migration redo restores editable native pitch");
         explorer.RefreshButtons();
@@ -118,10 +143,12 @@ static class NoiseEditorUiRegression
         ((Container)Field(explorer, "mainContainer")).ScrollY = Math.Max(0, InstrumentLayoutUiRegression.Panel(explorer, inst).Top - DpiScaling.ScaleForWindow(48));
         app.StartEditInstrument(inst, EnvelopeType.Arpeggio);
         capture(window, Path.Combine(output, language + "-noise-native-arpeggio.ppm"));
-        InstrumentLayoutUiRegression.Click(Shortcut(explorer, inst));
-        Check(InstrumentLayoutUiRegression.Options(window).Length == 2, "converted noise menu retains only its two hardware-specific controls");
-        capture(window, Path.Combine(output, language + "-noise-text-menu.ppm"));
-        InstrumentLayoutUiRegression.Choose(window, o => o.Text == NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[EnvelopeType.NoiseEnvelope], 4));
+        Check(InstrumentLayoutUiRegression.Tagged(explorer, "ConvertLegacyNoisePitch") == null &&
+            InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelope) != null &&
+            InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelopeRestart) != null,
+            "converted noise keeps both direct hardware controls and no intermediate submenu");
+        capture(window, Path.Combine(output, language + "-noise-direct-controls.ppm"));
+        InstrumentLayoutUiRegression.Click(InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelope));
 
         app.StartEditInstrument(inst, EnvelopeType.Volume);
         Check(NoiseEditorStrings.GetHint(inst, EnvelopeType.Volume, true) == NoiseEditorStrings.VolumeOverriddenHint.ToString(), "normal volume editor identifies its hardware override");
@@ -132,10 +159,16 @@ static class NoiseEditorUiRegression
         Check(window.IsContextMenuActive, "right-click opens the actual volume editor menu");
         InstrumentLayoutUiRegression.Choose(window, o => o.Text == NoiseEditorStrings.UseSoftwareVolumeLabel.ToString());
         Check(inst.NoiseControlEnvelope.Length == 0 && Edits(window, inst, EnvelopeType.Volume), "software-volume action disables the hardware override and opens the normal editor");
+        Check(InstrumentLayoutUiRegression.VisibleText(InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelope)) ==
+            NoiseEditorStrings.UnusedMacroLabel.Format(EnvelopeType.LocalizedNames[EnvelopeType.NoiseEnvelope]),
+            "direct hardware button immediately describes the newly emptied macro");
         Check(NoiseEditorStrings.GetHint(inst, EnvelopeType.Volume, true) == null &&
             !MacroButton(explorer, inst, EnvelopeType.Volume).ToolTip.Contains(NoiseEditorStrings.VolumeOverriddenHint.ToString()), "software volume immediately updates the editor and project hints");
         app.UndoRedoManager.Undo();
         Check(inst.NoiseControlEnvelope.Length == 4 && inst.NoiseControlEnvelope.Values.Take(4).SequenceEqual(originalControl), "software-volume undo restores every original hardware value");
+        Check(InstrumentLayoutUiRegression.VisibleText(InstrumentLayoutUiRegression.HardwareMacro(explorer, EnvelopeType.NoiseEnvelope)) ==
+            NoiseEditorStrings.MacroStepsLabel.Format(EnvelopeType.LocalizedNames[EnvelopeType.NoiseEnvelope], 4),
+            "undo immediately restores the direct button's macro length");
         explorer.RefreshButtons();
 
         string path = Path.Combine(output, language + "-editable-noise.fms");
