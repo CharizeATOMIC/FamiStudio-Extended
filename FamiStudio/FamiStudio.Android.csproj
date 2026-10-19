@@ -5,7 +5,7 @@
     <OutputType>Exe</OutputType>
     <MapFileExtensions>true</MapFileExtensions>
     <SupportUrl>https://twitter.com/nesbleubleu</SupportUrl>
-    <ProductName>FamiStudio</ProductName>
+    <ProductName>FamiSpectrum</ProductName>
     <PublisherName>BleuBleu</PublisherName>
     <ApplicationRevision>3</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>

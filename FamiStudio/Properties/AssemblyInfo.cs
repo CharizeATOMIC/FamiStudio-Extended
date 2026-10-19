@@ -10,11 +10,11 @@ using Android.App;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("FamiStudio")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("FamiSpectrum")]
+[assembly: AssemblyDescription("FamiSpectrum is an independent extended fork of FamiStudio, originally created by BleuBleu.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("BleuBleu")]
-[assembly: AssemblyProduct("FamiStudio")]
+[assembly: AssemblyProduct("FamiSpectrum")]
 [assembly: AssemblyCopyright("Copyright © 2019-2026")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
