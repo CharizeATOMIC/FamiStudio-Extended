@@ -532,12 +532,34 @@ namespace FamiStudio
         private bool overrideDmcInitialValue = false;
         private int pitch = 15;
         private int dmcInitialValueDiv2 = NesApu.DACDefaultValueDiv2;
+        private byte dmcInitialValueLowBit;
 
         public DPCMSample Sample { get => sample; set => sample = value; }
         public bool Loop                    { get => loop;  set => loop  = value; }
         public int  Pitch                   { get => pitch; set => pitch = value; }
         public bool OverrideDmcInitialValue { get => overrideDmcInitialValue; set => overrideDmcInitialValue = value; }
-        public int  DmcInitialValueDiv2     { get => dmcInitialValueDiv2;     set => dmcInitialValueDiv2 = value; }
+        // Preserve the legacy half-value API for importers and old projects.
+        // Only mappings gain a full seven-bit DAC; sample processing is unchanged.
+        public int DmcInitialValueDiv2
+        {
+            get => dmcInitialValueDiv2;
+            set
+            {
+                if (value < 0 || value > 63) throw new ArgumentOutOfRangeException(nameof(value));
+                dmcInitialValueDiv2 = value;
+                dmcInitialValueLowBit = 0;
+            }
+        }
+        public int DmcInitialValue
+        {
+            get => dmcInitialValueDiv2 * 2 + dmcInitialValueLowBit;
+            set
+            {
+                if (value < 0 || value > 127) throw new ArgumentOutOfRangeException(nameof(value));
+                dmcInitialValueDiv2 = value >> 1;
+                dmcInitialValueLowBit = (byte)(value & 1);
+            }
+        }
 
         public void Serialize(ProjectBuffer buffer)
         {
@@ -550,6 +572,12 @@ namespace FamiStudio
                 buffer.Serialize(ref overrideDmcInitialValue);
                 buffer.Serialize(ref dmcInitialValueDiv2);
             }
+            if (buffer.Version >= Project.DpcmMappingDacFormatVersion)
+                buffer.Serialize(ref dmcInitialValueLowBit);
+            else if (buffer.IsReading)
+                dmcInitialValueLowBit = 0;
+            if (buffer.IsReading && (dmcInitialValueDiv2 < 0 || dmcInitialValueDiv2 > 63 || dmcInitialValueLowBit > 1))
+                throw new InvalidDataException("DPCM mapping initial DAC must be in the range 0..127.");
         }
 
         public void ValidateIntegrity(Project project, Dictionary<int, object> idMap)
@@ -566,7 +594,7 @@ namespace FamiStudio
             int hash = sample.Id;
             hash = Utils.HashCombine(hash, loop ? 1 : 0);
             hash = Utils.HashCombine(hash, pitch);
-            hash = Utils.HashCombine(hash, overrideDmcInitialValue ? dmcInitialValueDiv2 : 0);
+            hash = Utils.HashCombine(hash, overrideDmcInitialValue ? DmcInitialValue : 0);
             return hash;
         }
 
@@ -574,11 +602,12 @@ namespace FamiStudio
         {
             DPCMSampleMapping other = obj as DPCMSampleMapping;
             return
+                other != null &&
                 sample == other.sample &&
                 loop == other.loop &&
                 pitch == other.pitch &&
                 overrideDmcInitialValue == other.overrideDmcInitialValue &&
-                dmcInitialValueDiv2 == other.dmcInitialValueDiv2;
+                DmcInitialValue == other.DmcInitialValue;
         }
     }
 

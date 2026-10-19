@@ -209,7 +209,7 @@ namespace FamiStudio
                             var mappingStr = $"\t\tDPCMMapping{GenerateAttribute("Note", Note.GetFriendlyName(kv.Key))}{GenerateAttribute("Sample", mapping.Sample.Name)}{GenerateAttribute("Pitch", mapping.Pitch)}{GenerateAttribute("Loop", mapping.Loop)}{GenerateAttribute("Bank", mapping.Sample.Bank)}";
 
                             if (mapping.OverrideDmcInitialValue)
-                                mappingStr += $"{GenerateAttribute("DmcInitialValue", mapping.DmcInitialValueDiv2)}";
+                                mappingStr += $"{GenerateAttribute("DmcInitialValueRaw", mapping.DmcInitialValue)}";
 
                             lines.Add(mappingStr);
                         }
@@ -645,6 +645,13 @@ namespace FamiStudio
                                 {
                                     mapping.OverrideDmcInitialValue = true;
                                     mapping.DmcInitialValueDiv2 = byte.Parse(dmcInitialStr);
+                                }
+                                if (parameters.TryGetValue("DmcInitialValueRaw", out var dmcInitialRawStr))
+                                {
+                                    // An explicit raw value takes precedence when a text
+                                    // producer includes both legacy and new attributes.
+                                    mapping.OverrideDmcInitialValue = true;
+                                    mapping.DmcInitialValue = int.Parse(dmcInitialRawStr);
                                 }
                             }
                             break;

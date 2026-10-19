@@ -1,6 +1,6 @@
 # FamiStudio Tuning
 
-An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 5 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
+An independent desktop fork of [FamiStudio 4.5.3](https://github.com/BleuBleu/FamiStudio/releases/tag/4.5.3), based on commit `c09dca64788606c09fcb5e70db28b9dd1f34be78`. This is revision 6 of the local fork, not an official FamiStudio release. Original copyright and license notices remain in place.
 
 ## Features
 
@@ -36,9 +36,13 @@ These properties export through `FAMISTUDIO_USE_APU_INSTRUMENT_FLAGS = 1` and in
 
 Revision 5 also fixes the native S5B reset path: the chip's 16-CPU-cycle remainder and selected register are reset, so repeated rendering starts from the same state. Rebuild the native library on each platform; the ABI is unchanged. The synthetic test covers tone, noise and hardware envelopes in both regions and mono/stereo. Text import validates pattern steps against the frame limit once, and simultaneous engine exports use independent temporary directories.
 
+Revision 6 allows each DPCM key mapping to store the full hardware initial DAC value, **0–127**, including odd values. The existing mapping dialog displays this absolute value and accepts typed input. A normal sample attack resets the DAC from its mapping, so an equal note-level DAC effect can be omitted. A no-attack note or a standalone DAC command retains its separate semantics. The sample waveform editor keeps its existing half-value controls. Older mapping values migrate without changing playback; text mappings use `DmcInitialValueRaw` for full precision and still accept the legacy half-value `DmcInitialValue`. The sound engine already stores the initial DAC as a full byte, so this addition needs no new opcode or native ABI.
+
+FamiTone2, FamiTracker text and MIDI export reject an odd mapping initial value when a selected DPCM attack actually uses it. Unused mappings, other songs, no-attack notes and explicit note DAC overrides retain the previous export behavior. FamiStudio-engine and register/audio exports preserve the full value.
+
 The Windows x64 package is self-contained: extract the whole directory and run `FamiStudio.exe`. It does not require installing .NET. Settings use `%LOCALAPPDATA%/FamiStudio-Tuning`; the installed official application and its settings are not replaced. Upstream update notifications default to off because official releases do not include these additions.
 
-Official project formats through version 19 and this fork's previous formats 1001, 1002 and 1003 can be read. Revision 5 saves format **1004**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
+Official project formats through version 19 and this fork's previous formats 1001, 1002, 1003 and 1004 can be read. Revision 6 saves format **1005**, which cannot be opened by the official application or earlier fork builds. Save a copy of an existing project before editing it in this fork. Clipboard data has a separate namespace. FamiStudio text exports preserve tuning, curves, mixer and chip-copy metadata. Curves use sparse project-level `ChipTuning` entries with a chip name, note ID and integer `Value`, plus `ChipTuningBasis` reference information.
 
 Curves are global to a project. Importing songs from a project with different curves on its active chips is rejected before either song is retuned; first make the curves match. An empty destination adopts the imported curves. Importing instruments alone does not require matching curves. Curves for inactive chips are preserved for when those chips are enabled.
 

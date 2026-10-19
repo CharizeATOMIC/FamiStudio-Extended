@@ -1,4 +1,4 @@
-FamiStudio Tuning: platform and upstream integration notes (revision 5)
+FamiStudio Tuning: platform and upstream integration notes (revision 6)
 
 Maintenance assessment
 
@@ -17,7 +17,7 @@ Suggested review order:
 
 Before upstream merge, maintainers should choose the official format version and
 opcode, review ROM/RAM/CPU budgets, and decide which optional features to accept.
-Format 1004 and the separate settings directory intentionally identify this fork;
+Format 1005 and the separate settings directory intentionally identify this fork;
 they should not silently become the upstream format/settings policy.
 
 Revision 3 architecture and format
@@ -272,3 +272,16 @@ compare repeated PCM for tone, noise and hardware envelopes in PAL/NTSC and
 mono/stereo. It is included in all three desktop CI jobs.
 Remote CI, native Linux/macOS playback, Android and physical NES testing remain
 separate validation steps; a managed build alone does not establish those results.
+
+Revision 6 integration addendum
+
+Format 1005 preserves the low bit of each DPCM key mapping's initial DAC value.
+Mapping controls now show the absolute hardware range 0..127, reusing the existing
+localized DMC Initial Value label in all seven languages. The source sample editor
+retains its previous half-value representation. Old binary/text mappings retain
+their exact even hardware values. New text mappings use DmcInitialValueRaw;
+legacy DmcInitialValue remains a half-value field. Undo and clipboard serialize
+the same mapping state. The existing engine sample table already stores this
+full byte, so no engine opcode, extra runtime state or native ABI is introduced.
+Normal attacks can use the mapping reset without a duplicate note DAC command;
+no-attack and standalone explicit DAC commands must retain their semantics.

@@ -36,7 +36,7 @@ namespace FamiStudio
                                 // Override by mapping, if enabled.
                                 if (mapping.OverrideDmcInitialValue)
                                 {
-                                    dmcInitialValue = mapping.DmcInitialValueDiv2 * 2;
+                                    dmcInitialValue = mapping.DmcInitialValue;
                                 }
                                 else
                                 {

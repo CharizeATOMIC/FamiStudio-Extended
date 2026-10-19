@@ -28,6 +28,21 @@ static class GimmickConversion
     static int NoteCount(Project p) => p.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(pattern => pattern.Notes.Values.Count(n => n.IsMusical))));
     static int EventCount(Project p) => p.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(pattern => pattern.Notes.Count)));
 
+    // A DPCM attack already writes the mapping's initial DAC value before
+    // starting the sample. Keep no-attack events and standalone DAC writes:
+    // the mapping cannot replace those without changing playback.
+    internal static bool RemoveRedundantDpcmDelta(Note note)
+    {
+        if (!note.IsMusical || !note.HasAttack || !note.HasDeltaCounter)
+            return false;
+        var mapping = note.Instrument?.GetDPCMMapping(note.Value);
+        if (mapping?.Sample == null || mapping.Sample.ProcessedData.Length == 0 ||
+            !mapping.OverrideDmcInitialValue || note.DeltaCounter != mapping.DmcInitialValue)
+            return false;
+        note.HasDeltaCounter = false;
+        return true;
+    }
+
     static IEnumerable<int> AudibleState(int[][] frame)
     {
         for (int channel = 0; channel < 8; channel++)
@@ -86,7 +101,7 @@ static class GimmickConversion
                 int note = dpcmKeys.Count + 1, pitch = Int(source, "sample_rate"), delta = Int(source, "delta", 64);
                 Require(note <= 96 && pitch >= 0 && pitch <= 15 && delta >= 0 && delta <= 127, $"Invalid DPCM mapping {id}.");
                 var mapping = dpcm.MapDPCMSample(note, samples[sampleId.GetInt32()], pitch, Bool(source, "sample_loop"));
-                mapping.OverrideDmcInitialValue = true; mapping.DmcInitialValueDiv2 = delta / 2;
+                mapping.OverrideDmcInitialValue = true; mapping.DmcInitialValue = delta;
                 dpcmKeys.Add(id, note); instruments.Add(id, dpcm);
                 continue;
             }
@@ -323,6 +338,14 @@ static class GimmickConversion
 
         int firstPassSourceNotes = sourceNotes;
         sourceNotes = NoteCount(project); // Includes editable loop-variation patterns.
+        int dpcmDeltaEffectsBefore = 0, removedMappedDpcmDeltaEffects = 0;
+        foreach (var song in project.Songs)
+        foreach (var pattern in song.GetChannelByType(ChannelType.Dpcm).Patterns)
+        foreach (var note in pattern.Notes.Values)
+        {
+            if (note.HasDeltaCounter) dpcmDeltaEffectsBefore++;
+            if (RemoveRedundantDpcmDelta(note)) removedMappedDpcmDeltaEffects++;
+        }
         int loopVariationPatterns = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count(p => p.LoopVariant != null)));
         int phaseEffectsBefore = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasPhaseReset))));
         int removedAutomaticPhaseEffects = 0;
@@ -356,6 +379,7 @@ static class GimmickConversion
                 }
             }
         }
+        var redundantPersistentEffects = GimmickEffectCleanup.Run(project);
         int patternsBeforeSharing = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Count));
         int notesBeforeSharing = NoteCount(project);
         foreach (var song in project.Songs)
@@ -489,6 +513,10 @@ static class GimmickConversion
             notes = sourceNotes, first_pass_source_notes = firstPassSourceNotes, loop_variation_patterns = loopVariationPatterns, loop_stop_events = loopStopEvents, curve_entries = root.GetProperty("curves").GetArrayLength(), curve_unit = "absolute hardware period/register",
             notes_before_identical_pattern_sharing = notesBeforeSharing, identical_patterns_shared = sharedPatternsRemoved,
             phase_effects_before = phaseEffectsBefore, redundant_automatic_phase_effects_removed = removedAutomaticPhaseEffects,
+            dpcm_delta_effects_before = dpcmDeltaEffectsBefore, redundant_mapping_delta_effects_removed = removedMappedDpcmDeltaEffects,
+            dpcm_delta_effects = project.Songs.Sum(s => s.GetChannelByType(ChannelType.Dpcm).Patterns.Sum(p => p.Notes.Values.Count(n => n.HasDeltaCounter))),
+            redundant_persistent_effects_removed = redundantPersistentEffects,
+            volume_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasVolume)))),
             phase_reset_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasPhaseReset)))),
             duty_cycle_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasDutyCycle)))),
             envelope_decay_effects = project.Songs.Sum(s => s.Channels.Sum(c => c.Patterns.Sum(p => p.Notes.Values.Count(n => n.HasEnvelopeDecay)))),

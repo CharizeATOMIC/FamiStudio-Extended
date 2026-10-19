@@ -15,10 +15,32 @@ namespace FamiStudio
         private TuningSettings tuningSettings = new TuningSettings();
         public TuningSettings TuningSettings { get => tuningSettings; set { value.Validate(); tuningSettings = value.Clone(); } }
         public bool UsesCustomTuning => project.HasActiveChipTuning || tuningSettings.Override || patternCustomSettings.Take(songLength).Any(p => p.Tuning.Override);
+        public bool UsesOddDpcmMappingDac()
+        {
+            var channel = GetChannelByType(ChannelType.Dpcm);
+            for (int p = 0; p < songLength; p++)
+            {
+                var original = channel.PatternInstances[p];
+                if (original == null) continue;
+                var variant = loopPoint >= 0 && p >= loopPoint ? original.LoopVariant : null;
+                foreach (var pattern in variant == null ? new[] { original } : new[] { original, variant })
+                foreach (var entry in pattern.Notes)
+                {
+                    if (entry.Key >= GetPatternLength(p)) continue;
+                    var note = entry.Value;
+                    if (!note.IsMusical || !note.HasAttack || note.HasDeltaCounter) continue;
+                    var mapping = note.Instrument?.GetDPCMMapping(note.Value);
+                    if (mapping?.Sample != null && mapping.OverrideDmcInitialValue && (mapping.DmcInitialValue & 1) != 0)
+                        return true;
+                }
+            }
+            return false;
+        }
         // Inspect scheduled patterns only: unused resources and other songs must not
         // prevent exporting an otherwise compatible selection.
         public bool UsesExtendedPlayback(bool includeInstrumentEffects)
         {
+            if (includeInstrumentEffects && UsesOddDpcmMappingDac()) return true;
             foreach (var channel in channels)
             for (int p = 0; p < songLength; p++)
             {

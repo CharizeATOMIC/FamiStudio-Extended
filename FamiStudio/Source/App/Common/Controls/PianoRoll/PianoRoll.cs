@@ -586,7 +586,6 @@ namespace FamiStudio
         // DPCM mapping properties
         LocalizedString SampleMappingTitle;
         LocalizedString OverrideDMCInitialValueLabel;
-        LocalizedString DMCInitialValueDiv2Label;
 
         // Paste messages
         LocalizedString PasteTitle;
@@ -3139,7 +3138,7 @@ namespace FamiStudio
 
                         string text = $"{mapping.Sample.Name} - {PitchLabel}: {DPCMSampleRate.GetString(true, FamiStudio.StaticInstance.PalPlayback, true, true, mapping.Pitch)}";
                         if (mapping.Loop) text += $", {LoopingLabel}";
-                        if (mapping.OverrideDmcInitialValue) text += $" , {DMCInitialValueLabel} = {mapping.DmcInitialValueDiv2}";
+                        if (mapping.OverrideDmcInitialValue) text += $" , {DMCInitialValueLabel} = {mapping.DmcInitialValue}";
 
                         r.c.DrawText(text, r.fonts.FontSmall, dpcmTextPosX, 0, Theme.BlackColor, TextFlags.MiddleLeft, 0, noteSizeY);
                         r.c.PopTransform();
@@ -4555,7 +4554,7 @@ namespace FamiStudio
             dlg.Properties.AddDropDownList(PitchLabel.Colon, strings, strings[mapping.Pitch]); // 0
             dlg.Properties.AddCheckBox(LoopLabel.Colon, mapping.Loop); // 1
             dlg.Properties.AddCheckBox(OverrideDMCInitialValueLabel.Colon, mapping.OverrideDmcInitialValue); // 2
-            dlg.Properties.AddNumericUpDown(DMCInitialValueDiv2Label.Colon, mapping.DmcInitialValueDiv2, 0, 63, 1); // 3
+            dlg.Properties.AddNumericUpDown(DMCInitialValueLabel.Colon, mapping.DmcInitialValue, 0, 127, 1); // 3
             dlg.Properties.Build();
             dlg.Properties.SetPropertyEnabled(3, mapping.OverrideDmcInitialValue);
             dlg.Properties.PropertyChanged += DPCMSampleMapping_PropertyChanged;
@@ -4568,7 +4567,7 @@ namespace FamiStudio
                     mapping.Pitch = dlg.Properties.GetSelectedIndex(0);
                     mapping.Loop = dlg.Properties.GetPropertyValue<bool>(1);
                     mapping.OverrideDmcInitialValue = dlg.Properties.GetPropertyValue<bool>(2);
-                    mapping.DmcInitialValueDiv2 = dlg.Properties.GetPropertyValue<int>(3);
+                    mapping.DmcInitialValue = dlg.Properties.GetPropertyValue<int>(3);
                     App.UndoRedoManager.EndTransaction();
                     MarkDirty();
                 }

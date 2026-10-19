@@ -94,6 +94,7 @@ static class UiSmoke
         NsfMultiImportRegression.Ui(window, Path.Combine(output, "nsf"), (ok, message) => { if (!ok) throw new Exception(message); Console.WriteLine("PASS " + message); }, Capture);
         if (language == "zho" || language == "eng") LoopVariantUiTests.Run(window, language, output, Capture);
         InstrumentArticulationRegression.Ui(window, language, output, Capture);
+        DpcmMappingUiTests.Run(window, language, output, Capture);
         Invoke(app, "ShutdownAudioPlayers", true);
         Invoke(window, "DestroyWindow");
         Init.ShutdownBaseSystems();

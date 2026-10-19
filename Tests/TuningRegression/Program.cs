@@ -33,6 +33,7 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--dpcm-effects") { DpcmEffectRegression.Run(args[1]); GimmickEffectCleanup.Regression(); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--text-tempo") { TextTempoRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--articulation-playback") { InstrumentArticulationPlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--duty-envelope") { DutyEnvelopeRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }

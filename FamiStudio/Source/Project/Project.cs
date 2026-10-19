@@ -31,11 +31,12 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1004;
+        public const int Version = 1005;
         public const int TuningFormatVersion = 1001;
         public const int ChipTuningFormatVersion = 1002;
         public const int NoiseEnvelopeFormatVersion = 1003;
         public const int InstrumentArticulationFormatVersion = 1004;
+        public const int DpcmMappingDacFormatVersion = 1005;
         public const int MaxMappedSampleSize = 0x40000;
         public const int MaxDPCMBanks = 64;
         public const int MaxSampleAddress = 255 * 64;

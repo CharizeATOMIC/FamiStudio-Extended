@@ -66,4 +66,5 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --articulation-playback work/articulation-playback-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --duty-envelope work/duty-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --text-tempo work/text-tempo-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --dpcm-effects work/dpcm-effects-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --apu-instrument-export work/articulation-export-tests

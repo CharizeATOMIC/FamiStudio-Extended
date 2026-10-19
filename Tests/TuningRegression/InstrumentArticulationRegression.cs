@@ -27,7 +27,7 @@ static class InstrumentArticulationRegression
     public static void Run(string output)
     {
         Directory.CreateDirectory(output);
-        Check(Project.Version==1004 && Project.InstrumentArticulationFormatVersion==1004,"format 1004 identifies instrument articulation fields");
+        Check(Project.Version>=1004 && Project.InstrumentArticulationFormatVersion==1004,"format 1004 identifies instrument articulation fields");
         string fixture=Path.Combine("Tests","TuningRegression","Fixtures","format1003.fms");
         Check(BitConverter.ToInt32(File.ReadAllBytes(fixture),4)==1003,"frozen self-authored fixture is genuinely format 1003");
         var legacy=new ProjectFile().Load(fixture);

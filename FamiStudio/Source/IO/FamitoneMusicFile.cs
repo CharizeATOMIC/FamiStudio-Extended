@@ -910,7 +910,7 @@ namespace FamiStudio
 
                     var sampleOffset = Math.Max(0, offset) >> 6;
                     var sampleSize = mapping.Sample.ProcessedData.Length >> 4;
-                    var sampleInitialDmcValue = mapping.OverrideDmcInitialValue ? mapping.DmcInitialValueDiv2 * 2 : mapping.Sample.DmcInitialValueDiv2 * 2;
+                    var sampleInitialDmcValue = mapping.OverrideDmcInitialValue ? mapping.DmcInitialValue : mapping.Sample.DmcInitialValueDiv2 * 2;
                     var samplePitchAndLoop = mapping.Pitch | ((mapping.Loop ? 1 : 0) << 6);
                     var sampleBank = mapping.Sample.Bank;
 
@@ -2485,6 +2485,11 @@ namespace FamiStudio
         public bool Save(Project originalProject, int[] songIds, int format, int maxDpcmBankSize, bool separateSongs, string filename, string dmcFilename, int dmcExportMode, bool exportUnusedMappings, string includeFilename, int machine)
         {
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+            if (kernel == FamiToneKernel.FamiTone2 && originalProject.Songs.Any(s => songIds.Contains(s.Id) && s.UsesOddDpcmMappingDac()))
+            {
+                Log.LogMessage(LogSeverity.Error, TuningStrings.ExtendedFormatExportError);
+                return false;
+            }
 
             this.machine = machine;
             tuningTableNames.Clear();

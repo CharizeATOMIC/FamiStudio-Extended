@@ -31,6 +31,21 @@ static class GimmickNsfRegression
             var frames = trace.RootElement.GetProperty("register_frames");
             var expectedWrites = trace.RootElement.GetProperty("writes");
             var state = new Dictionary<int, int>(); var writes = new List<(int Address, int Value)>(); int latch = 0;
+            int previousEditorControl = 0x0f, previousEngineControl = 0x0f;
+            static int[] ControlChanges(IEnumerable<int> values, ref int previous)
+            {
+                var changes = new List<int>();
+                foreach (int raw in values)
+                {
+                    int value = raw & 0x1f;
+                    // The editor writes 0F on every silent frame. A repeated
+                    // 1F can restart a naturally finished sample, so never
+                    // discard writes that enable DPCM, even with the same value.
+                    if (value == previous && (value & 0x10) == 0) continue;
+                    changes.Add(value); previous = value;
+                }
+                return changes.ToArray();
+            }
             long checks = 0, errors = 0; var examples = new List<string>();
             void Compare(bool condition, int frame, string message)
             {
@@ -89,6 +104,15 @@ static class GimmickNsfRegression
                     }
                     var sampleWrites = ew.EnumerateArray().Where(w => w[0].GetInt32() == 0x4012).ToArray();
                     int actualStarts = writes.Count(w => w.Address == 0x4012);
+                    var engineControls = writes.Where(w => w.Address == 0x4015).Select(w => w.Value).ToArray();
+                    var editorControls = ew.EnumerateArray().Where(w => w[0].GetInt32() == 0x4015).Select(w => w[1].GetInt32()).ToArray();
+                    if (engineControls.Length > 0 || editorControls.Length > 0)
+                    {
+                        var actualChanges = ControlChanges(engineControls, ref previousEngineControl);
+                        var expectedChanges = ControlChanges(editorControls, ref previousEditorControl);
+                        Compare(actualChanges.SequenceEqual(expectedChanges), frame,
+                            $"DPCM stop/retrigger 4015 [{string.Join(',', actualChanges)}] != [{string.Join(',', expectedChanges)}]");
+                    }
                     Compare(actualStarts == sampleWrites.Length, frame, $"DPCM triggers {actualStarts} != {sampleWrites.Length}");
                     if (sampleWrites.Length > 0 && actualStarts > 0)
                     {
