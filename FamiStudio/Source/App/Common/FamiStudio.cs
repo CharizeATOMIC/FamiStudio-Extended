@@ -1561,7 +1561,7 @@ namespace FamiStudio
                 projectFile = System.IO.Path.GetFileName(project.Filename);
 
             var version = Utils.SplitVersionNumber(Platform.ApplicationVersion, out var betaNumber);
-            var title = $"FamiSpectrum R10 (based on FamiStudio {version}) - {projectFile}";
+            var title = $"FamiStudio Extended R10 (based on FamiStudio {version}) - {projectFile}";
 
             if (betaNumber > 0)
                 title += $" - BETA {betaNumber} - DEVELOPMENT VERSION DO NOT DISTRIBUTE!";
