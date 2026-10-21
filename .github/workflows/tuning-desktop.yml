@@ -42,11 +42,13 @@ on:
         options:
           - build
           - publish-r12
+          - import-r13
+          - publish-r13
 permissions:
   contents: read
 jobs:
   desktop:
-    if: github.event_name != 'workflow_dispatch' || inputs.operation != 'publish-r12'
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'build'
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +59,7 @@ jobs:
           - os: ubuntu-latest
             project: FamiStudio.Linux.csproj
             native: libNesSndEmu.so
-          - os: macos-latest
+          - os: macos-15-intel
             project: FamiStudio.Mac.csproj
             native: NesSndEmu.dylib
     runs-on: ${{ matrix.os }}
@@ -122,6 +124,10 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --save-project work/save-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-pitch-migration work/noise-pitch-migration-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-core work/pcm-rate-core
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-model work/pcm-rate-model
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-playback work/pcm-rate-playback
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-export work/pcm-rate-export
 
   publish:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'CharizeATOMIC/FamiStudio-Extended' && github.ref == 'refs/heads/master' && inputs.operation == 'publish-r12'
@@ -153,3 +159,75 @@ jobs:
           GIT_CONFIG_KEY_0: core.autocrlf
           GIT_CONFIG_VALUE_0: 'true'
         run: python3 r12-release-publish.py --publish --repository . --payload . --output "${{ runner.temp }}/r12-reconstructed"
+
+  import-r13:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'CharizeATOMIC/FamiStudio-Extended' && github.ref == 'refs/heads/master' && inputs.operation == 'import-r13'
+    permissions:
+      contents: write
+    concurrency:
+      group: verified-r13-history-and-publication
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify the reviewed bundle and fast-forward only the expected source branch
+        shell: bash
+        env:
+          BUNDLE: FamiStudio-Extended-r13.bundle
+          BUNDLE_SHA: 97d24c837dc040cca3606cfda125d4db329f216910c9a140ca0164c7f6aa8527
+          BASE: 62d90ff8f40a8399f30b00d00eba4cf2cfb6b9dd
+          EXPECTED: 8eb7d858696c8fc155e7f1d607745e46258451c6
+          TARGET: refs/heads/feature/song-tuning-mixer
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$BUNDLE_SHA" "$BUNDLE" | sha256sum --check --strict
+          git cat-file -e "${BASE}^{commit}"
+          git bundle verify "$BUNDLE"
+          test "$(git bundle list-heads "$BUNDLE")" = "$EXPECTED $TARGET"
+          git fetch --no-tags "./$BUNDLE" "$TARGET:refs/heads/import-r13-verified"
+          test "$(git rev-parse refs/heads/import-r13-verified)" = "$EXPECTED"
+          git merge-base --is-ancestor "$BASE" "$EXPECTED"
+          test "$(git rev-list --count "$BASE..$EXPECTED")" = 1
+          current="$(git ls-remote --refs origin "$TARGET")"
+          if [[ "$current" == "${BASE}"$'\t'"${TARGET}" ]]; then
+            git push origin "$EXPECTED:$TARGET"
+          elif [[ "$current" != "${EXPECTED}"$'\t'"${TARGET}" ]]; then
+            echo 'Source branch differs from the approved base/tip. Refusing to update.' >&2
+            exit 1
+          fi
+          test "$(git ls-remote --refs origin "$TARGET")" = "${EXPECTED}"$'\t'"${TARGET}"
+
+  publish-r13:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'CharizeATOMIC/FamiStudio-Extended' && github.ref == 'refs/heads/master' && inputs.operation == 'publish-r13'
+    permissions:
+      contents: write
+    concurrency:
+      group: verified-r13-history-and-publication
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the pinned publisher and four-asset manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 'b515d659e0c4b22494e82e1c6f8343d56b86c0a03912e685182573ba65b116dc' 'r13-publish-manifest.json' | sha256sum --check --strict
+          printf '%s  %s\n' '3460a0aac4bf14993b13f62ce68e31282ff9edca5933cb9648290582d845dca0' 'r13-release-publish.py' | sha256sum --check --strict
+      - name: Reconstruct and verify all four assets before publishing a new R13 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R13_OPERATION: publish-r13
+          TZ: Asia/Hong_Kong
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'true'
+        run: python3 r13-release-publish.py --publish --repository . --payload . --output "${{ runner.temp }}/r13-reconstructed"
