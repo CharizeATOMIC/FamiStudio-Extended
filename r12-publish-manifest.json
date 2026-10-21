@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "repository": "CharizeATOMIC/FamiStudio-Extended",
+  "target_branch": "feature/song-tuning-mixer",
+  "target_commit": "66d19e4d9f95247684c3d5dd230228210caee3a7",
+  "tag": "r12",
+  "prerelease": true,
+  "make_latest": false,
+  "expected_draft_marker": "untagged-4997acaf726312a78e85",
+  "expected_draft_edit_url": "https://github.com/CharizeATOMIC/FamiStudio-Extended/releases/edit/untagged-4997acaf726312a78e85",
+  "title": "FamiStudio Extended r12 — PCM for 2A03, MMC5 & VRC6",
+  "title_file": "r12-release-title.txt",
+  "title_file_sha256": "6eca5fdefb8ddb7b7c62e0acdae476b910f5f0249626a19db4d5b5ce202a6ff8",
+  "body_file": "r12-release-body.md",
+  "body_file_sha256": "ffd841daa0dcb37aedd6a2d0831553c7a986210718e7424645cdcef6b45fb3f4",
+  "body_text_sha256": "e9f2be3be2147b88eac9e77854db8c6ef87da0a6b86649db27c00d117e103145",
+  "chunk_limit_bytes": 20971520,
+  "assets": [
+    {
+      "name": "FamiStudio-Extended-4.5.3-r12-win-x64.zip",
+      "bytes": 66548245,
+      "sha256": "ec8f004d267a88c34d852ec25c145563ee493e7b099e2c41d9a64736e74debea",
+      "source": "chunks",
+      "chunks": [
+        {
+          "file": "r12-windows.part001",
+          "bytes": 20971520,
+          "sha256": "19f5e26517b128f64f06f1ab491a78f2b85b1898f892276787d38f07d77cef6c"
+        },
+        {
+          "file": "r12-windows.part002",
+          "bytes": 20971520,
+          "sha256": "bd4c92c21b42daabb3322fcdd5cb060daacb441831107e36c92cab72ea8d4bc1"
+        },
+        {
+          "file": "r12-windows.part003",
+          "bytes": 20971520,
+          "sha256": "161b0642ab8d4e067dbd09e4e9c3970efee6ecb823f7f0f2a9a01f2d3e1b2c6a"
+        },
+        {
+          "file": "r12-windows.part004",
+          "bytes": 3633685,
+          "sha256": "49430080f52e86ac91264744bfe774d3dd30b01278bd5abf1d403bfa21d4b6cd"
+        }
+      ]
+    },
+    {
+      "name": "FamiStudio-Extended-r12-source.zip",
+      "bytes": 138263014,
+      "sha256": "0be78e948579c632d63603695a4979313364a88959ac1ee7bd3b2614464b8610",
+      "source": "git_archive",
+      "prefix": "FamiStudio-Extended/",
+      "optional_chunks": [
+        {
+          "file": "r12-source.part001",
+          "bytes": 20971520,
+          "sha256": "3f2ae640c2db222bd8cee8d64efd2cdb284d900ff115188d619d8c3d115a2758"
+        },
+        {
+          "file": "r12-source.part002",
+          "bytes": 20971520,
+          "sha256": "37f303171a465880919f91446755fd6d4aebba10dbef046949c0d024283b163e"
+        },
+        {
+          "file": "r12-source.part003",
+          "bytes": 20971520,
+          "sha256": "be2bf619639012950ec6740cd4223fdeed188ee6db8d2629b8864d6a5a734224"
+        },
+        {
+          "file": "r12-source.part004",
+          "bytes": 20971520,
+          "sha256": "eadc7660e7affef87c1824e7f231ef39cf63b19cc9620904107db8d4f3734d4b"
+        },
+        {
+          "file": "r12-source.part005",
+          "bytes": 20971520,
+          "sha256": "7eada93bd7a0cfb364255a63d420a89cc04161ae994102ddb3c44b413dc75380"
+        },
+        {
+          "file": "r12-source.part006",
+          "bytes": 20971520,
+          "sha256": "a3c3f51e1faeef45b6b5764cc54919224a0c4bed79dd6946b38c959805f0f24e"
+        },
+        {
+          "file": "r12-source.part007",
+          "bytes": 12433894,
+          "sha256": "091badeb06159cfd18e9dc701f104a4239758bd291391bbf8b462e4ff6f0d895"
+        }
+      ]
+    },
+    {
+      "name": "FamiStudio-Extended-r12.bundle",
+      "bytes": 3589048,
+      "sha256": "a21dc1970faccc70b439319452af4addb5477665546d129d55ce4d523c7a9491",
+      "source": "existing_repository_file",
+      "file": "FamiStudio-Extended-r12.bundle"
+    },
+    {
+      "name": "PCM-r12.zip",
+      "bytes": 785758,
+      "sha256": "5fb6d77b202131cc5f0f18786146ca7b63828c5a35832a3363e313ebaeae92ea",
+      "source": "file",
+      "file": "PCM-r12.zip"
+    },
+    {
+      "name": "SHA256SUMS-r12.txt",
+      "bytes": 384,
+      "sha256": "e7c9c388fd623d0f8203fa901c5b6b3373e4b8fcb6db468fe259d1e6fb9d4261",
+      "source": "file",
+      "file": "SHA256SUMS-r12.txt"
+    }
+  ],
+  "source_zip_policy": "Run git archive with the exact committed tree and prefix. Refuse on any SHA difference. Optional source chunks are not part of the initial upload and require a reviewed workflow/manifest change before use."
+}
