@@ -1,0 +1,37 @@
+name: Publish verified R12 draft assets
+
+on:
+  push:
+    branches: [master]
+    paths: [.github/workflows/publish-r12-draft.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-verified-r12
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'CharizeATOMIC/FamiStudio-Extended' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out this exact reviewed master revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify publisher and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' '6004d7b7724067f8b0923466081e9859c91973bc6d63953783148f1f9d7aae1b' 'r12-publish-manifest.json' | sha256sum --check --strict
+          printf '%s  %s\n' '5e7f9d99359eaec52bd60ae3a608481f9e11e22087646a3bfddc0914b88f3c72' 'r12-release-publish.py' | sha256sum --check --strict
+      - name: Reconstruct, verify and publish only the matching R12 draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 r12-release-publish.py --publish --repository . --payload . --output "${{ runner.temp }}/r12-reconstructed"
