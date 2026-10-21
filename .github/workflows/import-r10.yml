@@ -1,13 +1,19 @@
-name: Import verified R10 history
+name: Import verified R12 history
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/import-r10.yml
+      - FamiStudio-Extended-r12.bundle
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: import-r10-history
+  group: import-r12-history
   cancel-in-progress: false
 
 jobs:
@@ -21,13 +27,14 @@ jobs:
           ref: master
           fetch-depth: 0
 
-      - name: Verify the bundle and import the exact feature branch
+      - name: Verify the incremental bundle and fast-forward the feature branch
         shell: bash
         env:
-          BUNDLE_FILE: FamiStudio-Extended-r10.bundle
-          BUNDLE_SHA256: 56957437cc8fa5abcaaee93497b1cf23855341a3870f4be8b443b5dd8e84dfc2
-          BASE_COMMIT: c09dca64788606c09fcb5e70db28b9dd1f34be78
-          EXPECTED_COMMIT: af4a116f85cb0105bce1de1505e5bdf8cbe44b96
+          BUNDLE_FILE: FamiStudio-Extended-r12.bundle
+          BUNDLE_SHA256: a21dc1970faccc70b439319452af4addb5477665546d129d55ce4d523c7a9491
+          BASE_COMMIT: af4a116f85cb0105bce1de1505e5bdf8cbe44b96
+          EXPECTED_COMMIT: 66d19e4d9f95247684c3d5dd230228210caee3a7
+          EXPECTED_COMMIT_COUNT: '2'
           TARGET_REF: refs/heads/feature/song-tuning-mixer
         run: |
           set -euo pipefail
@@ -43,24 +50,24 @@ jobs:
             exit 1
           fi
 
-          git fetch --no-tags "./$BUNDLE_FILE" "$TARGET_REF:refs/heads/import-r10-verified"
-          imported_commit="$(git rev-parse refs/heads/import-r10-verified)"
+          git fetch --no-tags "./$BUNDLE_FILE" "$TARGET_REF:refs/heads/import-r12-verified"
+          imported_commit="$(git rev-parse refs/heads/import-r12-verified)"
           test "$imported_commit" = "$EXPECTED_COMMIT"
           git merge-base --is-ancestor "$BASE_COMMIT" "$imported_commit"
           commit_count="$(git rev-list --count "$BASE_COMMIT..$imported_commit")"
-          test "$commit_count" = 18
+          test "$commit_count" = "$EXPECTED_COMMIT_COUNT"
 
+          base_remote="${BASE_COMMIT}"$'\t'"${TARGET_REF}"
           expected_remote="${EXPECTED_COMMIT}"$'\t'"${TARGET_REF}"
           existing_remote="$(git ls-remote --refs origin "$TARGET_REF")"
-          if [[ -n "$existing_remote" && "$existing_remote" != "$expected_remote" ]]; then
-            printf '%s\n' 'Target branch already points to a different commit; refusing to update it.' >&2
-            exit 1
-          fi
-
-          if [[ -z "$existing_remote" ]]; then
+          if [[ "$existing_remote" == "$base_remote" ]]; then
+            # Ordinary push only: Git must confirm this is a fast-forward.
             git push origin "${EXPECTED_COMMIT}:${TARGET_REF}"
-          else
+          elif [[ "$existing_remote" == "$expected_remote" ]]; then
             printf '%s\n' 'Target branch already contains the exact verified commit; no push needed.'
+          else
+            printf '%s\n' 'Target branch is missing or differs from the verified R10 base/R12 tip; refusing to update it.' >&2
+            exit 1
           fi
 
           actual_remote="$(git ls-remote --refs origin "$TARGET_REF")"
