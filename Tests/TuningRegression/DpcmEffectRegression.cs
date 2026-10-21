@@ -22,6 +22,16 @@ static class DpcmEffectRegression
     {
         bool threw=false;try {action();}catch(T){threw=true;}Check(threw,label);
     }
+    static byte[] LegacyMappingBytes(DPCMSampleMapping mapping,bool fullDac)
+    {
+        // Frozen 1004/1005 wire layouts: later versions append PCM pitch, so
+        // the final byte of a current mapping is no longer its DAC low bit.
+        using var stream=new MemoryStream();using var writer=new BinaryWriter(stream);
+        writer.Write(mapping.Sample.Id);writer.Write(mapping.Loop);writer.Write(mapping.Pitch);
+        writer.Write(mapping.OverrideDmcInitialValue);writer.Write(mapping.DmcInitialValueDiv2);
+        if(fullDac)writer.Write((byte)(mapping.DmcInitialValue&1));
+        return stream.ToArray();
+    }
     static Project Fixture(bool pal=false)
     {
         var p=new Project{PalMode=pal};
@@ -130,12 +140,18 @@ static class DpcmEffectRegression
         Check(!mapping.Equals(other) && mapping.GetHashCode()!=other.GetHashCode(),"mapping equality and hash distinguish adjacent odd/even DACs");
         uint crc=instrument.ComputeCRC();mapping.DmcInitialValue=126;Check(crc!=instrument.ComputeCRC(),"instrument CRC includes mapping low bit");mapping.DmcInitialValue=127;
         var bytes=new ProjectSaveBuffer(p);mapping.Serialize(bytes);
-        mapping.DmcInitialValue=1;mapping.Serialize(new ProjectLoadBuffer(p,bytes.GetBuffer(),1005));
+        var legacy1004=LegacyMappingBytes(mapping,false);var legacy1005=LegacyMappingBytes(mapping,true);
+        Check(bytes.GetBuffer().Take(legacy1005.Length).SequenceEqual(legacy1005),"current mapping retains the frozen 1005 wire prefix");
+        mapping.DmcInitialValue=1;mapping.Serialize(new ProjectLoadBuffer(p,bytes.GetBuffer(),Project.Version));
         Check(mapping.DmcInitialValue==127,"direct serialization preserves low bit");
-        mapping.Serialize(new ProjectLoadBuffer(p,bytes.GetBuffer()[..^1],1004));
+        mapping.DmcInitialValue=1;mapping.Serialize(new ProjectLoadBuffer(p,legacy1005,1005));
+        Check(mapping.DmcInitialValue==127,"frozen 1005 mapping preserves low bit");
+        mapping.Serialize(new ProjectLoadBuffer(p,legacy1004,1004));
         Check(mapping.DmcInitialValue==126,"reading old data into an existing odd mapping clears stale low bit");mapping.DmcInitialValue=127;
-        var invalid=bytes.GetBuffer();invalid[^1]=2;
-        Throws<InvalidDataException>(()=>other.Serialize(new ProjectLoadBuffer(p,invalid,1005)),"malformed binary low bit rejected");
+        foreach(int version in new[]{1005,Project.Version})foreach(byte lowBit in new byte[]{2,255}) {
+            var invalid=version==1005?(byte[])legacy1005.Clone():bytes.GetBuffer();invalid[legacy1004.Length]=lowBit;
+            Throws<InvalidDataException>(()=>other.Serialize(new ProjectLoadBuffer(p,invalid,version)),"malformed binary low bit "+lowBit+" rejected in format "+version);
+        }
         foreach(var flags in new[]{ProjectBufferFlags.UndoRedo,ProjectBufferFlags.Clipboard}) {
             var buffer=new ProjectSaveBuffer(p,flags);mapping.Serialize(buffer);mapping.DmcInitialValue=0;
             mapping.Serialize(new ProjectLoadBuffer(p,buffer.GetBuffer(),Project.Version,flags));
