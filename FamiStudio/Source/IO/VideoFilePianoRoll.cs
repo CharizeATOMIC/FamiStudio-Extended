@@ -545,11 +545,13 @@ namespace FamiStudio
 
                     if (note.IsMusical)
                     {
-                        if (s.channel.Type == ChannelType.Dpcm && Settings.DpcmColorMode == Settings.ColorModeSample && note.Instrument != null)
+                        if (s.channel.SupportsSampleMappings && Settings.DpcmColorMode == Settings.ColorModeSample && note.Instrument != null)
                         {
-                            var mapping = note.Instrument.GetDPCMMapping(note.Value);
+                            var mapping = note.Instrument.GetSampleMapping(note.Value);
                             if (mapping != null && mapping.Sample != null)
                                 color = mapping.Sample.Color;
+                            else
+                                color = note.Instrument.Color;
                         }
                         else
                         {

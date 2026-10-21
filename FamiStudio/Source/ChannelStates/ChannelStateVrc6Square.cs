@@ -14,6 +14,11 @@ namespace FamiStudio
 
         public override void UpdateAPU()
         {
+            if (UpdatePcmSample(NesApu.PcmDestinationVrc6Square1 + channelType - ChannelType.Vrc6Square1))
+            {
+                base.UpdateAPU();
+                return;
+            }
             var duty = GetDuty();
 
             if (note.IsStop)
@@ -38,6 +43,7 @@ namespace FamiStudio
 
         protected override void ResetPhase()
         {
+            if (pcmOwnsVoice) return;
             // Clear and set the hi-bit of 9002/A002 to reset phase.
             SkipCycles(6); // tax/lda
             WriteRegister(NesApu.VRC6_PL1_HI + regOffset, prevPeriodHi);

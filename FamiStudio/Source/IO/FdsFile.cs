@@ -84,6 +84,7 @@ namespace FamiStudio
 
         public unsafe bool Save(Project originalProject, string filename, int[] songIds, string name, string author, bool pal)
         {
+            if (originalProject.UsesPcm) { Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.UnsupportedExport); return false; }
             if (originalProject.UpdateRateMultiplier != 1) { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError); return false; }
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
 

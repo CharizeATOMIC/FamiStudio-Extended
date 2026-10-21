@@ -6,7 +6,7 @@ using System.Globalization;
 
 namespace FamiStudio
 {
-    public class DPCMSample
+    public partial class DPCMSample
     {
         // General properties.
         private int id;
@@ -15,6 +15,10 @@ namespace FamiStudio
         private string folderName;
         private Project project;
         private int bank = 0;
+        // The legacy type name is retained for editor/undo interoperability.
+        // PCM assets have their own project collection, IDs and source data;
+        // they never pass through the DPCM encoder or DPCM bank allocator.
+        private bool isPcm;
 
         // Source data
         private string sourceFilename = "";
@@ -44,11 +48,12 @@ namespace FamiStudio
 
         // Properties.
         public int Id => id;
+        public bool IsPcm => isPcm;
         public string Name { get => name;  set => name  = value; }
         public Color Color { get => color; set => color = value; }
         public int Bank    { get => bank;  set => bank  = value; }
         public string FolderName { get => folderName; set => folderName = value; }
-        public Folder Folder => string.IsNullOrEmpty(folderName) ? null : project.GetFolder(FolderType.Sample, folderName);
+        public Folder Folder => string.IsNullOrEmpty(folderName) ? null : project.GetFolder(isPcm ? FolderType.PcmSample : FolderType.Sample, folderName);
         public string NameWithFolder => (string.IsNullOrEmpty(folderName) ? "" : $"{folderName}\\") + name;
 
         public string SourceFilename => sourceFilename;
@@ -59,8 +64,8 @@ namespace FamiStudio
 
         public float ProcessedStartTime  => processedDataStartTime;
         public float ProcessedEndTime    => processedDataStartTime + ProcessedDuration;
-        public float ProcessedSampleRate => DPCMSampleRate.Frequencies[palProcessing ? 1 : 0, sampleRate];
-        public float ProcessedDuration   => processedData.Length * 8 / ProcessedSampleRate;
+        public float ProcessedSampleRate => isPcm ? (float)Mmc5PcmTiming.GetSampleRate(palProcessing) : DPCMSampleRate.Frequencies[palProcessing ? 1 : 0, sampleRate];
+        public float ProcessedDuration   => processedData.Length * (isPcm ? 1 : 8) / ProcessedSampleRate;
 
         public byte[]   ProcessedData       { get => processedData;       set => processedData   = value; }
         public int      SampleRate          { get => sampleRate;          set => sampleRate      = value; }
@@ -89,17 +94,18 @@ namespace FamiStudio
             // For serialization.
         }
 
-        public DPCMSample(Project project, int id, string name)
+        public DPCMSample(Project project, int id, string name, bool isPcm = false)
         {
             this.project = project;
             this.id = id;
             this.name = name;
+            this.isPcm = isPcm;
             this.color = Theme.RandomCustomColor();
         }
 
         public float GetPlaybackSampleRate(bool palPlayback)
         {
-            return DPCMSampleRate.Frequencies[palPlayback ? 1 : 0, previewRate];
+            return isPcm ? (float)Mmc5PcmTiming.GetSampleRate(palPlayback) : DPCMSampleRate.Frequencies[palPlayback ? 1 : 0, previewRate];
         }
 
         public float GetPlaybackCents(bool palPlayback)
@@ -109,7 +115,14 @@ namespace FamiStudio
 
         public float GetPlaybackDuration(bool palPlayback)
         {
-            return processedData.Length * 8 / GetPlaybackSampleRate(palPlayback);
+            return isPcm ? GetPcmPreviewWave(palPlayback).Duration : processedData.Length * 8 / GetPlaybackSampleRate(palPlayback);
+        }
+
+        internal void MakePcmAsset()
+        {
+            isPcm = true;
+            bank = 0;
+            Process();
         }
 
         public int GetVolumeScaleDmcInitialValueDiv2()
@@ -120,33 +133,35 @@ namespace FamiStudio
 
         public void SetDmcSourceData(byte[] data, string filename, bool resetParams)
         {
-            sourceData = new DPCMSampleDmcSourceData(data);
-            sourceFilename = filename;
-
-            if (resetParams)
+            lock (ProcessedDataLock)
             {
-                paddingMode = DPCMPaddingType.Unpadded;
-                ResetVolumeEnvelope();
-            }
-            else
-            {
-                ClampVolumeEnvelope();
+                pcmDataCache.Clear();
+                sourceData = new DPCMSampleDmcSourceData(data);
+                sourceFilename = filename;
+                if (resetParams)
+                {
+                    paddingMode = DPCMPaddingType.Unpadded;
+                    ResetVolumeEnvelope();
+                }
+                else
+                    ClampVolumeEnvelope();
             }
         }
 
         public void SetWavSourceData(short[] data, int rate, string filename, bool resetParams)
         {
-            sourceData = new DPCMSampleWavSourceData(data, rate);
-            sourceFilename = filename;
-
-            if (resetParams)
+            lock (ProcessedDataLock)
             {
-                paddingMode = DPCMPaddingType.PadTo16Bytes;
-                ResetVolumeEnvelope();
-            }
-            else
-            {
-                ClampVolumeEnvelope();
+                pcmDataCache.Clear();
+                sourceData = new DPCMSampleWavSourceData(data, rate);
+                sourceFilename = filename;
+                if (resetParams)
+                {
+                    paddingMode = DPCMPaddingType.PadTo16Bytes;
+                    ResetVolumeEnvelope();
+                }
+                else
+                    ClampVolumeEnvelope();
             }
         }
 
@@ -159,6 +174,18 @@ namespace FamiStudio
 
         public void PermanentlyApplyAllProcessing()
         {
+            if (isPcm)
+            {
+                var wave = GetPcmPreviewWave(palProcessing);
+                SetWavSourceData(wave.GetPlaybackSamples(), Mmc5PcmPreviewWave.PlaybackSampleRate, null, true);
+                volumeAdjust = 100;
+                finePitch = 1.0f;
+                trimZeroVolume = false;
+                reverseBits = false;
+                ResetVolumeEnvelope();
+                Process();
+                return;
+            }
             SetDmcSourceData(processedData, null, true);
             sampleRate = 15; 
             previewRate = 15;
@@ -189,7 +216,14 @@ namespace FamiStudio
         {
             lock (ProcessedDataLock)
             {
+                pcmDataCache.Clear();
                 processedDataStartTime = 0;
+                if (isPcm)
+                {
+                    processedData = GetPcmData(palProcessing);
+                    processedDataStartTime = GetPcmPreviewWave(palProcessing).StartTime;
+                    return;
+                }
 
                 var targetSampleRate = DPCMSampleRate.Frequencies[palProcessing ? 1 : 0, sampleRate];
 
@@ -369,7 +403,7 @@ namespace FamiStudio
             Debug.Assert(project.GetSample(id) == this);
             Debug.Assert(!string.IsNullOrEmpty(name.Trim()));
             Debug.Assert(bank >= 0 && bank < Project.MaxDPCMBanks);
-            Debug.Assert(string.IsNullOrEmpty(folderName) || project.FolderExists(FolderType.Sample, folderName));
+            Debug.Assert(string.IsNullOrEmpty(folderName) || project.FolderExists(isPcm ? FolderType.PcmSample : FolderType.Sample, folderName));
 #endif
         }
 
@@ -437,10 +471,17 @@ namespace FamiStudio
         public void Serialize(ProjectBuffer buffer)
         {
             if (buffer.IsReading)
+            {
+                lock (ProcessedDataLock) pcmDataCache.Clear();
                 project = buffer.Project;
+            }
 
             buffer.Serialize(ref id, true);
             buffer.Serialize(ref name);
+            if (buffer.Version >= Project.IndependentPcmFormatVersion)
+                buffer.Serialize(ref isPcm);
+            else if (buffer.IsReading)
+                isPcm = false;
 
             // At version 9 (FamiStudio 2.4.0) we added a proper DPCM sample editor.
             if (buffer.Version < 9)
@@ -533,10 +574,20 @@ namespace FamiStudio
         private int pitch = 15;
         private int dmcInitialValueDiv2 = NesApu.DACDefaultValueDiv2;
         private byte dmcInitialValueLowBit;
+        private int pcmPitch;
 
         public DPCMSample Sample { get => sample; set => sample = value; }
         public bool Loop                    { get => loop;  set => loop  = value; }
         public int  Pitch                   { get => pitch; set => pitch = value; }
+        public int PcmPitch
+        {
+            get => pcmPitch;
+            set
+            {
+                if (value < -48 || value > 48) throw new ArgumentOutOfRangeException(nameof(value));
+                pcmPitch = value;
+            }
+        }
         public bool OverrideDmcInitialValue { get => overrideDmcInitialValue; set => overrideDmcInitialValue = value; }
         // Preserve the legacy half-value API for importers and old projects.
         // Only mappings gain a full seven-bit DAC; sample processing is unchanged.
@@ -578,6 +629,11 @@ namespace FamiStudio
                 dmcInitialValueLowBit = 0;
             if (buffer.IsReading && (dmcInitialValueDiv2 < 0 || dmcInitialValueDiv2 > 63 || dmcInitialValueLowBit > 1))
                 throw new InvalidDataException("DPCM mapping initial DAC must be in the range 0..127.");
+            if (buffer.Version >= Project.Mmc5PcmFormatVersion)
+                buffer.Serialize(ref pcmPitch);
+            else if (buffer.IsReading)
+                pcmPitch = 0;
+            if (buffer.IsReading) PcmPitch = pcmPitch;
         }
 
         public void ValidateIntegrity(Project project, Dictionary<int, object> idMap)
@@ -585,7 +641,7 @@ namespace FamiStudio
             if (sample != null)
             {
                 Debug.Assert(project.GetSample(sample.Id) == sample);
-                Debug.Assert(project.Samples.Contains(sample));
+                Debug.Assert(project.SampleExists(sample));
             }
         }
 
@@ -594,6 +650,7 @@ namespace FamiStudio
             int hash = sample.Id;
             hash = Utils.HashCombine(hash, loop ? 1 : 0);
             hash = Utils.HashCombine(hash, pitch);
+            hash = Utils.HashCombine(hash, pcmPitch);
             hash = Utils.HashCombine(hash, overrideDmcInitialValue ? DmcInitialValue : 0);
             return hash;
         }
@@ -606,6 +663,7 @@ namespace FamiStudio
                 sample == other.sample &&
                 loop == other.loop &&
                 pitch == other.pitch &&
+                pcmPitch == other.pcmPitch &&
                 overrideDmcInitialValue == other.overrideDmcInitialValue &&
                 DmcInitialValue == other.DmcInitialValue;
         }

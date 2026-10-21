@@ -366,10 +366,12 @@ namespace FamiStudio
             new SortedDictionary<int, (object, Folder)>(),
             new SortedDictionary<int, (object, Folder)>(),
             new SortedDictionary<int, (object, Folder)>(),
+            new SortedDictionary<int, (object, Folder)>(),
         };
 
         private SortedDictionary<int, Folder>[] folderInsertionPoints = new[]
         {
+            new SortedDictionary<int, Folder>(),
             new SortedDictionary<int, Folder>(),
             new SortedDictionary<int, Folder>(),
             new SortedDictionary<int, Folder>(),
@@ -804,14 +806,14 @@ namespace FamiStudio
             props.ToolTip = $"<MouseLeft> {PropertiesInstrumentTooltip} - <MouseRight> {MoreOptionsTooltip}";
             props.Click += (s) => EditInstrumentProperties(instrument);
 
-            if (instrument.Expansion == ExpansionType.None)
+            if (instrument.SupportsPcmMapping || instrument.SupportsDpcmMapping)
             {
                 x -= spacingX + props.Width;
                 var dpcm = CreateImageButton(panel, x, "ChannelDPCM");
                 dpcm.Dimmed = !instrument.HasAnyMappedSamples;
                 dpcm.WhiteHighlight = highlightedObject == instrument;
                 dpcm.UserData = "DPCM";
-                dpcm.ToolTip = $"<MouseLeft> {EditSamplesTooltip} - <MouseRight> {MoreOptionsTooltip}";
+                dpcm.ToolTip = $"<MouseLeft> {Mmc5PcmStrings.MappingTooltip} - <MouseRight> {MoreOptionsTooltip}";
                 dpcm.Click += (s) => App.StartEditDPCMMapping(instrument);
                 dpcm.PointerDown += (s, e) => InstrumentDpcm_PointerDown(s, instrument, e, dpcm.Image);
                 dpcm.MarkHandledOnClick = Platform.IsMobile;
@@ -1098,23 +1100,23 @@ namespace FamiStudio
             {
                 var menu = new List<ContextMenuOption>();
 
-                menu.Add(new ContextMenuOption("MenuDelete", DeleteSampleContext, () => { AskDeleteDPCMSample(sample); }, ContextMenuSeparator.After));
+                menu.Add(new ContextMenuOption("MenuDelete", sample.IsPcm ? Mmc5PcmStrings.DeleteSampleLabel : DeleteSampleContext, () => { AskDeleteDPCMSample(sample); }, ContextMenuSeparator.After));
                 menu.Add(new ContextMenuOption("MenuDuplicate", DuplicateContext, () => { DuplicateDPCMSample(sample); }));
                 menu.Add(new ContextMenuOption("MenuWave", ReplaceSampleContext,  () => { ReloadDPCMSampleSourceData(sample, true); }));
 
                 if (Platform.IsDesktop)
                 {
-                    menu.Add(new ContextMenuOption("MenuSave", ExportProcessedDmcDataContext, () => { ExportDPCMSampleProcessedData(sample); }));
+                    menu.Add(new ContextMenuOption("MenuSave", sample.IsPcm ? Mmc5PcmStrings.ExportProcessedWave : ExportProcessedDmcDataContext, () => { ExportDPCMSampleProcessedData(sample); }));
                     menu.Add(new ContextMenuOption("MenuSave", ExportSourceDataContext, () => { ExportDPCMSampleSourceData(sample); }));
                 }
 
-                if (sample.SourceDataIsWav)
+                if (sample.SourceDataIsWav && !sample.IsPcm)
                 {
                     menu.Add(new ContextMenuOption("MenuTrash", DiscardSourceWavDataContext, DiscardSourceWavDataTooltip, () => { DeleteDpcmSourceWavData(sample); }));
                 }
 
-                menu.Add(new ContextMenuOption("MenuBankAssign", AutoAssignBanksContext, () => { AutoAssignSampleBanks(); }, ContextMenuSeparator.Before));
-                menu.Add(new ContextMenuOption("MenuProperties", PropertiesSamplesContext, () => { EditDPCMSampleProperties(sample, true); }, ContextMenuSeparator.Before));
+                if (!sample.IsPcm) menu.Add(new ContextMenuOption("MenuBankAssign", AutoAssignBanksContext, () => { AutoAssignSampleBanks(); }, ContextMenuSeparator.Before));
+                menu.Add(new ContextMenuOption("MenuProperties", sample.IsPcm ? Mmc5PcmStrings.SamplePropertiesTitle : PropertiesSamplesContext, () => { EditDPCMSampleProperties(sample, true); }, ContextMenuSeparator.Before));
 
                 App.ShowContextMenuAsync(menu.ToArray());
                 e.MarkHandled();
@@ -1525,45 +1527,48 @@ namespace FamiStudio
             }
         }
 
-        private void CreateDpcmSamplesHeaderControls()
+        private void CreateDpcmSamplesHeaderControls(bool pcm = false)
         {
             var project = App.Project;
             var panel = CreateGradientPanel(Theme.DarkGreyColor4);
+            panel.UserData = pcm ? "PCMSamples" : "DPCMSamples";
             var addButton = CreateImageButton(panel, panel.Width - iconSizeX - marginX, "Add", false);
-            addButton.ToolTip = $"<MouseLeft> {AddNewSampleTooltip}";
-            addButton.Click += (s) => AskAddSampleFolder();
-            addButton.RightClick += (s) => AskAddSampleFolder();
+            addButton.ToolTip = $"<MouseLeft> {(pcm ? Mmc5PcmStrings.AddFolderTooltip : AddNewSampleTooltip)}";
+            addButton.Click += (s) => AskAddSampleFolder(pcm);
+            addButton.RightClick += (s) => AskAddSampleFolder(pcm);
             addButton.ClickOnMouseUp = true;
 
             var importButton = CreateImageButton(panel, addButton.Left - iconSizeX - marginX, "InstrumentOpen", false);
-            importButton.ToolTip = $"<MouseLeft> {ImportSamplesTooltip}";
-            importButton.Click += (s) => LoadDPCMSample();
+            importButton.UserData = pcm ? "ImportPcmSamples" : "ImportDpcmSamples";
+            importButton.ToolTip = $"<MouseLeft> {(pcm ? Mmc5PcmStrings.ImportTooltip : ImportSamplesTooltip)}";
+            importButton.Click += (s) => LoadDPCMSample(pcm);
 
             var sortButton = CreateImageButton(panel, importButton.Left - spacingX - iconSizeX, "Sort", false);
             sortButton.ToolTip = $"<MouseLeft> {AutoSortSamplesTooltip}";
-            sortButton.Dimmed = !project.AutoSortSamples;
-            sortButton.Click += (s) => SortSamples();
+            sortButton.Dimmed = !(pcm ? project.AutoSortPcmSamples : project.AutoSortSamples);
+            sortButton.Click += (s) => SortSamples(pcm);
 
-            CreateCenteredLabel(panel, SamplesHeaderLabel, 2 * sortButton.Left - panel.Width, false);
+            CreateCenteredLabel(panel, pcm ? Mmc5PcmStrings.SampleLibraryLabel : SamplesHeaderLabel, 2 * sortButton.Left - panel.Width, false);
         }
 
-        private void CreateAllDpcmSamplesControls()
+        private void CreateAllDpcmSamplesControls(bool pcm = false)
         {
             var project = App.Project;
-            var folders = project.GetFoldersForType(FolderType.Sample);
+            var folderType = pcm ? FolderType.PcmSample : FolderType.Sample;
+            var folders = project.GetFoldersForType(folderType);
             folders.Insert(0, null);
-            CreateInsertionPoint(FolderType.Sample);
+            CreateInsertionPoint(folderType);
 
             foreach (var f in folders)
             {
-                var samples = project.GetSamplesInFolder(f == null ? null : f.Name);
+                var samples = pcm ? project.GetPcmSamplesInFolder(f?.Name) : project.GetSamplesInFolder(f?.Name);
                 var folderExpanded = true;
 
                 if (f != null)
                 {
                     CreateFolderControls(f);
                     folderExpanded = f.Expanded;
-                    CreateInsertionPoint(FolderType.Sample, null, f);
+                    CreateInsertionPoint(folderType, null, f);
                 }
 
                 if (folderExpanded)
@@ -1573,11 +1578,11 @@ namespace FamiStudio
                         CreateDpcmSampleControls(sample);
                         if (sample == expandedSample)
                             CreateParamsControls(sample.Color, sample, DPCMSampleParamProvider.GetParams(sample), TransactionScope.DPCMSample, sample.Id);
-                        CreateInsertionPoint(FolderType.Sample, sample, f);
+                        CreateInsertionPoint(folderType, sample, f);
                     }
                 }
 
-                CreateFolderInsertionPoint(FolderType.Sample, f);
+                CreateFolderInsertionPoint(folderType, f);
             }
         }
 
@@ -1680,6 +1685,8 @@ namespace FamiStudio
             }
         }
 
+        public void SampleContextChanged() => RecreateAllControls();
+
         private void RecreateAllControls()
         {
             UpdateRenderCoords();
@@ -1702,6 +1709,8 @@ namespace FamiStudio
                 CreateAllInstrumentsControls();
                 CreateDpcmSamplesHeaderControls();
                 CreateAllDpcmSamplesControls();
+                CreateDpcmSamplesHeaderControls(true);
+                CreateAllDpcmSamplesControls(true);
                 CreateArpeggioHeaderControls();
                 CreateAllArpeggiosControls();
             }
@@ -1923,7 +1932,7 @@ namespace FamiStudio
                 }
                 else if (captureOperation == DragSample)
                 {
-                    type = FolderType.Sample;
+                    type = draggedSample.IsPcm ? FolderType.PcmSample : FolderType.Sample;
                 }
                 else
                 {
@@ -2111,6 +2120,7 @@ namespace FamiStudio
                             case FolderType.Instrument: App.Project.AutoSortInstruments = false; break;
                             case FolderType.Arpeggio:   App.Project.AutoSortArpeggios   = false; break;
                             case FolderType.Sample:     App.Project.AutoSortSamples     = false; break;
+                            case FolderType.PcmSample:  App.Project.AutoSortPcmSamples  = false; break;
                         }
                         App.UndoRedoManager.EndTransaction();
                     }
@@ -2217,20 +2227,29 @@ namespace FamiStudio
                         }
                         if (oldFolder == draggedSample.Folder)
                         {
-                            App.Project.AutoSortSamples = false;
+                            if (draggedSample.IsPcm) App.Project.AutoSortPcmSamples = false;
+                            else App.Project.AutoSortSamples = false;
                         }
-                        App.Project.ConditionalSortSamples();
+                        if (draggedSample.IsPcm) App.Project.ConditionalSortPcmSamples();
+                        else App.Project.ConditionalSortSamples();
                         App.UndoRedoManager.EndTransaction();
                     }
                 }
                 else if (Platform.IsDesktop && !inside)
                 {
                     var mappingNote = App.GetDPCMSampleMappingNoteAtPos(screenPos, out var instrument);
-                    if (instrument != null)
+                    if (instrument != null && (draggedSample.IsPcm ? instrument.SupportsPcmMapping : instrument.SupportsDpcmMapping))
                     {
+                        if (draggedSample.IsPcm && !NesApu.SupportsPcm)
+                        {
+                            App.DisplayNotification(Mmc5PcmStrings.NativeLibraryRequired, true);
+                            RecreateAllControls();
+                            return;
+                        }
                         App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, instrument.Id, -1, TransactionFlags.StopAudio);
                         instrument.UnmapDPCMSample(mappingNote);
-                        instrument.MapDPCMSample(mappingNote, draggedSample);
+                        if (draggedSample.IsPcm) instrument.MapPcmSample(mappingNote, draggedSample);
+                        else instrument.MapDPCMSample(mappingNote, draggedSample, bank: draggedSample.Bank);
                         App.UndoRedoManager.EndTransaction();
                         DPCMSampleMapped?.Invoke(draggedSample, screenPos);
                     }
@@ -2313,6 +2332,16 @@ namespace FamiStudio
             MarkDirty();
         }
 
+        private static void CopySampleMapping(Instrument instrument, int key, DPCMSampleMapping source)
+        {
+            var mapping = source.Sample.IsPcm ? instrument.MapPcmSample(key, source.Sample) : instrument.MapDPCMSample(key, source.Sample, bank: source.Sample.Bank);
+            mapping.Pitch = source.Pitch;
+            mapping.PcmPitch = source.PcmPitch;
+            mapping.Loop = source.Loop;
+            mapping.OverrideDmcInitialValue = source.OverrideDmcInitialValue;
+            mapping.DmcInitialValue = source.DmcInitialValue;
+        }
+
         private void EndDragInstrumentSampleMappings(Point p)
         {
             var windowPoint = ControlToWindow(p);
@@ -2324,7 +2353,8 @@ namespace FamiStudio
                 var instrumentSrc = draggedInstrument;
                 var instrumentDst = panel.UserData as Instrument;
 
-                if (instrumentSrc != instrumentDst && instrumentSrc != null && instrumentDst != null && instrumentDst.Expansion == ExpansionType.None)
+                if (instrumentSrc != instrumentDst && instrumentSrc != null && instrumentDst != null && instrumentDst.SupportsPcmMapping &&
+                    instrumentSrc.SamplesMapping.Values.All(m => m.Sample.IsPcm || instrumentDst.SupportsDpcmMapping))
                 {
                     Platform.MessageBoxAsync(ParentWindow, CopyInstrumentSamplesMessage.Format(instrumentSrc.Name, instrumentDst.Name), CopyInstrumentSamplesTitle, MessageBoxButtons.YesNo, (r) =>
                     {
@@ -2333,7 +2363,7 @@ namespace FamiStudio
                             App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, instrumentDst.Id);
                             instrumentDst.SamplesMapping.Clear();
                             foreach (var mapping in instrumentSrc.SamplesMapping)
-                                instrumentDst.MapDPCMSample(mapping.Key, mapping.Value.Sample, mapping.Value.Pitch, mapping.Value.Loop);
+                                CopySampleMapping(instrumentDst, mapping.Key, mapping.Value);
                             App.UndoRedoManager.EndTransaction();
 
                             // Update DPCM button.
@@ -2880,165 +2910,172 @@ namespace FamiStudio
             RecreateAllControls();
         }
 
-        private void LoadDPCMSample()
+        private void ImportSamples(string[] filenames, bool pcm)
         {
-            Action<string[]> LoadDPCMSampleAction = (filenames) =>
+            if (filenames != null && filenames.Length > 0)
             {
-                if (filenames != null && filenames.Length > 0)
+                var numFamiStudioFiles = 0;
+                var numSamplesFiles = 0;
+                foreach (var fn in filenames)
                 {
-                    var numFamiStudioFiles = 0;
-                    var numSamplesFiles = 0;
-                    foreach (var fn in filenames)
-                    {
-                        var ext = Path.GetExtension(fn).ToLower();
+                    var ext = Path.GetExtension(fn).ToLower();
 
-                        if (ext == ".fms")
-                            numFamiStudioFiles++;
-                        else if (ext == ".dmc" || ext == ".wav")
-                            numSamplesFiles++;
-                    }
+                    if (ext == ".fms")
+                        numFamiStudioFiles++;
+                    else if (ext == ".wav" || (!pcm && ext == ".dmc"))
+                        numSamplesFiles++;
+                }
 
-                    if (numFamiStudioFiles > 1 || (numFamiStudioFiles == 1 && numSamplesFiles != 0))
+                if (numFamiStudioFiles > 1 || (numFamiStudioFiles == 1 && numSamplesFiles != 0))
+                {
+                    Platform.MessageBoxAsync(ParentWindow, Mmc5PcmStrings.ImportSingleProjectError, "Error", MessageBoxButtons.OK);
+                    return;
+                }
+                else if (numFamiStudioFiles == 1)
+                {
+                    App.BeginLogTask();
+                    App.OpenProjectFileAsync(filenames[0], false, (samplesProject) =>
                     {
-                        Platform.MessageBoxAsync(ParentWindow, "You can only select one FamiStudio project to import samples from.", "Error", MessageBoxButtons.OK);
-                        return;
-                    }
-                    else if (numFamiStudioFiles == 1)
-                    {
-                        App.BeginLogTask();
-                        App.OpenProjectFileAsync(filenames[0], false, (samplesProject) => 
+                        if (samplesProject != null)
                         {
-                            if (samplesProject != null)
+                            if ((pcm ? samplesProject.PcmSamples : samplesProject.Samples).Count == 0)
                             {
-                                if (samplesProject.Samples.Count == 0)
-                                {
-                                    Platform.MessageBox(ParentWindow, "The selected project does not contain any samples.", "Error", MessageBoxButtons.OK);
-                                    return;
-                                }
+                                Platform.MessageBox(ParentWindow, Mmc5PcmStrings.EmptyLibraryError, "Error", MessageBoxButtons.OK);
+                                App.AbortLogTask();
+                                return;
+                            }
 
-                                var samples = new List<DPCMSample>();
-                                var samplesNames = new List<string>();
+                            var samples = new List<DPCMSample>();
+                            var samplesNames = new List<string>();
 
-                                samplesProject.SortSamples();
+                            if (pcm) samplesProject.SortPcmSamples();
+                            else samplesProject.SortSamples();
 
-                                foreach (var sample in samplesProject.GetSamplesInFolder(null))
+                            foreach (var sample in (pcm ? samplesProject.GetPcmSamplesInFolder(null) : samplesProject.GetSamplesInFolder(null)))
+                            {
+                                samples.Add(sample);
+                                samplesNames.Add(sample.NameWithFolder);
+                            }
+
+                            foreach (var folder in samplesProject.GetFoldersForType(pcm ? FolderType.PcmSample : FolderType.Sample))
+                            {
+                                foreach (var sample in (pcm ? samplesProject.GetPcmSamplesInFolder(folder.Name) : samplesProject.GetSamplesInFolder(folder.Name)))
                                 {
                                     samples.Add(sample);
                                     samplesNames.Add(sample.NameWithFolder);
                                 }
-
-                                foreach (var folder in samplesProject.GetFoldersForType(FolderType.Sample))
-                                {
-                                    foreach (var sample in samplesProject.GetSamplesInFolder(folder.Name))
-                                    {
-                                        samples.Add(sample);
-                                        samplesNames.Add(sample.NameWithFolder);
-                                    }
-                                }
-
-                                var dlg = new PropertyDialog(ParentWindow, ImportSamplesTitle, 300);
-                                dlg.Properties.AddCheckBoxList(ImportSamplesLabel.Colon, samplesNames.ToArray(), null, CheckBoxSelectAllTooltip, 15); // 0
-                                dlg.Properties.Build();
-
-                                dlg.ShowDialogAsync((r) =>
-                                {
-                                    if (r == DialogResult.OK)
-                                    {
-                                        var selected = dlg.Properties.GetPropertyValue<bool[]>(0);
-                                        var sampleIdsToMerge = new List<int>();
-
-                                        for (int i = 0; i < selected.Length; i++)
-                                        {
-                                            if (selected[i])
-                                                sampleIdsToMerge.Add(samples[i].Id);
-                                        }
-
-                                        // Wipe everything but the instruments we want.
-                                        samplesProject.DeleteAllSongs();
-                                        samplesProject.DeleteAllArpeggios();
-                                        samplesProject.DeleteAllSamplesBut(sampleIdsToMerge.ToArray());
-                                        samplesProject.DeleteAllInstruments();
-
-                                        App.UndoRedoManager.BeginTransaction(TransactionScope.Project);
-                                        bool success = App.Project.MergeProject(samplesProject);
-                                        App.UndoRedoManager.AbortOrEndTransaction(success);
-
-                                        RecreateAllControls();
-                                        App.EndLogTask();
-                                    }
-                                    else
-                                    {
-                                        App.AbortLogTask();
-                                    }
-                                });
                             }
-                            else
+
+                            var dlg = new PropertyDialog(ParentWindow, pcm ? Mmc5PcmStrings.ImportTitle : ImportSamplesTitle, 300);
+                            dlg.Properties.AddCheckBoxList(ImportSamplesLabel.Colon, samplesNames.ToArray(), null, CheckBoxSelectAllTooltip, 15); // 0
+                            dlg.Properties.Build();
+
+                            dlg.ShowDialogAsync((r) =>
                             {
-                                App.AbortLogTask();
-                            }
-                        });
-                    }
-                    else if (numSamplesFiles > 0)
-                    {
-                        App.BeginLogTask();
+                                if (r == DialogResult.OK)
+                                {
+                                    var selected = dlg.Properties.GetPropertyValue<bool[]>(0);
+                                    var sampleIdsToMerge = new List<int>();
+
+                                    for (int i = 0; i < selected.Length; i++)
+                                    {
+                                        if (selected[i])
+                                            sampleIdsToMerge.Add(samples[i].Id);
+                                    }
+
+                                    // Wipe everything but the instruments we want.
+                                    samplesProject.DeleteAllSongs();
+                                    samplesProject.DeleteAllArpeggios();
+                                    samplesProject.DeleteAllSamplesBut(sampleIdsToMerge.ToArray());
+                                    samplesProject.DeleteAllInstruments();
+
+                                    App.UndoRedoManager.BeginTransaction(TransactionScope.Project);
+                                    bool success = App.Project.MergeProject(samplesProject);
+                                    App.UndoRedoManager.AbortOrEndTransaction(success);
+
+                                    RecreateAllControls();
+                                    App.EndLogTask();
+                                }
+                                else
+                                {
+                                    App.AbortLogTask();
+                                }
+                            });
+                        }
+                        else
                         {
-                            App.UndoRedoManager.BeginTransaction(TransactionScope.Project);
+                            App.AbortLogTask();
+                        }
+                    });
+                }
+                else if (numSamplesFiles > 0)
+                {
+                    App.BeginLogTask();
+                    {
+                        App.UndoRedoManager.BeginTransaction(TransactionScope.Project);
 
-                            var importedSamples = new List<DPCMSample>();
+                        var importedSamples = new List<DPCMSample>();
 
-                            foreach (var filename in filenames)
+                        foreach (var filename in filenames)
+                        {
+                            var sampleName = Path.GetFileNameWithoutExtension(filename);
+                            if (sampleName.Length > 16)
+                                sampleName = sampleName.Substring(0, 16);
+                            sampleName = pcm ? App.Project.GenerateUniquePcmSampleName(sampleName) : App.Project.GenerateUniqueDPCMSampleName(sampleName);
+
+                            if (Path.GetExtension(filename).ToLower() == ".wav")
                             {
-                                var sampleName = Path.GetFileNameWithoutExtension(filename);
-                                if (sampleName.Length > 16)
-                                    sampleName = sampleName.Substring(0, 16);
-                                sampleName = App.Project.GenerateUniqueDPCMSampleName(sampleName);
-
-                                if (Path.GetExtension(filename).ToLower() == ".wav")
+                                var wavData = WaveFile.Load(filename, out var sampleRate);
+                                if (wavData != null)
                                 {
-                                    var wavData = WaveFile.Load(filename, out var sampleRate);
-                                    if (wavData != null)
+                                    var maximumSamples = sampleRate * 2;
+                                    if (!pcm && wavData.Length > maximumSamples)
                                     {
-                                        var maximumSamples = sampleRate * 2;
-                                        if (wavData.Length > maximumSamples)
-                                        {
-                                            Array.Resize(ref wavData, maximumSamples);
-                                            Log.LogMessage(LogSeverity.Warning, MaxWavFileWarning.Format(2));
-                                        }
+                                        Array.Resize(ref wavData, maximumSamples);
+                                        Log.LogMessage(LogSeverity.Warning, MaxWavFileWarning.Format(2));
+                                    }
 
-                                        var sample = App.Project.CreateDPCMSampleFromWavData(sampleName, wavData, sampleRate, filename);
-                                        importedSamples.Add(sample);
-                                    }
-                                }
-                                else if (Path.GetExtension(filename).ToLower() == ".dmc")
-                                {
-                                    var dmcData = File.ReadAllBytes(filename);
-                                    if (dmcData.Length > DPCMSample.MaxSampleSize)
-                                    {
-                                        Array.Resize(ref dmcData, DPCMSample.MaxSampleSize);
-                                        Log.LogMessage(LogSeverity.Warning, MaxDmcSizeWarning.Format(DPCMSample.MaxSampleSize));
-                                    }
-                                    var sample = App.Project.CreateDPCMSampleFromDmcData(sampleName, dmcData, filename);
+                                    var sample = pcm ? App.Project.CreatePcmSampleFromWavData(sampleName, wavData, sampleRate, filename) :
+                                        App.Project.CreateDPCMSampleFromWavData(sampleName, wavData, sampleRate, filename);
                                     importedSamples.Add(sample);
                                 }
                             }
-
-                            RecreateAllControls();
-                            if (importedSamples.Count != 0)
-                                BlinkButton(importedSamples[0]);
-                            App.UndoRedoManager.EndTransaction();
+                            else if (!pcm && Path.GetExtension(filename).ToLower() == ".dmc")
+                            {
+                                var dmcData = File.ReadAllBytes(filename);
+                                if (dmcData.Length > DPCMSample.MaxSampleSize)
+                                {
+                                    Array.Resize(ref dmcData, DPCMSample.MaxSampleSize);
+                                    Log.LogMessage(LogSeverity.Warning, MaxDmcSizeWarning.Format(DPCMSample.MaxSampleSize));
+                                }
+                                var sample = App.Project.CreateDPCMSampleFromDmcData(sampleName, dmcData, filename);
+                                importedSamples.Add(sample);
+                            }
                         }
-                        App.EndLogTask();
+
+                        RecreateAllControls();
+                        if (importedSamples.Count != 0)
+                            BlinkButton(importedSamples[0]);
+                        App.UndoRedoManager.EndTransaction();
                     }
+                    App.EndLogTask();
                 }
-            };
+            }
+        }
+
+        private void LoadDPCMSample(bool pcm = false)
+        {
+            Action<string[]> LoadDPCMSampleAction = filenames => ImportSamples(filenames, pcm);
 
             if (Platform.IsMobile)
             {
-                Platform.StartMobileLoadFileOperationAsync(new [] { "dmc", "wav", "fms" }, (f) => LoadDPCMSampleAction(new[] { f }));
+                Platform.StartMobileLoadFileOperationAsync(pcm ? new[] { "wav", "fms" } : new[] { "dmc", "wav", "fms" }, (f) => LoadDPCMSampleAction(new[] { f }));
             }
             else
             {
-                var filenames = Platform.ShowOpenFileDialog("Open File", "All Sample Files (*.wav;*.dmc;*.fms)|*.wav;*.dmc;*.fms|Wav Files (*.wav)|*.wav|DPCM Sample Files (*.dmc)|*.dmc|FamiStudio Files (*.fms)|*.fms", ref Settings.LastSampleFolder, true);
+                var filter = pcm ? Mmc5PcmStrings.SourceFileFilter.ToString() :
+                    "All Sample Files (*.wav;*.dmc;*.fms)|*.wav;*.dmc;*.fms|Wav Files (*.wav)|*.wav|DPCM Sample Files (*.dmc)|*.dmc|FamiStudio Files (*.fms)|*.fms";
+                var filenames = Platform.ShowOpenFileDialog("Open File", filter, ref Settings.LastSampleFolder, true);
                 LoadDPCMSampleAction(filenames);
             }
         }
@@ -3103,7 +3140,7 @@ namespace FamiStudio
 
         private void AddFolder(int type)
         {
-            App.UndoRedoManager.BeginTransaction(type == FolderType.Sample ? TransactionScope.Project : TransactionScope.ProjectNoDPCMSamples);
+            App.UndoRedoManager.BeginTransaction((type == FolderType.Sample || type == FolderType.PcmSample) ? TransactionScope.Project : TransactionScope.ProjectNoDPCMSamples);
             var folder = App.Project.CreateFolder(type);
             RecreateAllControls();
             BlinkButton(folder);
@@ -3241,11 +3278,11 @@ namespace FamiStudio
             RecreateAllControls();
         }
 
-        private void AskAddSampleFolder()
+        private void AskAddSampleFolder(bool pcm = false)
         {
             App.ShowContextMenuAsync(new[]
             {
-                new ContextMenuOption("Folder", AddFolderContext, () => { AddFolder(FolderType.Sample); }, ContextMenuSeparator.Before)
+                new ContextMenuOption("Folder", AddFolderContext, () => { AddFolder(pcm ? FolderType.PcmSample : FolderType.Sample); }, ContextMenuSeparator.Before)
             });
         }
 
@@ -3264,7 +3301,7 @@ namespace FamiStudio
                             if (wavData != null)
                             {
                                 var maximumSamples = sampleRate * 2;
-                                if (wavData.Length > maximumSamples)
+                                if (!sample.IsPcm && wavData.Length > maximumSamples)
                                     Array.Resize(ref wavData, maximumSamples);
 
                                 App.UndoRedoManager.BeginTransaction(TransactionScope.DPCMSample, sample.Id);
@@ -3298,11 +3335,12 @@ namespace FamiStudio
             {
                 if (Platform.IsMobile)
                 {
-                    Platform.StartMobileLoadFileOperationAsync(new[] { "dmc", "wav" }, (f) => ReloadDPCMSampleAction(f));
+                    Platform.StartMobileLoadFileOperationAsync(sample.IsPcm ? new[] { "wav" } : new[] { "dmc", "wav" }, (f) => ReloadDPCMSampleAction(f));
                 }
                 else
                 {
-                    var filename = Platform.ShowOpenFileDialog("Open File", "All Sample Files (*.wav;*.dmc)|*.wav;*.dmc|Wav Files (*.wav)|*.wav|DPCM Sample Files (*.dmc)|*.dmc", ref Settings.LastSampleFolder);
+                    var filter = sample.IsPcm ? "Wav Files (*.wav)|*.wav" : "All Sample Files (*.wav;*.dmc)|*.wav;*.dmc|Wav Files (*.wav)|*.wav|DPCM Sample Files (*.dmc)|*.dmc";
+                    var filename = Platform.ShowOpenFileDialog("Open File", filter, ref Settings.LastSampleFolder);
                     ReloadDPCMSampleAction(filename);
                 }
             }
@@ -3314,6 +3352,12 @@ namespace FamiStudio
 
         private void ExportDPCMSampleProcessedData(DPCMSample sample)
         {
+            if (sample.IsPcm)
+            {
+                var path = Platform.ShowSaveFileDialog("Save File", "Wav file (*.wav)|*.wav", ref Settings.LastSampleFolder);
+                if (path != null) WaveFile.Save(sample.GetPcmPreviewWave(App.PalPlayback).GetPlaybackSamples(), path, Mmc5PcmPreviewWave.PlaybackSampleRate, 1);
+                return;
+            }
             var filename = Platform.ShowSaveFileDialog("Save File", "DPCM Samples (*.dmc)|*.dmc", ref Settings.LastSampleFolder);
             if (filename != null)
                 File.WriteAllBytes(filename, sample.ProcessedData);
@@ -3335,11 +3379,12 @@ namespace FamiStudio
             }
         }
 
-        private void SortSamples()
+        private void SortSamples(bool pcm = false)
         {
-            var scope = !App.Project.AutoSortSongs ? TransactionScope.Project : TransactionScope.Application;
-            App.UndoRedoManager.BeginTransaction(scope);
-            App.Project.AutoSortSamples = !App.Project.AutoSortSamples;
+            var sorted = pcm ? App.Project.AutoSortPcmSamples : App.Project.AutoSortSamples;
+            App.UndoRedoManager.BeginTransaction(sorted ? TransactionScope.Application : TransactionScope.Project);
+            if (pcm) App.Project.AutoSortPcmSamples = !sorted;
+            else App.Project.AutoSortSamples = !sorted;
             App.UndoRedoManager.EndTransaction();
             RecreateAllControls();
         }
@@ -3373,7 +3418,8 @@ namespace FamiStudio
 
         private void AskDeleteDPCMSample(DPCMSample sample)
         {
-            Platform.MessageBoxAsync(ParentWindow, AskDeleteSampleMessage.Format(sample.Name), AskDeleteSampleTitle, MessageBoxButtons.YesNo, (r) =>
+            Platform.MessageBoxAsync(ParentWindow, (sample.IsPcm ? Mmc5PcmStrings.DeleteSampleMessage : AskDeleteSampleMessage).Format(sample.Name),
+                sample.IsPcm ? Mmc5PcmStrings.DeleteSampleLabel : AskDeleteSampleTitle, MessageBoxButtons.YesNo, (r) =>
             {
                 if (r == DialogResult.Yes)
                 {
@@ -3625,7 +3671,7 @@ namespace FamiStudio
             {
                 if (r != DialogResult.Cancel)
                 {
-                    App.UndoRedoManager.BeginTransaction(folder.Type == FolderType.Sample ? TransactionScope.ProjectNoDPCMSamples : TransactionScope.Project, r == DialogResult.Yes ? TransactionFlags.StopAudio : TransactionFlags.None);
+                    App.UndoRedoManager.BeginTransaction(TransactionScope.Project, r == DialogResult.Yes ? TransactionFlags.StopAudio : TransactionFlags.None);
 
                     if (r == DialogResult.Yes)
                     {
@@ -3654,6 +3700,9 @@ namespace FamiStudio
                             case FolderType.Sample:
                                 App.Project.GetSamplesInFolder(folder.Name).ForEach(s => { App.Project.DeleteSample(s); DPCMSampleDeleted?.Invoke(s); });
                                 break;
+                            case FolderType.PcmSample:
+                                App.Project.GetPcmSamplesInFolder(folder.Name).ForEach(s => { App.Project.DeleteSample(s); DPCMSampleDeleted?.Invoke(s); });
+                                break;
                         }
                     }
                     else if (r == DialogResult.No)
@@ -3671,6 +3720,9 @@ namespace FamiStudio
                                 break;
                             case FolderType.Sample:     
                                 App.Project.GetSamplesInFolder(folder.Name).ForEach(s => s.FolderName = null); 
+                                break;
+                            case FolderType.PcmSample:
+                                App.Project.GetPcmSamplesInFolder(folder.Name).ForEach(s => s.FolderName = null);
                                 break;
                         }
                     }
@@ -3740,13 +3792,14 @@ namespace FamiStudio
                     var changedTuning = tuning != project.Tuning || !project.ChipTuning.ContentEquals(dlg.ChipTuning) || project.UpdateRateMultiplier != dlg.UpdateRateMultiplier;
                     var instanceCounts = dlg.InstanceCounts;
                     var changedInstances = Enumerable.Range(0, ExpansionType.Count).Any(i => instanceCounts[i] != project.GetExpansionInstances(i));
-                    var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => Project.IsChannelActive(t, newExpansionMask, numN163Channels)).Sum(t => instanceCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
+                    var changedMmc5Pcm = dlg.Mmc5PcmEnabled != project.Mmc5PcmEnabled;
+                    var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => Project.IsChannelActive(t, newExpansionMask, numN163Channels, dlg.Mmc5PcmEnabled)).Sum(t => instanceCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
                     if (channelCount > 64) { App.DisplayNotification(TuningStrings.ChannelLimitError, true); return; }
                     var changedExpMixer = dlg.MixerProperties.Changed;
 
                     var transFlags = TransactionFlags.None;
 
-                    if (changedExpansion || changedInstances)
+                    if (changedExpansion || changedInstances || changedMmc5Pcm)
                         transFlags = TransactionFlags.RecreatePlayers | TransactionFlags.RecreateStreams; // Toggling EPSM will change mono/stereo and requires new audiostreams.
                     else if (changedAuthoringMachine || changedNumChannels || changedExpMixer || changedTuning)
                         transFlags = TransactionFlags.RecreatePlayers;
@@ -3766,10 +3819,10 @@ namespace FamiStudio
                     project.SoundEngineUsesExtendedDpcm = dlg.DPCMExtendedRange;
                     project.SoundEngineUsesExtendedInstruments = dlg.InstrumentExtendedRange;
 
-                    if (changedExpansion || changedNumChannels || changedInstances)
+                    if (changedExpansion || changedNumChannels || changedInstances || changedMmc5Pcm)
                     {
                         App.SelectedInstrument = project.Instruments.Count > 0 ? project.Instruments[0] : null;
-                        project.SetExpansionAudioMask(newExpansionMask, numN163Channels, instances: instanceCounts);
+                        project.SetExpansionAudioMask(newExpansionMask, numN163Channels, instances: instanceCounts, pcmEnabled: dlg.Mmc5PcmEnabled);
                         ProjectModified?.Invoke();
                         Reset();
                     }
@@ -3978,7 +4031,7 @@ namespace FamiStudio
         private void EditDPCMSampleProperties(DPCMSample sample, bool ctx =false)
         {
             var pt = GetPropertiesDialogPosition(ctx);
-            var dlg = new PropertyDialog(ParentWindow, SamplePropertiesTitle, pt, 240, true, pt.Y > ParentWindowSize.Height / 2, false);
+            var dlg = new PropertyDialog(ParentWindow, sample.IsPcm ? Mmc5PcmStrings.SamplePropertiesTitle : SamplePropertiesTitle, pt, 240, true, pt.Y > ParentWindowSize.Height / 2, false);
             dlg.Properties.AddColoredTextBox(sample.Name, sample.Color); // 0
             dlg.Properties.AddColorPicker(sample.Color); // 1
             dlg.Properties.Build();

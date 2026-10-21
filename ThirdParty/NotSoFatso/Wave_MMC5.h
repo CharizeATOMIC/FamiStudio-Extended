@@ -24,9 +24,8 @@
 //  (as far as I know), interdependant on each other's output.
 //
 //    The voice is similar to the $4011 register, but without the DMC's sample playback capabilities.
-//  so it's rather useless.  I haven't been able to find any game to test it with (since I'm not aware of
-//  any who use it... nor do I see how it could be used in an NSF because of lack of IRQ support).  But it's
-//  included anyway.  Theoretically it should work... but like I said, can't test it.
+//  Samples are unsigned eight-bit values delivered by CPU writes. Zero does not
+//  change the DAC, and read mode disables direct writes to $5011.
 
 class CMMC5SquareWave
 {
@@ -158,8 +157,9 @@ public:
 	///////////////////////////////////
 	// Everything
 	BYTE		nOutput;
-	short		nOutputTable_L[0x80];
-	short		nOutputTable_R[0x80];
+	BYTE		nControl;
+	short		nOutputTable_L[0x100];
+	short		nOutputTable_R[0x100];
 	int			nMixL;
 	int			nMixR;
 	BYTE		bInvert;
@@ -171,6 +171,8 @@ public:
 	///////////////////////////////////////////////////////////////////
 
 
+	FORCEINLINE void WriteControl(BYTE value) { nControl = value & 0x81; }
+	FORCEINLINE void WriteDac(BYTE value) { if (value && !(nControl & 1)) nOutput = value; }
 	FORCEINLINE void DoTicks(int ticks)
 	{
 		nMixL += nOutputTable_L[nOutput] * ticks;

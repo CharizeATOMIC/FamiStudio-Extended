@@ -58,3 +58,6 @@ FamiStudio/Properties/launchSettings.json
 /Tests/**/bin/
 /Tests/**/obj/
 /test-output/
+__pycache__/
+*.py[cod]
+/ThirdParty/NotSoFatso/FamiStudio/

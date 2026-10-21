@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -78,6 +78,7 @@ namespace FamiStudio
         {   //This is a mess, works somehow tho
             if (song.Project.UpdateRateMultiplier != 1) { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError); return false; }
             if (song.Project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
+            if (song.Project.UsesPcm) { Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.UnsupportedExport); return false; }
             if (song.UsesExtendedPlayback(false)) { Log.LogMessage(LogSeverity.Error, TuningStrings.ScheduledVgmExportError); return false; }
             var project = song.Project.DeepClone();
             song = project.GetSong(song.Id);

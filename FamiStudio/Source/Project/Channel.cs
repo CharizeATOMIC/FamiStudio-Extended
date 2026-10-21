@@ -43,6 +43,10 @@ namespace FamiStudio
         public bool IsS5BChannel        => ChannelType.IsS5BChannel(type);
         public bool IsNoiseChannel      => ChannelType.IsNoiseChannel(type);
         public bool IsDpcmChannel       => ChannelType.IsDpcmChannel(type);
+        public bool IsMmc5PcmChannel    => type == ChannelType.Mmc5Pcm;
+        public bool IsSampleChannel    => IsDpcmChannel || IsMmc5PcmChannel;
+        public bool SupportsSampleMappings => IsSampleChannel ||
+            type == ChannelType.Vrc6Square1 || type == ChannelType.Vrc6Square2;
         public bool IsEPSMChannel       => ChannelType.IsEPSMChannel(type);
         public bool IsEPSMSquareChannel => ChannelType.IsEPSMSquareChannel(type);
         public bool IsEPSMFmChannel     => ChannelType.IsEPSMFmChannel(type);
@@ -84,6 +88,9 @@ namespace FamiStudio
             if (instrument == null)
                 return allowNull;
 
+            if (IsMmc5PcmChannel)
+                return instrument.IsMmc5 || (song.Project.LoadingLegacySharedPcm && instrument.IsRegular);
+
             if (instrument.Expansion == ExpansionType.None && (IsRegularChannel || IsMmc5Channel))
                 return true;
 
@@ -119,17 +126,20 @@ namespace FamiStudio
         }
 
         public bool SupportsStopNotes     => true;
-        public bool SupportsReleaseNotes  => type != ChannelType.Dpcm;
-        public bool SupportsSlideNotes    => type != ChannelType.Dpcm;
-        public bool SupportsArpeggios     => type != ChannelType.Dpcm;
+        public bool SupportsReleaseNotes  => !IsSampleChannel;
+        public bool SupportsSlideNotes    => !IsSampleChannel;
+        public bool SupportsArpeggios     => !IsSampleChannel;
         public bool SupportsNoAttackNotes => true;
 
         public bool SupportsEffect(int effect)
         {
+            if (IsMmc5PcmChannel)
+                return effect == Note.EffectVolume || effect == Note.EffectVolumeSlide ||
+                    (song.UsesFamiTrackerTempo && (effect == Note.EffectSpeed || effect == Note.EffectNoteDelay || effect == Note.EffectCutDelay));
             switch (effect)
             {
                 case Note.EffectVolume:
-                case Note.EffectVolumeSlide: return type != ChannelType.Dpcm;
+                case Note.EffectVolumeSlide: return type != ChannelType.Dpcm || song.Project.UsesApuPcm;
                 case Note.EffectEnvelopeDecay: return type != ChannelType.Dpcm && !IsEPSMRythmChannel;
                 case Note.EffectFinePitch: return type != ChannelType.Noise && type != ChannelType.Dpcm && !IsEPSMRythmChannel;
                 case Note.EffectVibratoSpeed: return type != ChannelType.Noise && type != ChannelType.Dpcm && !IsEPSMRythmChannel;
@@ -1506,6 +1516,8 @@ namespace FamiStudio
         // have the proper logic to reload an instrument when there is no attack.
         public static bool CanDisableAttack(int channelType, Instrument i1, Instrument i2)
         {
+            if (channelType == ChannelType.Mmc5Pcm)
+                return i1 != null && i1 == i2;
             if (ChannelType.IsDpcmChannel(channelType))
             {
                 return true;
@@ -1656,7 +1668,8 @@ namespace FamiStudio
         public const int FdsWave = 14;
         public const int Mmc5Square1 = 15;
         public const int Mmc5Square2 = 16;
-        public const int Mmc5Dpcm = 17; // Rename me
+        public const int Mmc5Pcm = 17;
+        public const int Mmc5Dpcm = Mmc5Pcm; // Legacy importer channel ID.
         public const int N163Wave1 = 18;
         public const int N163Wave2 = 19;
         public const int N163Wave3 = 20;

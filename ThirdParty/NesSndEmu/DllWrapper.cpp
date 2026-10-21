@@ -78,6 +78,23 @@ extern "C" void __stdcall NesApuSetUpdateRateMultiplier(int apuIdx, int value)
 {
 	get_apu(apuIdx).set_update_rate_multiplier(value);
 }
+extern "C" int __stdcall NesApuStartMmc5Pcm(int apuIdx, const unsigned char* data, int length, unsigned int periodQ16, int loopStart, int loopEnd, int volume)
+{
+	return get_apu(apuIdx).start_mmc5_pcm(data, length, periodQ16, loopStart, loopEnd, volume) ? 1 : 0;
+}
+extern "C" void __stdcall NesApuStopMmc5Pcm(int apuIdx) { get_apu(apuIdx).stop_mmc5_pcm(); }
+extern "C" void __stdcall NesApuSetMmc5PcmVolume(int apuIdx, int volume) { get_apu(apuIdx).set_mmc5_pcm_volume(volume); }
+extern "C" int __stdcall NesApuGetMmc5PcmDac(int apuIdx) { return get_apu(apuIdx).get_mmc5_pcm_dac(); }
+extern "C" int __stdcall NesApuGetMmc5PcmPosition(int apuIdx) { return get_apu(apuIdx).get_mmc5_pcm_position(); }
+extern "C" int __stdcall NesApuStartPcm(int apuIdx, int destination, const unsigned char* data, int length, unsigned int periodQ16, int loopStart, int loopEnd, int volume)
+{
+	return get_apu(apuIdx).start_pcm(destination, data, length, periodQ16, loopStart, loopEnd, volume) ? 1 : 0;
+}
+extern "C" void __stdcall NesApuStopPcm(int apuIdx, int destination) { get_apu(apuIdx).stop_pcm(destination); }
+extern "C" void __stdcall NesApuReleasePcm(int apuIdx, int destination) { get_apu(apuIdx).release_pcm(destination); }
+extern "C" void __stdcall NesApuSetPcmVolume(int apuIdx, int destination, int volume) { get_apu(apuIdx).set_pcm_volume(destination, volume); }
+extern "C" int __stdcall NesApuGetPcmDac(int apuIdx, int destination) { return get_apu(apuIdx).get_pcm_dac(destination); }
+extern "C" int __stdcall NesApuGetPcmPosition(int apuIdx, int destination) { return get_apu(apuIdx).get_pcm_position(destination); }
 
 extern "C" void __stdcall NesApuReset(int apuIdx)
 {

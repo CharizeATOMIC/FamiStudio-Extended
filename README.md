@@ -4,7 +4,9 @@ Based on FamiStudio 4.5.3, with song/pattern tuning, absolute chip curves, multi
 
 For the Windows self-contained package, extract the entire directory and run **FamiStudio-Extended.exe**. **FamiStudio.exe** remains a compatible launcher. Windows has runtime evidence; Linux/macOS managed compilation does not establish native runtime support, and Android remains unverified.
 
-The bundled Gimmick music demonstration is replaced with the user-selected four-song version. It retains the original metadata: **Gimmick!**, **Masashi Kageyama,Naohisa Morota**, **1992 Sunsoft**. It uses fork format 1007 and requires this fork's format/features; it is not a drop-in demo for official 4.5.3. It is demonstration music, separate from the original synthetic test fixtures. Game ROMs, other extraction intermediates and private projects are excluded.
+The bundled **Gimmick!** demonstration includes four songs and uses the extended playback features to reproduce the game's musical effects. It retains the original metadata: **Gimmick!**, **Masashi Kageyama,Naohisa Morota**, **1992 Sunsoft**. The demo uses fork format 1007 and requires this fork's format/features. Game ROMs, extraction intermediates and private projects are excluded.
+
+Independent **DPCM and PCM libraries** support mapped PCM on 2A03, MMC5 and VRC6 instruments. PCM shares the native DPCM voice on 2A03, uses its own DAC on MMC5, and occupies the selected VRC6 pulse. See [PCM integration](Docs/docs/development/mmc5-pcm-integration.md) for the matching sound engine, NSF2/NES exports and CPU/platform requirements.
 
 ## Original upstream README (retained)
 

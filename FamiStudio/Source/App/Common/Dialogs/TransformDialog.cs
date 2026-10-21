@@ -97,6 +97,7 @@ namespace FamiStudio
                     page.AddCheckBox(UnassignUnusedSamplesLabel.Colon, true, UnassignUnusedSamplesTooltip); // 2
                     page.AddCheckBox(DeleteUnassignedSamplesLabel.Colon, true, DeleteUnassignedSamplesTooltip); // 3
                     page.AddCheckBox(PermanentlyApplyProcessingLabel.Colon, false, PermanentlyApplyProcessingTooltip); // 4
+                    page.SetPropertyEnabled(4, !app.Project.Mmc5PcmEnabled);
                     page.AddCheckBox(DiscardN163FdsResampleWavLabel.Colon, false, DiscardN163FdsResampleWavTooltip); // 5
                     page.AddCheckBox(DeleteUnusedArpeggiosLabel.Colon, true, DeleteUnusedArpeggiosTooltip); // 6
                     break;

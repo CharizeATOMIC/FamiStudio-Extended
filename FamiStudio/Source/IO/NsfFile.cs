@@ -135,6 +135,10 @@ namespace FamiStudio
         {
             if (originalProject.UpdateRateMultiplier > 1 && machine != (originalProject.PalMode ? MachineType.PAL : MachineType.NTSC))
             { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateRegionError); return false; }
+            if (originalProject.UsesPcm && (kernel != FamiToneKernel.FamiStudio || machine == MachineType.Dual || originalProject.PalMode != (machine == MachineType.PAL)))
+            { Log.LogMessage(LogSeverity.Error, "PCM requires the FamiStudio engine and the project's explicit PAL/NTSC region."); return false; }
+            if (originalProject.UsesPcm && originalProject.UsesEPSMExpansion)
+            { Log.LogMessage(LogSeverity.Error, "PCM NSF2 cannot coexist with EPSM: EPSM and the NSF2 timer both use registers $401C/$401D."); return false; }
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
 
 #if !DEBUG
@@ -149,6 +153,21 @@ namespace FamiStudio
                 project.SoundEngineUsesExtendedInstruments = true;
                 project.SoundEngineUsesDpcmBankSwitching = true;
                 project.SoundEngineUsesExtendedDpcm = true;
+                Mmc5PcmExportData pcmData = null;
+                if (project.UsesPcm)
+                {
+                    pcmData = Mmc5PcmExportData.Capture(project, songIds, machine == MachineType.PAL);
+                    var dpcmSamples = new HashSet<DPCMSample>();
+                    foreach (var song in project.Songs)
+                        foreach (var pattern in song.Channels[ChannelType.Dpcm].Patterns)
+                            foreach (var note in pattern.Notes.Values)
+                                if (note.IsMusical && note.Instrument?.GetDPCMMapping(note.Value)?.Sample is DPCMSample sample) dpcmSamples.Add(sample);
+                    foreach (var sample in project.Samples.ToArray())
+                        if (!dpcmSamples.Contains(sample)) project.DeleteSample(sample);
+                }
+                var globalVarsSize = NsfGlobalVarsSize + (pcmData != null ? 2 : 0);
+                if (project.Songs.Count > (NsfSongTableSize - globalVarsSize) / NsfSongTableEntrySize)
+                { Log.LogMessage(LogSeverity.Error, "Too many songs for the selected NSF kernel's song table."); return false; }
 
                 // In the multiple expansion driver, with EPSM enabled, we run out of RAM and use MMC5 EXRAM
                 // so we need to force enable it here.
@@ -201,10 +220,19 @@ namespace FamiStudio
                     case MachineType.Dual: kernelBinary += "_dual"; break;
                 }
 
+                if (pcmData != null)
+                {
+                    int available = project.UsesMultipleExpansionAudios ? 15 :
+                        1 | (project.UsesMmc5Expansion ? 2 : 0) | (project.UsesVrc6Expansion ? 12 : 0);
+                    int used = pcmData.DestinationsMask == 0 ? 1 : pcmData.DestinationsMask;
+                    if (used != available) kernelBinary += "_m" + used.ToString("x");
+                    kernelBinary += "_pcm";
+                }
                 kernelBinary += ".bin";
 
                 // Code/sound engine
                 var nsfBinStream = typeof(NsfFile).Assembly.GetManifestResourceStream("FamiStudio.Nsf." + kernelBinary);
+                if (nsfBinStream == null) { Log.LogMessage(LogSeverity.Error, "The selected NSF kernel is not available: " + kernelBinary); return false; }
                 var nsfBinBuffer = new byte[nsfBinStream.Length - NsfHeaderSize]; // Skip header.
                 nsfBinStream.Seek(NsfHeaderSize, SeekOrigin.Begin);
                 nsfBinStream.Read(nsfBinBuffer, 0, nsfBinBuffer.Length);
@@ -236,9 +264,9 @@ namespace FamiStudio
                 driverActualSize += 6; // Vectors
 
                 // If we hit this, it means the NSF was compiled with the wrong number of banks.
-                Debug.Assert(Utils.RoundUp(driverActualSize, NsfBankSize) == driverSizePadded);
+                Debug.Assert(pcmData != null || Utils.RoundUp(driverActualSize, NsfBankSize) == driverSizePadded);
 
-                driverActualSize = Utils.RoundUp(driverActualSize, 256); 
+                driverActualSize = pcmData != null ? driverSizePadded : Utils.RoundUp(driverActualSize, 256);
 
                 nsfBytes.AddRange(nsfBinBuffer);
 
@@ -248,6 +276,8 @@ namespace FamiStudio
                 var codeBaseAddr = 0x10000 - driverSizePadded;
                 var dpcmBaseAddr = codeBaseAddr - NsfBankSize;
                 var dpcmBankSize = NsfBankSize;
+                var pcmBaseAddr = codeBaseAddr - 2 * NsfBankSize;
+                if (pcmData != null) pcmData.WindowAddress = pcmBaseAddr;
                 var dpcmNumBanks = 0;
                 var driverBankOffset = driverActualSize;
                 var driverBankLeft = driverSizePadded == driverActualSize ? 0 : NsfBankSize - (driverBankOffset & (NsfBankSize - 1)) - NsfVectorSize;
@@ -292,7 +322,13 @@ namespace FamiStudio
 
                 nsfBytes[songTableIdx + 1] = (byte)((dpcmBaseAddr >> 12) - 8);
                 nsfBytes[songTableIdx + 2] = (byte)project.ExpansionAudioMask;
-                nsfBytes[songTableIdx + 3] = (byte)(8 - driverBankCount - (dpcmNumBanks > 0 ? 1 : 0));
+                nsfBytes[songTableIdx + 3] = (byte)(pcmData != null ? (pcmBaseAddr - NsfMemoryStart) / NsfBankSize : 8 - driverBankCount - (dpcmNumBanks > 0 ? 1 : 0));
+                if (pcmData != null)
+                {
+                    nsfBytes[songTableIdx + 4] = checked((byte)(nsfBytes.Count / NsfBankSize));
+                    nsfBytes[songTableIdx + 5] = (byte)((pcmBaseAddr >> 12) - 8);
+                    nsfBytes.AddRange(pcmData.BankData);
+                }
 
                 // Export each song individually, build TOC at the same time.
                 for (var i = 0; i < project.Songs.Count; i++)
@@ -301,8 +337,8 @@ namespace FamiStudio
 
                     var bank = nsfBytes.Count / NsfBankSize;
                     var addr = NsfMemoryStart + (nsfBytes.Count & (NsfBankSize - 1));
-                    var songBytes = new FamitoneMusicFile(kernel, false).GetBytes(project, new int[] { song.Id }, addr, dpcmBankSize, DpcmExportMode.All, false, dpcmBaseAddr, machine);
-                    var maxSongAddr = project.UsesSamples ? dpcmBaseAddr : codeBaseAddr;
+                    var songBytes = new FamitoneMusicFile(kernel, false) { PcmData = pcmData }.GetBytes(project, new int[] { song.Id }, addr, dpcmBankSize, DpcmExportMode.All, false, dpcmBaseAddr, machine);
+                    var maxSongAddr = pcmData != null ? pcmBaseAddr : project.UsesSamples ? dpcmBaseAddr : codeBaseAddr;
 
                     if (addr + songBytes.Length > maxSongAddr)
                     {
@@ -314,7 +350,7 @@ namespace FamiStudio
                     if (songBytes.Length <= driverBankLeft)
                     {
                         addr = codeBaseAddr + driverBankOffset;
-                        songBytes = new FamitoneMusicFile(kernel, false).GetBytes(project, new int[] { song.Id }, addr, dpcmBankSize, DpcmExportMode.All, false, dpcmBaseAddr, machine);
+                        songBytes = new FamitoneMusicFile(kernel, false) { PcmData = pcmData }.GetBytes(project, new int[] { song.Id }, addr, dpcmBankSize, DpcmExportMode.All, false, dpcmBaseAddr, machine);
                         for (var j = 0; j < songBytes.Length; j++)
                             nsfBytes[driverBankOffset + j] = songBytes[j];
                         driverBankOffset += songBytes.Length;
@@ -327,7 +363,7 @@ namespace FamiStudio
                         Log.LogMessage(LogSeverity.Info, $"Song '{song.Name}' size: {songBytes.Length} bytes.");
                     }
 
-                    var idx = songTableIdx + NsfGlobalVarsSize + i * NsfSongTableEntrySize;
+                    var idx = songTableIdx + globalVarsSize + i * NsfSongTableEntrySize;
                     nsfBytes[idx + 0] = (byte)(bank);
                     nsfBytes[idx + 1] = (byte)((addr >> 0) & 0xff);
                     nsfBytes[idx + 2] = (byte)((addr >> 8) & 0xff);
@@ -337,6 +373,8 @@ namespace FamiStudio
                 // TODO : Check the wiki to see if we need to pad (probably).
                 Utils.PadToNextBank(nsfBytes, NsfBankSize);
 
+                if (nsfBytes.Count > 256 * NsfBankSize)
+                { Log.LogMessage(LogSeverity.Error, "NSF data exceeds the 256-bank (1 MiB) format limit."); return false; }
                 Debug.Assert(driverBankLeft >= 0);
 
                 if (nsfe)
@@ -383,6 +421,14 @@ namespace FamiStudio
                             ((ushort*)p)[0] = (ushort)Math.Round(16639.0 / project.UpdateRateMultiplier);
                             ((ushort*)p)[1] = (ushort)Math.Round(19997.0 / project.UpdateRateMultiplier);
                             p += 4;
+                        }
+
+                        if (pcmData != null)
+                        {
+                            var nsf2Header = (NsfeChunkHeader*)p;
+                            nsf2Header->SetId("NSF2"); nsf2Header->size = 1;
+                            p += sizeof(NsfeChunkHeader);
+                            *p++ = 0x10; // IRQ support, normal returning INIT and PLAY.
                         }
 
                         // BANK chunk
@@ -484,7 +530,8 @@ namespace FamiStudio
                     header.id[2] = (byte)'S';
                     header.id[3] = (byte)'M';
                     header.id[4] = (byte)0x1a;
-                    header.version = 1;
+                    header.version = (byte)(pcmData != null ? 2 : 1);
+                    header.reserved = (byte)(pcmData != null ? 0x10 : 0);
                     header.numSongs = (byte)project.Songs.Count;
                     header.startingSong = 1;
                     header.loadAddr = (ushort)(codeBaseAddr);
@@ -513,7 +560,22 @@ namespace FamiStudio
                     nsfBytes.InsertRange(0, headerBytes);
                 }
 
-                File.WriteAllBytes(filename, nsfBytes.ToArray());
+                if (pcmData == null)
+                    File.WriteAllBytes(filename, nsfBytes.ToArray());
+                else
+                {
+                    // Validation is performed before replacement: an unsupported CPU
+                    // budget or cancellation must not damage an existing user export.
+                    var target = Path.GetFullPath(filename);
+                    var temporary = Path.Combine(Path.GetDirectoryName(target), ".pcm-nsf-" + Guid.NewGuid().ToString("N") + ".tmp");
+                    try
+                    {
+                        File.WriteAllBytes(temporary, nsfBytes.ToArray());
+                        if (!ValidatePcmCpuBudget(temporary, project, pcmData)) return false;
+                        File.Move(temporary, target, true);
+                    }
+                    finally { if (File.Exists(temporary)) File.Delete(temporary); }
+                }
 
                 Log.LogMessage(LogSeverity.Info, $"NSF export successful, final file size {nsfBytes.Count} bytes.");
 #if !DEBUG
@@ -528,6 +590,59 @@ namespace FamiStudio
 #endif
 
             return true;
+        }
+
+        private static bool ValidatePcmCpuBudget(string path, Project project, Mmc5PcmExportData data)
+        {
+            var handle = NotSoFatso.NsfOpen(path);
+            if (handle == IntPtr.Zero)
+            {
+                Log.LogMessage(LogSeverity.Error, "The matching NSF2 playback library is required to verify PCM CPU timing.");
+                return false;
+            }
+            try
+            {
+                double cpuClock = project.PalMode ? 1662607.125 : 1789772.7272727273;
+                double periodUs = Math.Round((project.PalMode ? 19997.0 : 16639.0) / project.UpdateRateMultiplier);
+                // Leave a small instruction/DMA phase margin beyond the actual
+                // measured IRQ-preempted PLAY routine, including its host bridge.
+                int deadline = (int)Math.Floor(periodUs * cpuClock / 1000000.0) - 64;
+                for (int i = 0; i < project.Songs.Count; i++)
+                {
+                    var song = project.Songs[i];
+                    var ticks = data.Tracks[song.Id].EndTick + 2;
+                    NotSoFatso.NsfSetTrack(handle, i);
+                    int calls = 0;
+                    while (NotSoFatso.NsfGetState(handle, -1, 1002, 0) < ticks)
+                    {
+                        if ((calls & 31) == 0)
+                        {
+                            if (Log.ShouldAbortOperation) return false;
+                            Log.ReportProgress((i + Math.Min(1.0f, (float)calls / (ticks + 32))) / project.Songs.Count);
+                        }
+                        NotSoFatso.NsfRunFrame(handle);
+                        int maximum = NotSoFatso.NsfGetState(handle, -1, 1003, 0);
+                        int current = NotSoFatso.NsfGetState(handle, -1, 1004, 0);
+                        if (maximum > deadline || current > deadline || ++calls > ticks * 2L + 512)
+                        {
+                            Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.BudgetExceeded.Format(song.Name, project.UpdateRateMultiplier));
+                            return false;
+                        }
+                    }
+                    // Finish the last entry as well, since the entry counter
+                    // deliberately includes a PLAY currently preempted by an IRQ.
+                    for (int finish = 0; finish < 2 && NotSoFatso.NsfGetState(handle, -1, 1004, 0) != 0; finish++) NotSoFatso.NsfRunFrame(handle);
+                    int peak = NotSoFatso.NsfGetState(handle, -1, 1003, 0);
+                    if (peak <= 0 || peak > deadline || NotSoFatso.NsfGetState(handle, -1, 1004, 0) > deadline)
+                    {
+                        Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.BudgetExceeded.Format(song.Name, project.UpdateRateMultiplier));
+                        return false;
+                    }
+                    Log.LogMessage(LogSeverity.Info, $"PCM CPU check '{song.Name}': {ticks} PLAY entries, peak {peak}/{deadline} CPU cycles (64-cycle scheduling margin).");
+                }
+                return true;
+            }
+            finally { NotSoFatso.NsfClose(handle); }
         }
 
         class ChannelState
@@ -561,6 +676,7 @@ namespace FamiStudio
         private ChannelState[] channelStates;
         private bool preserveDpcmPadding;
         private bool importDmcValues;
+        private NotSoFatso.WriteRegisterDelegate importRegisterCallback;
         private readonly List<int> sampleIdsInitialSet = [];
         private readonly int[] DPCMOctaveOrder = new [] { 4, 5, 3, 6, 2, 7, 1, 0 };
 
@@ -1575,6 +1691,7 @@ namespace FamiStudio
                     NotSoFatso.NsfClose(nsf);
                     nsf = IntPtr.Zero;
                 }
+                importRegisterCallback = null;
             }
         }
 
@@ -1584,7 +1701,7 @@ namespace FamiStudio
 
             if (nsf == IntPtr.Zero)
             {
-                Log.LogMessage(LogSeverity.Error, "Error opening NSF. File may be corrupted or may be a NSF2 using advanced features such as IRQ which are not supported at the moment.");
+                Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.ImportOpenError);
                 return null;
             }
 
@@ -1638,6 +1755,28 @@ namespace FamiStudio
 
             NotSoFatso.NsfSetTrack(nsf, songIndex);
 
+            bool playbackStarted = false, pcmDetected = false, pcmWarningShown = false;
+            int pcmControl = 0, previousPcmValue = -1;
+            if ((expansionMask & ExpansionType.Mmc5Mask) != 0)
+            {
+                // A declared MMC5 chip does not imply PCM usage. Observe the
+                // actual direct-DAC changes after INIT; ignore zero (hold),
+                // read-mode writes, and constant initialization/neutral writes.
+                importRegisterCallback = (address, value) =>
+                {
+                    if (address == 0x5010)
+                        pcmControl = value;
+                    else if (address == 0x5011 && (pcmControl & 1) == 0 && value != 0)
+                    {
+                        if (previousPcmValue >= 0 && value != previousPcmValue &&
+                            (playbackStarted || NotSoFatso.NsfGetState(nsf, -1, NotSoFatso.STATE_PLAYCALLS, 0) > 0))
+                            pcmDetected = true;
+                        previousPcmValue = value;
+                    }
+                };
+                NotSoFatso.NsfSetApuWriteCallback(nsf, importRegisterCallback);
+            }
+
             song.ChangeFamiStudioTempoGroove(new[] { 1 }, false);
             song.SetDefaultPatternLength(patternLength);
 
@@ -1677,6 +1816,13 @@ namespace FamiStudio
                     }
                 }
                 while (playCalled == 0);
+
+                playbackStarted = true;
+                if (pcmDetected && !pcmWarningShown)
+                {
+                    Log.LogMessage(LogSeverity.Warning, Mmc5PcmStrings.ImportPcmWarning.Format(song.Name));
+                    pcmWarningShown = true;
+                }
 
                 for (int c = 0; c < song.Channels.Length; c++)
                     foundFirstNote |= UpdateChannel(p, n, song.Channels[c], channelStates[c]);

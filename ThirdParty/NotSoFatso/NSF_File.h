@@ -38,6 +38,7 @@
 #define					CHUNKTYPE_AUTH			'htua'
 #define					CHUNKTYPE_BANK			'KNAB'
 #define CHUNKTYPE_RATE 'ETAR'
+#define CHUNKTYPE_NSF2 '2FSN'
 
 struct NESM_HEADER
 {
@@ -106,6 +107,7 @@ public:
 	int					nInitAddress;		//The address of the Init routine (called at track change)
 	int					nPlayAddress;		//The address of the Play routine (called several times a second)
 	BYTE				nChipExtensions;	//Bitwise representation of the external chips used by this NSF.  Read NSFSpec.txt for details.
+	BYTE				nNSF2Features;		//Currently supports the NSF2 timer/APU IRQ feature (bit 4).
 	
 	//old NESM speed stuff (blarg)
 	int					nNTSC_PlaySpeed;

@@ -482,6 +482,11 @@ namespace FamiStudio
         public bool IsEditingArpeggio          => editMode == EditionMode.Arpeggio;
         public bool IsEditingDPCMSample        => editMode == EditionMode.DPCM;
         public bool IsEditingDPCMSampleMapping => editMode == EditionMode.DPCMMapping;
+        private bool IsEditingPcmMapping => IsEditingDPCMSampleMapping && !editInstrument.SupportsDpcmMapping;
+        private bool IsEditingPcmSample => IsEditingDPCMSample && editSample.IsPcm;
+        private float EditedSampleStartTime => IsEditingPcmSample ? editSample.GetPcmPreviewWave(App.PalPlayback).StartTime : editSample.ProcessedStartTime;
+        private float EditedSampleEndTime => IsEditingPcmSample ? editSample.GetPcmPreviewWave(App.PalPlayback).EndTime : editSample.ProcessedEndTime;
+        private float EditedSampleDisplayDuration => IsEditingPcmSample ? EditedSampleEndTime : editSample.ProcessedDuration;
         
         public bool CanCopy       => IsActiveControl && IsSelectionValid() && (editMode == EditionMode.Channel || editMode == EditionMode.Envelope || editMode == EditionMode.Arpeggio);
         public bool CanCopyAsText => IsActiveControl && IsSelectionValid() && (editMode == EditionMode.Envelope || editMode == EditionMode.Arpeggio);
@@ -998,7 +1003,7 @@ namespace FamiStudio
         {
             zoom = maxZoom;
 
-            var duration = Math.Max(editSample.SourceDuration, editSample.ProcessedDuration);
+            var duration = Math.Max(editSample.SourceDuration, EditedSampleDisplayDuration);
             var viewSize = Width - pianoSizeX;
             var width    = (int)GetPixelForWaveTime(duration);
 
@@ -1623,8 +1628,8 @@ namespace FamiStudio
 
                 // Processed Range
                 r.c.FillRectangle(
-                    GetPixelForWaveTime(editSample.ProcessedStartTime, scrollX), 0,
-                    GetPixelForWaveTime(editSample.ProcessedEndTime,   scrollX), headerSizeY, Color.FromArgb(64, editSample.Color));
+                    GetPixelForWaveTime(EditedSampleStartTime, scrollX), 0,
+                    GetPixelForWaveTime(EditedSampleEndTime,   scrollX), headerSizeY, Color.FromArgb(64, editSample.Color));
             }
 
             r.c.DrawLine(0, headerSizeY - 1, Width, headerSizeY - 1, Theme.BlackColor);
@@ -1734,9 +1739,9 @@ namespace FamiStudio
 
         private bool GetDPCMKeyColor(int note, out Color color)
         {
-            if (editMode != EditionMode.VideoRecording && App.SelectedChannel.Type == ChannelType.Dpcm && App.SelectedInstrument != null)
+            if (editMode != EditionMode.VideoRecording && (App.SelectedChannel.IsSampleChannel || App.SelectedChannel.Type == ChannelType.Vrc6Square1 || App.SelectedChannel.Type == ChannelType.Vrc6Square2) && App.SelectedInstrument != null)
             {
-                var mapping = App.SelectedInstrument.GetDPCMMapping(note);
+                var mapping = App.SelectedInstrument.GetSampleMapping(note);
                 if (mapping != null && mapping.Sample != null)
                 {
                     color = Settings.DpcmColorMode == Settings.ColorModeSample ?
@@ -1775,7 +1780,7 @@ namespace FamiStudio
             r.c.PushClipRegion(0, 0, pianoSizeX, height - headerAndEffectSizeY - scrollThickness + 1);
             FillKeyboardKey(r.c, 0, 0, pianoSizeX, Height, false, false);
 
-            var drawDpcmColorKeys = (editMode == EditionMode.Channel && Song.Channels[editChannel].Type == ChannelType.Dpcm) || editMode == EditionMode.DPCMMapping;
+            var drawDpcmColorKeys = (editMode == EditionMode.Channel && Song.Channels[editChannel].IsSampleChannel) || editMode == EditionMode.DPCMMapping;
 
             // Early pass for DPCM white keys.
             if (drawDpcmColorKeys)
@@ -2773,11 +2778,13 @@ namespace FamiStudio
         {
             var color = Theme.LightGreyColor1;
 
-            if (channel.Type == ChannelType.Dpcm && Settings.DpcmColorMode == Settings.ColorModeSample && instrument != null)
+            if (channel.SupportsSampleMappings && Settings.DpcmColorMode == Settings.ColorModeSample && instrument != null)
             {
-                var mapping = instrument.GetDPCMMapping(noteValue);
+                var mapping = instrument.GetSampleMapping(noteValue);
                 if (mapping != null && mapping.Sample != null)
                     color = mapping.Sample.Color;
+                else if (!channel.IsSampleChannel)
+                    color = instrument.Color;
             }
             else if (instrument != null)
             {
@@ -3140,9 +3147,11 @@ namespace FamiStudio
                         r.c.PushTranslation(0, y);
                         r.c.FillAndDrawRectangleGradient(0, 0, Width - pianoSizeX, noteSizeY, mapping.Sample.Color, mapping.Sample.Color.Scaled(0.8f), highlighted ? Theme.WhiteColor : Theme.BlackColor, true, noteSizeY, highlighted ? 3 : 1, highlighted, highlighted);
 
-                        string text = $"{mapping.Sample.Name} - {PitchLabel}: {DPCMSampleRate.GetString(true, FamiStudio.StaticInstance.PalPlayback, true, true, mapping.Pitch)}";
+                        string text = $"DPCM: {mapping.Sample.Name} - {PitchLabel}: {DPCMSampleRate.GetString(true, FamiStudio.StaticInstance.PalPlayback, true, true, mapping.Pitch)}";
+                        if (mapping.Sample.IsPcm)
+                            text = $"PCM: {mapping.Sample.Name} - {Mmc5PcmStrings.PitchLabel}: {mapping.PcmPitch:+0;-0;0}";
                         if (mapping.Loop) text += $", {LoopingLabel}";
-                        if (mapping.OverrideDmcInitialValue) text += $" , {DMCInitialValueLabel} = {mapping.DmcInitialValue}";
+                        if (!mapping.Sample.IsPcm && mapping.OverrideDmcInitialValue) text += $" , {DMCInitialValueLabel} = {mapping.DmcInitialValue}";
 
                         r.c.DrawText(text, r.fonts.FontSmall, dpcmTextPosX, 0, Theme.BlackColor, TextFlags.MiddleLeft, 0, noteSizeY);
                         r.c.PopTransform();
@@ -3178,7 +3187,7 @@ namespace FamiStudio
 
                     if (GetLocationForCoord(pt.X, pt.Y, out _, out var highlightNoteValue))
                     {
-                        var mapping = editInstrument.GetDPCMMapping(highlightNoteValue);
+                        var mapping = editInstrument.GetSampleMapping(highlightNoteValue);
                         if (mapping != null)
                         {
                             var y = virtualSizeY - highlightNoteValue * noteSizeY - scrollY;
@@ -3191,8 +3200,13 @@ namespace FamiStudio
                 }
 
                 var textY = bigTextPosY;
-                r.f.DrawText(EditingInstrumentDPCMLabel.Format(editInstrument.Name), r.fonts.FontVeryLarge, bigTextPosX, bigTextPosY, Theme.LightGreyColor1);
+                r.f.DrawText(Mmc5PcmStrings.EditingInstrumentLabel.Format(editInstrument.Name), r.fonts.FontVeryLarge, bigTextPosX, bigTextPosY, Theme.LightGreyColor1);
                 textY += r.fonts.FontVeryLarge.LineHeight;
+                if (IsEditingPcmMapping)
+                {
+                    r.f.DrawText(Mmc5PcmStrings.PlaybackLabel.Format(Math.Round(Mmc5PcmTiming.GetSampleRate(App.PalPlayback))), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
+                    return;
+                }
                 r.f.DrawText(DPCMInstrumentUsageLabel.Format(editInstrument.GetTotalMappedSampleSize(), Project.MaxMappedSampleSize), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
                 textY += r.fonts.FontMedium.LineHeight;
                 
@@ -3701,7 +3715,7 @@ namespace FamiStudio
             return (sampleIndex + offset) / editSample.SourceSampleRate;
         }
 
-        private void RenderWave(RenderInfo r, short[] data, float rate, Color color, bool isSource, bool drawSamples)
+        private void RenderWave(RenderInfo r, short[] data, float rate, Color color, bool isSource, bool drawSamples, float baseTime = 0)
         {
             var viewWidth     = Width - pianoSizeX;
             var viewHeight    = Height - headerAndEffectSizeY - scrollBarThickness;
@@ -3709,8 +3723,8 @@ namespace FamiStudio
             var halfHeightPad = halfHeight - waveDisplayPaddingY;
             var viewTime      = DefaultZoomWaveTime / zoom;
 
-            var unclampedMinVisibleSample = (int)Math.Floor  (r.minVisibleWaveTime * rate);
-            var unclampedMaxVisibleSample = (int)Math.Ceiling(r.maxVisibleWaveTime * rate);
+            var unclampedMinVisibleSample = (int)Math.Floor  ((r.minVisibleWaveTime - baseTime) * rate);
+            var unclampedMaxVisibleSample = (int)Math.Ceiling((r.maxVisibleWaveTime - baseTime) * rate);
             var unclampedNumVisibleSample = unclampedMaxVisibleSample - unclampedMinVisibleSample;
 
             if (unclampedNumVisibleSample > 0 && unclampedMaxVisibleSample > 0 && unclampedMinVisibleSample < data.Length)
@@ -3728,7 +3742,7 @@ namespace FamiStudio
                     var points = new float[numVisibleSample * 2];
                     var indices = isSource && drawSamples ? new int[numVisibleSample] : null;
                     var scaleX = 1.0f / (rate * viewTime) * viewWidth;
-                    var biasX = (float)-scrollX;
+                    var biasX = GetPixelForWaveTime(baseTime, scrollX);
 
                     for (int i = minVisibleSample, j = 0; i < maxVisibleSample; i += sampleSkip, j++)
                     {
@@ -3848,7 +3862,7 @@ namespace FamiStudio
 
         private void RenderWaveform(RenderInfo r)
         {
-            if (editMode != EditionMode.DPCM || Width < pianoSizeX)
+            if (editMode != EditionMode.DPCM || Width <= pianoSizeX)
                 return;
 
             r.b.PushTranslation(pianoSizeX, headerAndEffectSizeY);
@@ -3916,7 +3930,11 @@ namespace FamiStudio
             }
 
             // Processed waveform
-            RenderDmc(r, editSample.ProcessedData, editSample.ProcessedSampleRate, editSample.ProcessedStartTime, editSample.Color, false, showSamples, editSample.GetVolumeScaleDmcInitialValueDiv2());
+            var pcmPreview = IsEditingPcmSample ? editSample.GetPcmPreviewWave(App.PalPlayback) : null;
+            if (pcmPreview != null)
+                RenderWave(r, pcmPreview.Samples, (float)pcmPreview.SampleRate, editSample.Color, false, showSamples, pcmPreview.StartTime);
+            else
+                RenderDmc(r, editSample.ProcessedData, editSample.ProcessedSampleRate, editSample.ProcessedStartTime, editSample.Color, false, showSamples, editSample.GetVolumeScaleDmcInitialValueDiv2());
 
             // Play position
             var playPosition = App.PreviewDPCMWavPosition;
@@ -3925,20 +3943,26 @@ namespace FamiStudio
             {
                 var playTime = playPosition / (float)App.PreviewDPCMSampleRate;
                 if (!App.PreviewDPCMIsSource)
-                    playTime += editSample.ProcessedStartTime;
+                    playTime += App.PreviewDPCMStartTime;
                 var seekX = GetPixelForWaveTime(playTime, scrollX);
                 r.c.DrawLine(seekX, 0, seekX, Height, App.PreviewDPCMIsSource ? Theme.LightGreyColor1 : editSample.Color, 3);
             }
 
             // Title + source/processed info.
             var textY = bigTextPosY;
-            r.f.DrawText(EditingDPCMSampleLabel.Format(editSample.Name), r.fonts.FontVeryLarge, bigTextPosX, textY, Theme.LightGreyColor1);
+            r.f.DrawText((pcmPreview != null ? Mmc5PcmStrings.EditingSampleLabel : EditingDPCMSampleLabel).Format(editSample.Name), r.fonts.FontVeryLarge, bigTextPosX, textY, Theme.LightGreyColor1);
             textY += r.fonts.FontVeryLarge.LineHeight;
             r.f.DrawText(DPCMSourceDataLabel.Format(editSample.SourceDataIsWav ? "WAV" : "DMC", editSample.SourceSampleRate, editSample.SourceDataSize, (int)(editSample.SourceDuration * 1000)), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
             textY += r.fonts.FontMedium.LineHeight;
-            r.f.DrawText(DPCMProcessedDataLabel.Format(DPCMSampleRate.GetString(false, App.PalPlayback, true, true, editSample.SampleRate), editSample.ProcessedData.Length, (int)(editSample.ProcessedDuration * 1000)), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
+            var processedLabel = pcmPreview != null ?
+                Mmc5PcmStrings.ProcessedDataLabel.Format(pcmPreview.SampleRate, pcmPreview.Samples.Length, (int)(pcmPreview.Duration * 1000)) :
+                DPCMProcessedDataLabel.Format(DPCMSampleRate.GetString(false, App.PalPlayback, true, true, editSample.SampleRate), editSample.ProcessedData.Length, (int)(editSample.ProcessedDuration * 1000));
+            r.f.DrawText(processedLabel, r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
             textY += r.fonts.FontMedium.LineHeight;
-            r.f.DrawText(DPCMPreviewPlaybackLabel.Format(DPCMSampleRate.GetString(false, App.PalPlayback, true, true, editSample.PreviewRate), (int)(editSample.GetPlaybackDuration(App.PalPlayback) * 1000)), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);;
+            var previewLabel = pcmPreview != null ?
+                Mmc5PcmStrings.PreviewPlaybackLabel.Format(pcmPreview.SampleRate, (int)(pcmPreview.Duration * 1000)) :
+                DPCMPreviewPlaybackLabel.Format(DPCMSampleRate.GetString(false, App.PalPlayback, true, true, editSample.PreviewRate), (int)(editSample.GetPlaybackDuration(App.PalPlayback) * 1000));
+            r.f.DrawText(previewLabel, r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
 
             r.b.PopTransform();
 
@@ -4571,11 +4595,19 @@ namespace FamiStudio
         {
             var strings = DPCMSampleRate.GetStringList(true, FamiStudio.StaticInstance.PalPlayback, true, true);
 
-            var dlg = new PropertyDialog(ParentWindow, SampleMappingTitle, new Point(left + pt.X, top + pt.Y), 400, false, pt.Y > Height / 2);
+            var pcm = mapping.Sample.IsPcm;
+            var dlg = new PropertyDialog(ParentWindow, pcm ? Mmc5PcmStrings.KeyTitle : SampleMappingTitle, new Point(left + pt.X, top + pt.Y), 400, false, pt.Y > Height / 2);
             dlg.Properties.AddDropDownList(PitchLabel.Colon, strings, strings[mapping.Pitch]); // 0
             dlg.Properties.AddCheckBox(LoopLabel.Colon, mapping.Loop); // 1
             dlg.Properties.AddCheckBox(OverrideDMCInitialValueLabel.Colon, mapping.OverrideDmcInitialValue); // 2
             dlg.Properties.AddNumericUpDown(DMCInitialValueLabel.Colon, mapping.DmcInitialValue, 0, 127, 1); // 3
+            if (pcm)
+                dlg.Properties.AddNumericUpDown(Mmc5PcmStrings.PitchLabel, mapping.PcmPitch, -48, 48, 1, Mmc5PcmStrings.PitchTooltip); // 4
+            dlg.Properties.SetPropertyVisible(0, !pcm);
+            dlg.Properties.SetPropertyVisible(2, !pcm);
+            dlg.Properties.SetPropertyVisible(3, !pcm);
+            if (pcm)
+                dlg.Properties.SetPropertyVisible(4, pcm);
             dlg.Properties.Build();
             dlg.Properties.SetPropertyEnabled(3, mapping.OverrideDmcInitialValue);
             dlg.Properties.PropertyChanged += DPCMSampleMapping_PropertyChanged;
@@ -4589,6 +4621,8 @@ namespace FamiStudio
                     mapping.Loop = dlg.Properties.GetPropertyValue<bool>(1);
                     mapping.OverrideDmcInitialValue = dlg.Properties.GetPropertyValue<bool>(2);
                     mapping.DmcInitialValue = dlg.Properties.GetPropertyValue<int>(3);
+                    if (pcm)
+                        mapping.PcmPitch = dlg.Properties.GetPropertyValue<int>(4);
                     App.UndoRedoManager.EndTransaction();
                     MarkDirty();
                 }
@@ -4640,7 +4674,7 @@ namespace FamiStudio
         {
             if (GetLocationForCoord(e.X, e.Y, out _, out var noteValue))
             {
-                var mapping = editInstrument.GetDPCMMapping(noteValue);
+                var mapping = editInstrument.GetSampleMapping(noteValue);
                 if (mapping != null)
                     ClearDPCMSampleMapping(noteValue);
                 return true;
@@ -4848,7 +4882,7 @@ namespace FamiStudio
             if (draggedSample == null)
             {
                 App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, editInstrument.Id);
-                draggedSample = editInstrument.GetDPCMMapping(captureNoteValue);
+                draggedSample = editInstrument.GetSampleMapping(captureNoteValue);
                 editInstrument.UnmapDPCMSample(captureNoteValue);
             }
             else
@@ -4868,7 +4902,7 @@ namespace FamiStudio
 
                     // Map the sample right away so that it renders correctly as the message box pops.
                     editInstrument.UnmapDPCMSample(noteValue);
-                    editInstrument.MapDPCMSample(noteValue, sample.Sample, sample.Pitch, sample.Loop);
+                    CopySampleMapping(editInstrument, noteValue, sample);
 
                     draggedSample = null;
 
@@ -4885,7 +4919,7 @@ namespace FamiStudio
                             // Need to redo everything + transpose.
                             editInstrument.UnmapDPCMSample(captureNoteValue);
                             editInstrument.UnmapDPCMSample(noteValue);
-                            editInstrument.MapDPCMSample(noteValue, sample.Sample, sample.Pitch, sample.Loop);
+                            CopySampleMapping(editInstrument, noteValue, sample);
                             App.Project.TransposeDPCMMapping(captureNoteValue, noteValue, editInstrument);
                         }
 
@@ -6198,7 +6232,7 @@ namespace FamiStudio
         {
             if (e.Left && GetLocationForCoord(e.X, e.Y, out var location, out var noteValue))
             {
-                var mapping = editInstrument.GetDPCMMapping(noteValue);
+                var mapping = editInstrument.GetSampleMapping(noteValue);
 
                 if (mapping == null)
                 {
@@ -6744,7 +6778,7 @@ namespace FamiStudio
         {
             if (GetLocationForCoord(x, y, out _, out var noteValue) && noteValue == highlightDPCMSample)
             {
-                var mapping = editInstrument.GetDPCMMapping(noteValue);
+                var mapping = editInstrument.GetSampleMapping(noteValue);
 
                 if (mapping != null)
                 {
@@ -6798,7 +6832,7 @@ namespace FamiStudio
         {
             if (GetLocationForCoord(x, y, out _, out var noteValue))
             {
-                var mapping = editInstrument.GetDPCMMapping(noteValue);
+                var mapping = editInstrument.GetSampleMapping(noteValue);
 
                 if (mapping == null)
                 {
@@ -7504,7 +7538,7 @@ namespace FamiStudio
         {
             if (GetLocationForCoord(x, y, out _, out var noteValue))
             {
-                var mapping = editInstrument.GetDPCMMapping(noteValue);
+                var mapping = editInstrument.GetSampleMapping(noteValue);
 
                 if (mapping != null)
                 {
@@ -7816,7 +7850,7 @@ namespace FamiStudio
             }
             else if (editMode == EditionMode.DPCM)
             {
-                maxScrollX = Math.Max((int)Math.Ceiling(GetPixelForWaveTime(Math.Max(editSample.SourceDuration, editSample.ProcessedDuration))) - scrollMargin, 0);
+                maxScrollX = Math.Max((int)Math.Ceiling(GetPixelForWaveTime(Math.Max(editSample.SourceDuration, EditedSampleDisplayDuration))) - scrollMargin, 0);
                 minScrollY = Math.Max(virtualSizeY + headerAndEffectSizeY - Height, 0) / 2;
                 maxScrollY = minScrollY;
             }
@@ -8288,40 +8322,65 @@ namespace FamiStudio
             }
         }
 
+        private static void CopySampleMapping(Instrument instrument, int key, DPCMSampleMapping source)
+        {
+            var mapping = source.Sample.IsPcm ? instrument.MapPcmSample(key, source.Sample) : instrument.MapDPCMSample(key, source.Sample, bank: source.Sample.Bank);
+            mapping.Pitch = source.Pitch;
+            mapping.PcmPitch = source.PcmPitch;
+            mapping.Loop = source.Loop;
+            mapping.OverrideDmcInitialValue = source.OverrideDmcInitialValue;
+            mapping.DmcInitialValue = source.DmcInitialValue;
+        }
+
         private void MapDPCMSample(byte noteValue)
         {
-            if (App.Project.Samples.Count == 0)
+            var samples = App.Project.AllSamples.Where(s => s.IsPcm ? editInstrument.SupportsPcmMapping : editInstrument.SupportsDpcmMapping).ToList();
+            if (samples.Count == 0)
             {
-                Platform.MessageBoxAsync(ParentWindow, NoDPCMSampleMessage, NoDPCMSampleTitle, MessageBoxButtons.OK);
+                Platform.MessageBoxAsync(ParentWindow, Mmc5PcmStrings.NoSamplesMessage, Mmc5PcmStrings.AssignSampleTitle, MessageBoxButtons.OK);
+                return;
             }
-            else
+
+            var names = samples.Select(s => (s.IsPcm ? "PCM: " : "DPCM: ") + s.NameWithFolder).ToArray();
+            var pitchStrings = DPCMSampleRate.GetStringList(true, App.PalPlayback, true, true);
+            var dlg = new PropertyDialog(ParentWindow, Mmc5PcmStrings.AssignSampleTitle, 360);
+            dlg.Properties.AddDropDownList(SelectSampleToAssignLabel.Colon, names, names[0], null, PropertyFlags.ForceFullWidth); // 0
+            dlg.Properties.AddDropDownList(PitchLabel.Colon, pitchStrings, pitchStrings[pitchStrings.Length - 1]); // 1
+            dlg.Properties.AddCheckBox(LoopLabel.Colon, false); // 2
+            dlg.Properties.AddNumericUpDown(Mmc5PcmStrings.PitchLabel, 0, -48, 48, 1, Mmc5PcmStrings.PitchTooltip); // 3
+            Action updateKind = () =>
             {
-                var sampleNames = new List<string>();
-                foreach (var sample in App.Project.Samples)
-                    sampleNames.Add(sample.Name);
-
-                var pitchStrings = DPCMSampleRate.GetStringList(true, FamiStudio.StaticInstance.PalPlayback, true, true);
-
-                var dlg = new PropertyDialog(ParentWindow, AssignDPCMSampleTitle, 300);
-                dlg.Properties.AddDropDownList(SelectSampleToAssignLabel.Colon, sampleNames.ToArray(), sampleNames[0], null, PropertyFlags.ForceFullWidth); // 0
-                dlg.Properties.AddDropDownList(PitchLabel.Colon, pitchStrings, pitchStrings[pitchStrings.Length - 1]); // 1
-                dlg.Properties.AddCheckBox(LoopLabel.Colon, false); // 2
+                bool pcm = samples[dlg.Properties.GetSelectedIndex(0)].IsPcm;
+                dlg.Properties.SetPropertyVisible(1, !pcm);
+                dlg.Properties.SetPropertyVisible(3, pcm);
                 dlg.Properties.Build();
-
-                dlg.ShowDialogAsync((r) =>
+            };
+            dlg.Properties.PropertyChanged += (props, index, row, column, value) => { if (index == 0) updateKind(); };
+            updateKind();
+            dlg.ValidateProperties += props =>
+            {
+                if (samples[props.GetSelectedIndex(0)].IsPcm && !NesApu.SupportsPcm)
                 {
-                    if (r == DialogResult.OK)
-                    {
-                        App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, editInstrument.Id, -1, TransactionFlags.StopAudio);
-                        var sampleName = dlg.Properties.GetPropertyValue<string>(0);
-                        var mapping = editInstrument.MapDPCMSample(noteValue, App.Project.GetSample(sampleName));
-                        mapping.Pitch = dlg.Properties.GetSelectedIndex(1);
-                        mapping.Loop = dlg.Properties.GetPropertyValue<bool>(2);
-                        App.UndoRedoManager.EndTransaction();
-                        DPCMSampleMapped?.Invoke(noteValue);
-                    }
-                });
-            }
+                    App.DisplayNotification(Mmc5PcmStrings.NativeLibraryRequired, true);
+                    return false;
+                }
+                return true;
+            };
+            dlg.ShowDialogAsync(r =>
+            {
+                if (r == DialogResult.OK)
+                {
+                    var sample = samples[dlg.Properties.GetSelectedIndex(0)];
+                    App.UndoRedoManager.BeginTransaction(TransactionScope.Instrument, editInstrument.Id, -1, TransactionFlags.StopAudio);
+                    editInstrument.UnmapDPCMSample(noteValue);
+                    var mapping = sample.IsPcm ? editInstrument.MapPcmSample(noteValue, sample) : editInstrument.MapDPCMSample(noteValue, sample, bank: sample.Bank);
+                    if (sample.IsPcm) mapping.PcmPitch = dlg.Properties.GetPropertyValue<int>(3);
+                    else mapping.Pitch = dlg.Properties.GetSelectedIndex(1);
+                    mapping.Loop = dlg.Properties.GetPropertyValue<bool>(2);
+                    App.UndoRedoManager.EndTransaction();
+                    DPCMSampleMapped?.Invoke(noteValue);
+                }
+            });
         }
 
         private void StartDragDPCMSampleMapping(int x, int y, byte noteValue)
@@ -8905,10 +8964,10 @@ namespace FamiStudio
                     {
                         newNoteTooltip = $"{Note.GetFriendlyName(noteValue)}";
 
-                        var mapping = editInstrument.GetDPCMMapping(noteValue);
+                        var mapping = editInstrument.GetSampleMapping(noteValue);
                         if (mapping == null)
                         {
-                            tooltip = $"<MouseLeft> {AssignDPCMSampleTooltip} - <MouseWheel> {PanTooltip}";
+                            tooltip = $"<MouseLeft> {Mmc5PcmStrings.AssignSampleTitle} - <MouseWheel> {PanTooltip}";
                         }
                         else
                         {

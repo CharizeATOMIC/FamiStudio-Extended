@@ -8,9 +8,9 @@ namespace FamiStudio
 {
     public static class ClipboardUtils
     {
-        const uint MagicNumberClipboardNotes    = 0x214E4346; // FCN!
+        const uint MagicNumberClipboardNotes    = 0x324E4346; // FCN2 (independent PCM assets)
         const uint MagicNumberClipboardEnvelope = 0x21454346; // FCE!
-        const uint MagicNumberClipboardPatterns = 0x21504346; // FCP!
+        const uint MagicNumberClipboardPatterns = 0x32504346; // FCP2
 
         readonly static char[] Seperators = new[] { ' ', '\t', '\r', '\n', ',', ';', '\0' };
 
@@ -250,10 +250,12 @@ namespace FamiStudio
                 var sampleId = sample.Id;
                 var sampleCrc = sample.ComputeCRC();
                 var sampleName = sample.Name;
+                var isPcm = sample.IsPcm;
 
                 serializer.Serialize(ref sampleId);
                 serializer.Serialize(ref sampleCrc);
                 serializer.Serialize(ref sampleName);
+                serializer.Serialize(ref isPcm);
             }
 
             foreach (var sample in samples)
@@ -270,18 +272,20 @@ namespace FamiStudio
             var flags = ClipboardContentFlags.None;
             var dummySample = new DPCMSample();
 
-            var sampleList = new List<(int, uint, string)>();
+            var sampleList = new List<(int, uint, string, bool)>();
             for (int i = 0; i < numSamples; i++)
             {
                 var sampleId = 0;
                 var sampleCrc = 0u;
                 var sampleName = "";
+                var isPcm = false;
 
                 serializer.Serialize(ref sampleId);
                 serializer.Serialize(ref sampleCrc);
                 serializer.Serialize(ref sampleName);
+                serializer.Serialize(ref isPcm);
 
-                sampleList.Add((sampleId, sampleCrc, sampleName));
+                sampleList.Add((sampleId, sampleCrc, sampleName, isPcm));
             }
 
             for (int i = 0; i < numSamples; i++)
@@ -289,8 +293,9 @@ namespace FamiStudio
                 var sampleId   = sampleList[i].Item1;
                 var sampleCrc  = sampleList[i].Item2;
                 var sampleName = sampleList[i].Item3;
+                var isPcm = sampleList[i].Item4;
 
-                var existingSample = serializer.Project.GetSample(sampleName);
+                var existingSample = isPcm ? serializer.Project.GetPcmSample(sampleName) : serializer.Project.GetSample(sampleName);
                 var crcMatch = existingSample == null || existingSample.ComputeCRC() == sampleCrc;
 
                 if (existingSample != null && (checkOnly || importFlags.HasFlag(ClipboardImportFlags.MatchByName) || crcMatch))
@@ -311,10 +316,11 @@ namespace FamiStudio
                     {
                         if (existingSample != null)
                         {
-                            sampleName = serializer.Project.GenerateUniqueDPCMSampleName(sampleName);
+                            sampleName = isPcm ? serializer.Project.GenerateUniquePcmSampleName(sampleName) :
+                                serializer.Project.GenerateUniqueDPCMSampleName(sampleName);
                         }
 
-                        var sample = serializer.Project.CreateDPCMSample(sampleName);
+                        var sample = isPcm ? serializer.Project.CreatePcmSample(sampleName) : serializer.Project.CreateDPCMSample(sampleName);
                         serializer.RemapId(sampleId, sample.Id);
                         sample.Serialize(serializer);
                         sample.Name = sampleName;
@@ -328,7 +334,9 @@ namespace FamiStudio
             }
 
             serializer.Project.EnsureAllFoldersExist(FolderType.Sample);
+            serializer.Project.EnsureAllFoldersExist(FolderType.PcmSample);
             serializer.Project.ConditionalSortSamples();
+            serializer.Project.ConditionalSortPcmSamples();
 
             return flags;
         }

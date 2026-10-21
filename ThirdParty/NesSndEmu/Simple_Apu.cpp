@@ -242,6 +242,7 @@ void Simple_Apu::write_register(cpu_addr_t addr, int data)
 	else
 	{
 		blip_time_t clk = clock();
+		run_pcm_until(clk);
 
 		if (addr >= Nes_Apu::start_addr && addr <= Nes_Apu::end_addr)
 		{
@@ -308,7 +309,9 @@ void Simple_Apu::stop_seeking()
 
 int Simple_Apu::read_status()
 {
-	return apu.read_status( clock() );
+	const auto clk = clock();
+	run_pcm_until(clk);
+	return apu.read_status(clk);
 }
 
 int Simple_Apu::skip_cycles(long cycles)
@@ -316,6 +319,7 @@ int Simple_Apu::skip_cycles(long cycles)
 	if (!seeking)
 	{
 		time += cycles;
+		run_pcm_until(time);
 		apu.run_until(time);
 
 		if (expansions & expansion_mask_vrc6) vrc6.run_until(time);
@@ -355,6 +359,140 @@ void Simple_Apu::set_update_rate_multiplier(int value)
 	update_subframe = 0;
 }
 
+void Simple_Apu::write_pcm_sample(int destination, cpu_time_t clk, int raw)
+{
+	auto& stream = pcm_streams[destination];
+	stream.raw = raw;
+	// Quantize only after applying gain, using C++ truncation toward zero.
+	const int scaled = 128 + ((raw - 128) * stream.volume) / 15;
+	stream.dac = scaled >> (destination == 0 ? 1 : 4);
+	if (destination == 0)
+		apu.write_register(clk, 0x4011, stream.dac);
+	else
+		vrc6.write_register(clk, destination == 2 ? 0x9000 : 0xa000, 0x80 | stream.dac);
+}
+
+void Simple_Apu::run_pcm_until(cpu_time_t end_time)
+{
+	const int64_t end_q16 = int64_t(end_time) << 16;
+	for (;;)
+	{
+		int selected = -1;
+		int64_t deadline = end_q16 + 1;
+		// Both VRC6 pulses share one emulated chip: dispatch in timestamp order.
+		for (int i = 0; i < 4; ++i)
+			if (i != 1 && pcm_streams[i].playing && pcm_streams[i].next_time_q16 < deadline)
+				{ selected = i; deadline = pcm_streams[i].next_time_q16; }
+		if (selected < 0) return;
+		auto& stream = pcm_streams[selected];
+		const cpu_time_t clk = cpu_time_t(deadline >> 16);
+		++stream.position;
+		if (stream.loop_start >= 0 && stream.position == stream.loop_end)
+			stream.position = stream.loop_start;
+		else if (stream.position == int(stream.data.size()))
+		{
+			stream.playing = false;
+			write_pcm_sample(selected, clk, 128);
+			continue;
+		}
+		write_pcm_sample(selected, clk, stream.data[stream.position]);
+		stream.next_time_q16 += stream.period_q16;
+	}
+}
+
+bool Simple_Apu::start_pcm(int destination, const unsigned char* data, int length, uint32_t period_q16, int loop_start, int loop_end, int volume)
+{
+	if (destination < 0 || destination > 3 || !data || length <= 0 || length > 16 * 1024 * 1024 ||
+		period_q16 < 65536 || volume < 0 || volume > 15 ||
+		!((loop_start == -1 && loop_end == -1) || (loop_start >= 0 && loop_start < loop_end && loop_end <= length)))
+		return false;
+	if (destination == 1)
+		return start_mmc5_pcm(data, length, period_q16, loop_start, loop_end, volume);
+	if (destination >= 2 && !(expansions & expansion_mask_vrc6)) return false;
+	std::vector<unsigned char> copy;
+	try { copy.assign(data, data + length); } catch (...) { return false; }
+	run_pcm_until(time);
+	auto& stream = pcm_streams[destination];
+	stream.data.swap(copy);
+	stream.position = 0;
+	stream.period_q16 = period_q16;
+	stream.loop_start = loop_start;
+	stream.loop_end = loop_end;
+	stream.volume = volume;
+	stream.playing = true;
+	if (destination == 0)
+		apu.write_register(time, 0x4015, 0x0f); // Disable DMC DMA; retain hardware buffered-tail behavior.
+	else
+		vrc6.write_register(time, destination == 2 ? 0x9002 : 0xa002, 0x80);
+	write_pcm_sample(destination, time, data[0]);
+	stream.next_time_q16 = (int64_t(time) << 16) + period_q16;
+	return true;
+}
+
+void Simple_Apu::stop_pcm(int destination)
+{
+	if (destination < 0 || destination > 3) return;
+	if (destination == 1) { stop_mmc5_pcm(); return; }
+	if (destination >= 2 && !(expansions & expansion_mask_vrc6)) return;
+	run_pcm_until(time);
+	auto& stream = pcm_streams[destination];
+	stream.playing = false;
+	write_pcm_sample(destination, time, 128);
+}
+
+void Simple_Apu::set_pcm_volume(int destination, int volume)
+{
+	if (destination < 0 || destination > 3) return;
+	if (destination == 1) { set_mmc5_pcm_volume(volume); return; }
+	run_pcm_until(time);
+	auto& stream = pcm_streams[destination];
+	stream.volume = volume < 0 ? 0 : volume > 15 ? 15 : volume;
+	if (stream.playing) write_pcm_sample(destination, time, stream.raw);
+}
+
+void Simple_Apu::release_pcm(int destination)
+{
+	if (destination < 0 || destination > 3) return;
+	if (destination == 1)
+	{
+		if (expansions & expansion_mask_mmc5) mmc5.release_pcm(time);
+		return;
+	}
+	run_pcm_until(time);
+	pcm_streams[destination].playing = false;
+}
+
+int Simple_Apu::get_pcm_dac(int destination) const
+{
+	if (destination < 0 || destination > 3) return -1;
+	return destination == 1 ? get_mmc5_pcm_dac() : pcm_streams[destination].dac;
+}
+
+int Simple_Apu::get_pcm_position(int destination) const
+{
+	if (destination < 0 || destination > 3) return -1;
+	if (destination == 1) return get_mmc5_pcm_position();
+	return pcm_streams[destination].playing ? pcm_streams[destination].position : -1;
+}
+
+bool Simple_Apu::start_mmc5_pcm(const unsigned char* data, int length, uint32_t period_q16, int loop_start, int loop_end, int volume)
+{
+	return (expansions & expansion_mask_mmc5) != 0 &&
+		mmc5.start_pcm(time, data, length, period_q16, loop_start, loop_end, volume);
+}
+
+void Simple_Apu::stop_mmc5_pcm()
+{
+	if (expansions & expansion_mask_mmc5)
+		mmc5.stop_pcm(time);
+}
+
+void Simple_Apu::set_mmc5_pcm_volume(int volume)
+{
+	if (expansions & expansion_mask_mmc5)
+		mmc5.set_pcm_volume(time, volume);
+}
+
 void Simple_Apu::end_frame()
 {
 	// Subdivide real emulated CPU time, without changing the chip clock/pitch.
@@ -364,6 +502,10 @@ void Simple_Apu::end_frame()
 	update_subframe = (update_subframe + 1) % update_rate_multiplier;
 	assert(time <= cycles);
 
+	run_pcm_until(cycles);
+	for (int i = 0; i < 4; ++i)
+		if (i != 1 && pcm_streams[i].playing)
+			pcm_streams[i].next_time_q16 -= int64_t(cycles) << 16;
 	time = 0;
 
 	apu.end_frame(cycles);
@@ -404,6 +546,7 @@ void Simple_Apu::end_frame()
 
 void Simple_Apu::reset()
 {
+	for (auto& stream : pcm_streams) stream = PcmStream();
 	apu.enable_nonlinear(1.0);
 	tnd_volume = 1.0;
 	seeking = false;

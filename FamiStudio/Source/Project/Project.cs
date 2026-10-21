@@ -31,7 +31,9 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1007;
+        public const int Version = 1009;
+        public const int IndependentPcmFormatVersion = 1009;
+        public const int Mmc5PcmFormatVersion = 1008;
         public const int TuningFormatVersion = 1001;
         public const int ChipTuningFormatVersion = 1002;
         public const int NoiseEnvelopeFormatVersion = 1003;
@@ -81,6 +83,7 @@ namespace FamiStudio
         public const int MaxSampleAddress = 255 * 64;
 
         private List<DPCMSample> samples = new List<DPCMSample>();
+        private List<DPCMSample> pcmSamples = new List<DPCMSample>();
         private List<Instrument> instruments = new List<Instrument>();
         private List<Arpeggio> arpeggios = new List<Arpeggio>();
         private List<Song> songs = new List<Song>();
@@ -93,6 +96,23 @@ namespace FamiStudio
         private int tempoMode = TempoType.FamiStudio;
         private int expansionMask = ExpansionType.NoneMask;
         private int expansionNumN163Channels = 1; // For N163 only.
+        private bool mmc5PcmEnabled;
+        public bool Mmc5PcmEnabled
+        {
+            get => mmc5PcmEnabled;
+            set
+            {
+                if (mmc5PcmEnabled == value) return;
+                var previous = mmc5PcmEnabled;
+                mmc5PcmEnabled = value;
+                if (GetActiveChannelCount() > 64)
+                {
+                    mmc5PcmEnabled = previous;
+                    throw new ArgumentException("At most 64 channels are supported.");
+                }
+                foreach (var song in songs) song.CreateChannels(true);
+            }
+        }
         private int[] expansionInstances = Enumerable.Repeat(1, ExpansionType.Count).ToArray();
         public int GetExpansionInstances(int expansion) => expansionInstances[expansion];
         public bool HasVirtualChips => GetActiveExpansions().Any(e => e != 0 && expansionInstances[e] > 1);
@@ -120,6 +140,7 @@ namespace FamiStudio
         private bool sortSongs = true;
         private bool sortInstruments = true;
         private bool sortSamples = true;
+        private bool sortPcmSamples = true;
         private bool sortArpeggios = true;
 
         // Project mixer overrides;
@@ -153,6 +174,16 @@ namespace FamiStudio
         private SfxExportConfig famiTone2SfxExportConfig = new();
 
         public List<DPCMSample> Samples => samples;
+        public List<DPCMSample> PcmSamples => pcmSamples;
+        public IEnumerable<DPCMSample> AllSamples => samples.Concat(pcmSamples);
+        public bool UsesPcm => mmc5PcmEnabled || instruments.Any(i => i.HasAnyPcmMappings);
+        public bool UsesApuPcm => instruments.Any(i => i.IsRegular && i.HasAnyPcmMappings);
+        internal bool LoadingLegacySharedPcm { get; private set; }
+        public bool AutoSortPcmSamples
+        {
+            get => sortPcmSamples;
+            set { sortPcmSamples = value; ConditionalSortPcmSamples(); }
+        }
         public List<Instrument> Instruments => instruments;
         public List<Song> Songs => songs;
         public List<Arpeggio> Arpeggios => arpeggios;
@@ -359,7 +390,7 @@ namespace FamiStudio
 
         public bool SampleExists(DPCMSample sample)
         {
-            return samples.Contains(sample);
+            return samples.Contains(sample) || pcmSamples.Contains(sample);
         }
 
         public bool ArpeggioExists(Arpeggio arp)
@@ -369,12 +400,55 @@ namespace FamiStudio
 
         public DPCMSample GetSample(int id)
         {
-            return samples.Find(s => s.Id == id);
+            return samples.Find(s => s.Id == id) ?? pcmSamples.Find(s => s.Id == id);
         }
 
         public DPCMSample GetSample(string name)
         {
             return samples.Find(s => s.Name == name);
+        }
+
+        public DPCMSample GetPcmSample(string name) => pcmSamples.Find(s => s.Name == name);
+        public bool IsPcmSampleNameUnique(string name) => GetPcmSample(name) == null;
+        public List<DPCMSample> GetPcmSamplesInFolder(string name) =>
+            pcmSamples.FindAll(s => (name ?? "") == (s.FolderName ?? ""));
+
+        public DPCMSample CreatePcmSample(string name)
+        {
+            if (GetPcmSample(name) != null) return null;
+            var sample = new DPCMSample(this, GenerateUniqueId(), name, true);
+            pcmSamples.Add(sample);
+            ConditionalSortPcmSamples();
+            return sample;
+        }
+
+        public DPCMSample CreatePcmSampleFromWavData(string name, short[] data, int sampleRate, string filename = null)
+        {
+            var sample = CreatePcmSample(name);
+            if (sample != null)
+                sample.SetWavSourceData((short[])data.Clone(), sampleRate, filename, true);
+            return sample;
+        }
+
+        public string GenerateUniquePcmSampleName(string baseName)
+        {
+            if (IsPcmSampleNameUnique(baseName)) return baseName;
+            for (int index = 1; ; index++)
+            {
+                var name = $"{baseName} {index}";
+                if (IsPcmSampleNameUnique(name)) return name;
+            }
+        }
+
+        public void SortPcmSamples()
+        {
+            pcmSamples.Sort((a, b) => AlphaNumericComparer.CompareStatic(a.Name, b.Name));
+            SortFolders(FolderType.PcmSample);
+        }
+
+        public void ConditionalSortPcmSamples()
+        {
+            if (sortPcmSamples) SortPcmSamples();
         }
 
         public Pattern GetPattern(int id)
@@ -461,13 +535,16 @@ namespace FamiStudio
         {
             var saveSerializer = new ProjectSaveBuffer(this);
             sample.Serialize(saveSerializer);
-            var newSample = CreateDPCMSample(GenerateUniqueDPCMSampleName(sample.Name));
+            var newSample = sample.IsPcm ? CreatePcmSample(GenerateUniquePcmSampleName(sample.Name)) :
+                CreateDPCMSample(GenerateUniqueDPCMSampleName(sample.Name));
             var loadSerializer = new ProjectLoadBuffer(this, saveSerializer.GetBuffer(), Project.Version);
             loadSerializer.RemapId(sample.Id, newSample.Id);
             newSample.Serialize(loadSerializer);
-            newSample.Name = GenerateUniqueDPCMSampleName(newSample.Name.TrimEnd(new[] { ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' }));
+            var baseName = newSample.Name.TrimEnd(new[] { ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
+            newSample.Name = newSample.IsPcm ? GenerateUniquePcmSampleName(baseName) : GenerateUniqueDPCMSampleName(baseName);
             MoveSample(newSample, sample);
             ConditionalSortSamples();
+            ConditionalSortPcmSamples();
             ValidateIntegrity();
             return newSample;
         }
@@ -476,8 +553,7 @@ namespace FamiStudio
         {
             foreach (var song in songs)
             {
-                var channel = song.Channels[ChannelType.Dpcm];
-
+                foreach (var channel in song.Channels.Where(c => c.SupportsSampleMappings))
                 foreach (var pattern in channel.Patterns)
                 {
                     bool dirty = false;
@@ -723,6 +799,8 @@ namespace FamiStudio
 
         public void ReplaceSampleInAllMappings(DPCMSample oldSample, DPCMSample newSample)
         {
+            if (newSample != null && oldSample.IsPcm != newSample.IsPcm)
+                throw new ArgumentException("Global sample replacement must stay within the same sample library.");
             foreach (var inst in instruments)
             {
                 if (inst.HasAnyMappedSamples)
@@ -735,6 +813,7 @@ namespace FamiStudio
         public void DeleteSample(DPCMSample sample)
         {
             samples.Remove(sample);
+            pcmSamples.Remove(sample);
             ReplaceSampleInAllMappings(sample, null);
         }
 
@@ -749,17 +828,14 @@ namespace FamiStudio
             }
 
             samples.Clear();
+            pcmSamples.Clear();
         }
 
         public void DeleteAllSamplesBut(int[] sampleIds)
         {
-            for (int i = 0; i < samples.Count;)
-            {
-                if (Array.IndexOf(sampleIds, samples[i].Id) < 0)
-                    DeleteSample(samples[i]);
-                else
-                    i++;
-            }
+            foreach (var sample in AllSamples.ToArray())
+                if (Array.IndexOf(sampleIds, sample.Id) < 0)
+                    DeleteSample(sample);
         }
 
         public void DeleteAllSongs()
@@ -972,10 +1048,12 @@ namespace FamiStudio
             if (string.IsNullOrEmpty(name))
                 return false;
 
-            if (samples.Find(s => s.Name == name) == null)
+            var library = sample.IsPcm ? pcmSamples : samples;
+            if (library.Find(s => s.Name == name) == null)
             {
                 sample.Name = name;
                 ConditionalSortSamples();
+                ConditionalSortPcmSamples();
                 return true;
             }
 
@@ -1002,13 +1080,15 @@ namespace FamiStudio
             if (sample == sampleBefore)
                 return;
 
-            Debug.Assert(samples.Contains(sample));
-            samples.Remove(sample);
+            var library = sample.IsPcm ? pcmSamples : samples;
+            if (!library.Contains(sample) || (sampleBefore != null && !library.Contains(sampleBefore)))
+                throw new ArgumentException("Samples can only be reordered within their own library.");
+            library.Remove(sample);
 
             if (sampleBefore != null)
-                samples.Insert(samples.IndexOf(sampleBefore) + 1, sample);
+                library.Insert(library.IndexOf(sampleBefore) + 1, sample);
             else
-                samples.Insert(0, sample);
+                library.Insert(0, sample);
         }
 
         public bool RenameSong(Song song, string name)
@@ -1079,12 +1159,13 @@ namespace FamiStudio
             folders.AddRange(foldersForType);
         }
 
-        public void SetExpansionAudioMask(int newExpansionMask, int numChannels = 1, bool resizeN163RAM = true, int[] instances = null)
+        public void SetExpansionAudioMask(int newExpansionMask, int numChannels = 1, bool resizeN163RAM = true, int[] instances = null, bool? pcmEnabled = null)
         {
             var proposedCounts = instances ?? expansionInstances;
+            var proposedPcm = pcmEnabled ?? mmc5PcmEnabled;
             if (proposedCounts.Length != ExpansionType.Count || proposedCounts[0] != 1 || proposedCounts.Any(n => n < 1 || n > 8) || numChannels < 0 || numChannels > 8)
                 throw new ArgumentException("Invalid chip configuration.");
-            var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => IsChannelActive(t, newExpansionMask, numChannels)).Sum(t => proposedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
+            var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => IsChannelActive(t, newExpansionMask, numChannels, proposedPcm)).Sum(t => proposedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
             if (channelCount > 64) throw new ArgumentException("At most 64 channels are supported.");
             if ((newExpansionMask & ExpansionType.N163Mask) != 0 && numChannels == 0)
                 newExpansionMask &= ~ExpansionType.N163Mask;
@@ -1093,6 +1174,7 @@ namespace FamiStudio
             var oldNumN163Channels = expansionNumN163Channels;
 
             expansionMask = newExpansionMask;
+            mmc5PcmEnabled = proposedPcm;
             expansionInstances = (int[])proposedCounts.Clone();
             expansionNumN163Channels = (newExpansionMask & ExpansionType.N163Mask) != 0 ? numChannels : 1;
 
@@ -1135,7 +1217,7 @@ namespace FamiStudio
 
         public bool IsChannelActive(int channelType)
         {
-            return IsChannelActive(channelType, expansionMask, expansionNumN163Channels);
+            return IsChannelActive(channelType, expansionMask, expansionNumN163Channels, mmc5PcmEnabled);
         }
 
         public int[] GetActiveExpansions()
@@ -1154,7 +1236,7 @@ namespace FamiStudio
             return expansions;
         }
 
-        public static bool IsChannelActive(int channelType, int expansionMask, int numN163Channels)
+        public static bool IsChannelActive(int channelType, int expansionMask, int numN163Channels, bool mmc5Pcm = false)
         {
             if (channelType < ChannelType.ExpansionAudioStart)
                 return true;
@@ -1169,7 +1251,7 @@ namespace FamiStudio
                 return (expansionMask & ExpansionType.FdsMask) != 0;
 
             if (ChannelType.GetExpansionTypeForChannelType(channelType) == ExpansionType.Mmc5)
-                return (expansionMask & ExpansionType.Mmc5Mask) != 0 && channelType != ChannelType.Mmc5Dpcm;
+                return (expansionMask & ExpansionType.Mmc5Mask) != 0 && (channelType != ChannelType.Mmc5Pcm || mmc5Pcm);
 
             if (ChannelType.GetExpansionTypeForChannelType(channelType) == ExpansionType.N163)
                 return (expansionMask & ExpansionType.N163Mask) != 0 && ChannelType.GetExpansionChannelIndexForChannelType(channelType) < numN163Channels;
@@ -1262,7 +1344,8 @@ namespace FamiStudio
                 (type == FolderType.Song && songs.Find(s => s.FolderName == name) == null) ||
                 (type == FolderType.Instrument && instruments.Find(i => i.FolderName == name) == null) ||
                 (type == FolderType.Arpeggio && arpeggios.Find(a => a.FolderName == name) == null) ||
-                (type == FolderType.Sample && samples.Find(s => s.FolderName == name) == null));
+                (type == FolderType.Sample && samples.Find(s => s.FolderName == name) == null) ||
+                (type == FolderType.PcmSample && pcmSamples.Find(s => s.FolderName == name) == null));
 
             folders.RemoveAll(f => f.Type == type && f.Name == name);
         }
@@ -1296,6 +1379,10 @@ namespace FamiStudio
                     case FolderType.Sample:
                         samples.ForEach(s => { if (s.FolderName == oldName) s.FolderName = name; });
                         ConditionalSortSamples();
+                        break;
+                    case FolderType.PcmSample:
+                        pcmSamples.ForEach(s => { if (s.FolderName == oldName) s.FolderName = name; });
+                        ConditionalSortPcmSamples();
                         break;
                 }
 
@@ -1337,6 +1424,10 @@ namespace FamiStudio
                     foreach (var s in samplesCopy)
                         EnsureFolderExist(FolderType.Sample, s.FolderName);
                     break;
+                case FolderType.PcmSample:
+                    foreach (var s in pcmSamples.ToArray())
+                        EnsureFolderExist(FolderType.PcmSample, s.FolderName);
+                    break;
             }
 
         }
@@ -1347,6 +1438,7 @@ namespace FamiStudio
             EnsureAllFoldersExist(FolderType.Instrument);
             EnsureAllFoldersExist(FolderType.Arpeggio);
             EnsureAllFoldersExist(FolderType.Sample);
+            EnsureAllFoldersExist(FolderType.PcmSample);
         }
 
         public void MoveFolder(Folder folder, Folder folderBefore)
@@ -1373,6 +1465,9 @@ namespace FamiStudio
                 case FolderType.Sample:
                     ConditionalSortSamples();
                     break;
+                case FolderType.PcmSample:
+                    ConditionalSortPcmSamples();
+                    break;
                 case FolderType.Arpeggio:
                     ConditionalSortArpeggios();
                     break;
@@ -1389,13 +1484,11 @@ namespace FamiStudio
             }
 
             // Preserve ordering in case sorting isnt enabled.
-            for (var i = samples.Count - 1; i >= 0; i--)
-            {
-                if (!usedSamples.Contains(samples[i]))
-                    samples.RemoveAt(i);
-            }
+            samples.RemoveAll(s => !usedSamples.Contains(s));
+            pcmSamples.RemoveAll(s => !usedSamples.Contains(s));
 
             ConditionalSortSamples();
+            ConditionalSortPcmSamples();
         }
 
         public int GetTotalSampleSize()
@@ -1670,11 +1763,12 @@ namespace FamiStudio
                 }
 
                 var mergedCounts = expansionInstances.Zip(otherProject.expansionInstances, Math.Max).ToArray();
-                var mergedChannelCount = Enumerable.Range(0, ChannelType.Count).Where(IsChannelActive).Sum(t => mergedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
+                var mergedPcm = mmc5PcmEnabled || otherProject.mmc5PcmEnabled;
+                var mergedChannelCount = Enumerable.Range(0, ChannelType.Count).Where(t => IsChannelActive(t, expansionMask, expansionNumN163Channels, mergedPcm)).Sum(t => mergedCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
                 if (mergedChannelCount > 64) { Log.LogMessage(LogSeverity.Error, TuningStrings.ChannelLimitError); return false; }
                 if (songs.Count == 0) ChipTuning = otherProject.ChipTuning;
-                SetExpansionInstances(mergedCounts);
-                otherProject.SetExpansionAudioMask(expansionMask, expansionNumN163Channels, instances: mergedCounts);
+                SetExpansionAudioMask(expansionMask, expansionNumN163Channels, instances: mergedCounts, pcmEnabled: mergedPcm);
+                otherProject.SetExpansionAudioMask(expansionMask, expansionNumN163Channels, instances: mergedCounts, pcmEnabled: mergedPcm);
                 if (tuning != otherProject.tuning)
                     foreach (var imported in otherProject.Songs)
                         if (!imported.TuningSettings.Override) imported.TuningSettings = new TuningSettings { Override = true, ReferenceHz = otherProject.tuning };
@@ -1688,7 +1782,7 @@ namespace FamiStudio
                 inst.ChangeId(GenerateUniqueId());
             foreach (var arp in otherProject.Arpeggios)
                 arp.ChangeId(GenerateUniqueId());
-            foreach (var sample in otherProject.Samples)
+            foreach (var sample in otherProject.AllSamples)
                 sample.ChangeId(GenerateUniqueId());
             foreach (var song in otherProject.Songs)
             {
@@ -1731,29 +1825,31 @@ namespace FamiStudio
                 otherProject.ValidateIntegrity();
             }
 
-            // Match existing samples by name.
-            if (otherProject.Samples.Count > 0)
+            // Names are local to each independent sample library.
+            foreach (var pcm in new[] { false, true })
             {
-                for (int i = 0; i < otherProject.samples.Count; i++)
+                var destinationSamples = pcm ? pcmSamples : samples;
+                var incomingSamples = pcm ? otherProject.pcmSamples : otherProject.samples;
+                for (int i = 0; i < incomingSamples.Count; i++)
                 {
-                    var otherSample = otherProject.samples[i];
-                    var existingSample = GetSample(otherSample.Name);
+                    var otherSample = incomingSamples[i];
+                    var existingSample = destinationSamples.Find(s => s.Name == otherSample.Name);
                     if (existingSample != null)
                     {
-                        Log.LogMessage(LogSeverity.Warning, $"Project already contains a DPCM sample named '{existingSample.Name}', assuming it is the same.");
+                        Log.LogMessage(LogSeverity.Warning, $"Project already contains a {(pcm ? "PCM" : "DPCM")} sample named '{existingSample.Name}', assuming it is the same.");
 
                         otherProject.ReplaceSampleInAllMappings(otherSample, existingSample);
-                        otherProject.samples.Insert(otherProject.samples.IndexOf(otherSample), existingSample); // To pass validation.
+                        incomingSamples.Insert(incomingSamples.IndexOf(otherSample), existingSample); // To pass validation.
                         otherProject.DeleteSample(otherSample);
                         otherSample.SetProject(this);
                     }
                     else
                     {
-                        samples.Add(otherSample);
+                        destinationSamples.Add(otherSample);
                         otherSample.SetProject(this);
                     }
 
-                    EnsureFolderExist(FolderType.Sample, otherSample.FolderName);
+                    EnsureFolderExist(pcm ? FolderType.PcmSample : FolderType.Sample, otherSample.FolderName);
                 }
 
                 ValidateIntegrity();
@@ -1865,6 +1961,7 @@ namespace FamiStudio
             SortInstruments();
             SortArpeggios();
             SortSamples();
+            SortPcmSamples();
             if (songs)
                 SortSongs();
         }
@@ -1874,6 +1971,7 @@ namespace FamiStudio
             ConditionalSortSongs();
             ConditionalSortInstruments();
             ConditionalSortSamples();
+            ConditionalSortPcmSamples();
             ConditionalSortArpeggios();
         }
 
@@ -2012,7 +2110,7 @@ namespace FamiStudio
 
                     foreach (var song in songs)
                     {
-                        var channel = song.Channels[ChannelType.Dpcm];
+                        foreach (var channel in song.Channels.Where(c => c.SupportsSampleMappings))
                         for (int p = 0; p < song.Length; p++)
                         {
                             foreach (var pattern in new[] { channel.PatternInstances[p], channel.PatternInstances[p]?.LoopVariant })
@@ -2022,7 +2120,7 @@ namespace FamiStudio
                                 {
                                     if (note.IsMusical && note.Instrument == inst)
                                     {
-                                        var mapping = inst.GetDPCMMapping(note.Value);
+                                        var mapping = inst.GetSampleMapping(note.Value);
                                         if (mapping != null && unusedNotes.Contains(note.Value))
                                         {
                                             unusedNotes.Remove(note.Value);
@@ -2043,6 +2141,7 @@ namespace FamiStudio
 
         public void PermanentlyApplyAllSamplesProcessing()
         {
+            // DPCM baking only touches the independent DPCM library.
             foreach (var sample in samples)
             {
                 sample.PermanentlyApplyAllProcessing();
@@ -2310,7 +2409,7 @@ namespace FamiStudio
                 largestUniqueId = Math.Max(largestUniqueId, inst.Id);
             foreach (var arp in arpeggios)
                 largestUniqueId = Math.Max(largestUniqueId, arp.Id);
-            foreach (var sample in samples)
+            foreach (var sample in AllSamples)
                 largestUniqueId = Math.Max(largestUniqueId, sample.Id);
             foreach (var song in songs)
             {
@@ -2343,7 +2442,7 @@ namespace FamiStudio
 #if DEBUG
         private void ValidateDPCMSamples(Dictionary<int, object> idMap)
         {
-            foreach (var sample in samples)
+            foreach (var sample in AllSamples)
             {
                 sample.ValidateIntegrity(this, idMap);
             }
@@ -2501,6 +2600,69 @@ namespace FamiStudio
 
             foreach (var sample in samples)
                 sample.Serialize(buffer);
+            if (buffer.Version >= IndependentPcmFormatVersion)
+            {
+                int pcmCount = pcmSamples.Count;
+                buffer.Serialize(ref pcmCount);
+                buffer.InitializeList(ref pcmSamples, pcmCount);
+                foreach (var sample in pcmSamples)
+                    sample.Serialize(buffer);
+                if (buffer.IsReading && (samples.Any(s => s.IsPcm) || pcmSamples.Any(s => !s.IsPcm)))
+                    throw new InvalidOperationException("Sample library kind does not match its serialized assets.");
+            }
+            else if (buffer.IsReading)
+                pcmSamples.Clear();
+        }
+
+        // Format 1008 routed regular-instrument DPCM mappings to MMC5 PCM.
+        // Split that alias once on loading, leaving the original DPCM assets
+        // and their notes untouched. No source arrays remain shared.
+        public void MigrateSharedMmc5PcmSamples()
+        {
+            if (!mmc5PcmEnabled) return;
+            var convertedInstruments = new Dictionary<Instrument, Instrument>();
+            var convertedSamples = new Dictionary<DPCMSample, DPCMSample>();
+            foreach (var song in songs)
+            foreach (var channel in song.Channels.Where(c => c.IsMmc5PcmChannel))
+            foreach (var pattern in channel.Patterns.SelectMany(p => p.LoopVariant == null ?
+                new[] { p } : new[] { p, p.LoopVariant }).Distinct())
+            foreach (var note in pattern.Notes.Values)
+            {
+                var original = note.Instrument;
+                if (!note.IsMusical || original == null || !original.IsRegular) continue;
+                if (!convertedInstruments.TryGetValue(original, out var converted))
+                {
+                    converted = CreateInstrument(ExpansionType.Mmc5, GenerateUniqueInstrumentName(original.Name + " (MMC5 PCM)"));
+                    converted.Color = original.Color;
+                    converted.FolderName = original.FolderName;
+                    for (int type = 0; type < EnvelopeType.Count; type++)
+                        if (converted.IsEnvelopeActive(type) && original.Envelopes[type] != null)
+                            converted.Envelopes[type] = original.Envelopes[type].ShallowClone();
+                    foreach (var entry in original.SamplesMapping)
+                    {
+                        var source = entry.Value.Sample;
+                        if (source == null) continue;
+                        if (!convertedSamples.TryGetValue(source, out var pcm))
+                        {
+                            var saved = new ProjectSaveBuffer(this);
+                            source.Serialize(saved);
+                            pcm = CreatePcmSample(GenerateUniquePcmSampleName(source.Name));
+                            var name = pcm.Name;
+                            var load = new ProjectLoadBuffer(this, saved.GetBuffer(), Version);
+                            load.RemapId(source.Id, pcm.Id);
+                            pcm.Serialize(load);
+                            pcm.Name = name;
+                            pcm.MakePcmAsset();
+                            convertedSamples.Add(source, pcm);
+                        }
+                        converted.MapPcmSample(entry.Key, pcm, entry.Value.PcmPitch, entry.Value.Loop);
+                    }
+                    convertedInstruments.Add(original, converted);
+                }
+                note.Instrument = converted;
+            }
+            EnsureAllFoldersExist();
+            ConditionalSortPcmSamples();
         }
 
         // This is only used for pre-4.1.0 files where we had just 1 global "DPCM instrument".
@@ -2594,6 +2756,8 @@ namespace FamiStudio
 
         public void Serialize(ProjectBuffer buffer, bool includeSamples = true)
         {
+            if (buffer.IsReading)
+                LoadingLegacySharedPcm = buffer.Version == Mmc5PcmFormatVersion;
             if (!buffer.IsForUndoRedo)
             {
                 buffer.Serialize(ref nextUniqueId);
@@ -2611,6 +2775,10 @@ namespace FamiStudio
                 // At version 10 (FamiStudio 3.0.0) we allowed song re-ordering, do not assume sorting.
                 sortSongs = false;
             }
+            if (buffer.Version >= IndependentPcmFormatVersion)
+                buffer.Serialize(ref sortPcmSamples);
+            else if (buffer.IsReading)
+                sortPcmSamples = true;
 
             // At version 2 (FamiStudio 1.1.0) we added project properties
             if (buffer.Version >= 2)
@@ -2668,6 +2836,11 @@ namespace FamiStudio
                 famiTone2MusicExportConfig.Serialize(buffer);
                 famiTone2SfxExportConfig.Serialize(buffer);
             }
+
+            if (buffer.Version >= Mmc5PcmFormatVersion)
+                buffer.Serialize(ref mmc5PcmEnabled);
+            else if (buffer.IsReading)
+                mmc5PcmEnabled = false;
 
             if (buffer.Version >= TuningFormatVersion)
             {
@@ -2784,6 +2957,8 @@ namespace FamiStudio
             if (buffer.IsReading && !buffer.IsForUndoRedo)
             {
                 EnsureNextIdIsLargeEnough();
+                if (buffer.Version == Mmc5PcmFormatVersion)
+                    MigrateSharedMmc5PcmSamples();
 
                 // At version 10 (FamiStudio 3.0.0) we allow users to re-order songs.
                 // At version 15 (FamiStudio 4.1.0) we adding sorting options on everything.
@@ -2794,6 +2969,8 @@ namespace FamiStudio
 
                 EnsureAllFoldersExist();
             }
+            if (buffer.IsReading)
+                LoadingLegacySharedPcm = false;
         }
 
         public Project DeepClone()
@@ -3286,6 +3463,7 @@ namespace FamiStudio
         public const int Instrument = 1;
         public const int Arpeggio   = 2;
         public const int Sample     = 3;
+        public const int PcmSample  = 4;
     }
 
     public class Folder

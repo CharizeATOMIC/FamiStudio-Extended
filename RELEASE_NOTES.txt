@@ -1,272 +1,104 @@
-FamiStudio Extended — Revision 10 / 修订版 10
+FamiStudio Extended R12 — Development preview / 开发预览版
 Based on FamiStudio 4.5.3 / 基于 FamiStudio 4.5.3
-Project format / 工程格式: 1007
+Project format / 工程格式：1009
 
 中文
-====
 
-这是独立开发分支，不是 FamiStudio 官方发行版。保留上游版权和许可证。
-展示名为 FamiStudio Extended，保留原词并增加后缀；仓库和包名使用
-FamiStudio-Extended。内部命名空间、引擎符号和原分支设置路径
-保持不变，以减少上游整合差异。完整功能补丁已在 2026-10-20 核实的公开
-master 70625dd 上三方应用成功，无冲突并保留最新更新日志；合并结果树未
-独立构建或运行，不代表未来或私有开发分支的兼容保证。
-GitHub 仓库、分支及给原作者的提案目前仍处于准备阶段，尚未发布或发送。
-Windows 解压完整目录后运行 FamiStudio-Extended.exe；FamiStudio.exe 兼容入口保留。
+新增与改进
 
-本次改进
---------
-1. “硬件设置”展开后直接显示硬件音量、包络重启两个按钮，不再经过中间
-   菜单。按钮显示包络步数或“未使用”，点击即进入原有包络编辑器，复用
-   既有七语言文字。移除乐器主行额外的噪波快捷图标及乐器右键“噪波设置”
-   入口，普通乐器保留四个原生包络图标。存在旧周期数据时，同组直接显示
-   转换为琶音的按钮。
-2. 沿用较少使用的硬件参数默认收起为同页一行，并提示已启用项数。收起不改
-   声音。关闭扫频时不再显示三个灰色从属参数。“另存为”保留可见文字
-   入口，去掉第二个磁盘图标；Ctrl+Shift+S 和保存右键菜单继续可用。
-3. 新噪波音高统一用琴键和原生乐器琶音编辑，不再提供独立噪波周期编辑器
-   或跟随开关。硬件音量和重启仍可编辑，并说明它们何时覆盖软件音量。
-4. 旧工程不会被自动改声或静默迁移。旧周期数据继续兼容读取、播放和导出，
-   编辑器显示来源提示。通过“将旧噪波音高转为琶音”明确发起迁移，成功后
-   用普通琶音编辑，可撤销恢复。共享于其他通道、已有非零乐器琶音、独立
-   琶音、固定周期含非 C4 音符/滑音、无攻击衔接或无法表示的数据都会说明
-   原因并保留原样，不强行套用转换。
-5. 保留 R9 的七语言迁移提示及 INI 分号截断修复。R10 只调整既有编辑器
-   入口，仍使用格式 1007，不改声音引擎格式、原生 DSP 或 ABI。
-6. 按用户指定，将随附 Gimmick 示范替换为四曲版本，工程名和作者信息
-   与原示范一致：Gimmick! / Masashi Kageyama,Naohisa Morota / 1992 Sunsoft。
-   这是音乐示范素材，不是原创合成测试夹具。
+• DPCM 与 PCM 使用独立采样库，分别管理源文件、加工参数、文件夹和排序。
+  两库可使用相同名称，修改或删除其中一份不会改变另一份。
+• 2A03 乐器共用一个键位映射界面，每个键可选择 DPCM 或 PCM。
+  PCM 通过原生 7 位 DAC 播放，与 DPCM 轮流占用同一个硬件声部。
+• MMC5 乐器支持 PCM 键位映射，仅接受 PCM 采样。独立 8 位 PCM 通道
+  可与原生五声部及 MMC5 两个方波同时编曲。
+• VRC6 乐器增加采样映射。两个方波通道分别支持 4 位 PCM，播放期间
+  占用对应方波，普通未映射音符可恢复方波演奏；锯齿波保持原有功能。
+• PCM 支持移调、循环、音量、实时声像、波形编辑、试听及音频导出。
+• 声音引擎和 NSF2 导出支持上述输出目标，包含 PCM 与普通音色的切换。
+  NES 播放器按输出芯片选择专用模板。
+• 保存、文本导入导出、复制粘贴、撤销、清理及工程合并均识别两套采样库。
+  R11 工程打开时自动拆分旧共享采样，保留 DPCM 原始数据和 PCM 声音。
+• 新界面与提示适配现有七种语言。
 
-R8 的原子保存修复继续保留：完整写入并刷新临时文件后再替换目标，取消/
-失败不改当前路径、脏状态或原文件，也不会继续关闭/切换工程。另存为成功
-后，普通保存写入新路径。长文件名、只读目标及平台权限边界见移植说明。
+兼容性
 
-本分支累计新增功能
-------------------
-• 每首歌、时间轴每列样式可覆盖 A4 标准音及十二个音级的音分偏移；关闭覆盖
-  即继承上一级。A4 为 300–580 Hz，各音级偏移为 ±1200 音分。
-• 工程全局的八类芯片、每类 96 个音可直接设置整数硬件周期/频率值。完整
-  横向键盘支持缩放、滚动、拖动和输入。显示轴为默认值 ±50，输入可超过
-  显示范围，受所选硬件表示的实际边界限制。播放和出口共用频率量化。
-• 扩展芯片勾选项右侧直接调整数量，最多每类八份、总计 64 声部。每首歌
-  可实时设置各声部立体声及声像，适用于监听、预览和音频导出。
-• NSF/NSFe 导入可多选子曲并分别设置捕获时长，批量合并到一个工程，支持
-  取消和资源去重。这仍是寄存器捕获导入，不是通用原游戏乐器反编译器。
-• 原生噪波琶音、硬件音量/重启宏，软件包络衰减效果，样式播放延迟和循环
-  变奏，使完整的乐器程序及首次/重复演奏区别可编辑、可导出。旧周期宏
-  作为兼容数据保留，安全时可显式迁移为原生琶音。
-• 可选 APU 方波起音相位重置、方波/三角波音高宏低字节饱和，以及真实
-  方波硬件扫频。DPCM 每键映射可保存完整 0–127 初始 DAC，包括奇数。
-• 项目输出更新率可选 1×/2×/4×，同制式约为 NTSC 60/120/240 Hz、
-  PAL 50/100/200 Hz。已有歌曲和宏保留自己的时基，因此切换输出率不改变
-  原速度，也不会自动把旧歌曲网格扩成四倍。新歌曲/宏使用创建时的项目率。
-  包络属性可保时长转换步进率；不能精确表达或超出长度限制的转换会明确
-  拒绝，不静默丢步骤。输出率也不能低于实际使用的歌曲/包络时基。
-• 全部七种既有语言覆盖新增界面；数值加减区域增大，支持直接输入。修复
-  S5B 重置确定性、NSF 自定义周期及 APU 扫频模拟中的实际问题。工程采用
-  无损 Brotli 压缩，撤销及剪贴板保持各自原有压缩协议。
+• PCM 需要 CPU 持续供样。编辑器与 NSF2 使用约 4 kHz 的采样时钟，
+  与音乐的 1×/2×/4× 更新率独立。硬件有效精度取决于所选输出芯片。
+• 含 PCM 的 NSF/NSFe 导出需要支持 NSF2 IRQ 的播放器，并选择与工程相同的
+  PAL/NTSC 制式。
+  多路 PCM 与音乐更新共享 CPU 预算；超载组合会拒绝导出。
+• 含 PCM 的 NES 为 1× 静态音乐播放器。含 MMC5 的工程使用 mapper 5，仅原生 APU
+  或使用 VRC6 的工程使用 mapper 24；2A03 PCM 的 NES 文件不是 NROM。NES 采样时钟与
+  NSF2 不同，导出时重新采样以保持音高与时长。
+  当前 NES 模板同时只支持一路 PCM，不同 DAC 可交替，重叠会拒绝导出。
+  PCM NES 仅支持原生 APU、单 MMC5 或单 VRC6 布局，不支持任意多扩展组合。
+• 集成到 FC 游戏需要协调采样中断、换页、音乐更新和画面工作。
+  2A03 DAC 还会通过原生非线性混音影响三角波和噪波的实际响度。
+• NSF2 PCM 暂不与 EPSM 同时导出。不支持 PCM 的格式会明确拒绝导出。
+  NSF 导入尚不支持将软件 PCM 重建为可编辑采样轨道。
+• 新工程格式为 1009，旧版本不能打开新保存的文件。Windows 原生库
+  随本版更新；其他平台也必须重建原生库，不能只替换托管程序集。
 
-兼容与使用边界
---------------
-• 可读取上游格式至 19 以及本分支 1001–1007。R8/R9/R10 同为格式 1007，
-  较早版本没有当前全部编辑流程；官方版及 R1–R7 无法读取此格式。
-  旧 1006 的 Brotli 和 Deflate 均可读取。请用另存为保留原工程。独立设置
-  目录为 FamiStudio-Tuning。
-• 自定义调音、芯片曲线和新增演奏语义用于 FamiStudio 声音引擎/NSF/NSFe
-  时，需要匹配本分支引擎及出口头部列出的编译选项。独立引擎的新增选项
-  默认关闭；未开启功能的旧游戏无需承担这些可选状态和处理分支。
-• 重复的同型号芯片只用于编辑和音频路径，NSF/NES/FDS/声音引擎及 VGM
-  不接受重复芯片。立体声和声像只属于音频混音，不写入这些硬件格式。
-• 高倍率目前支持同 NTSC/PAL 制式播放、音频及 FamiStudio 引擎/NSF/NSFe。
-  普通 NES/FDS 导出模板、高倍率跨制式转换及不能保真的旧格式出口会明确
-  拒绝。另有原创定时器卡带示例展示游戏如何均匀调用高倍率引擎；游戏需
-  自行安排 IRQ/计时器并评估 CPU 预算，视频帧回调不能替代均匀子帧调度。
-• FamiTracker 速度模式在编辑器中保留支持；这与“导出为 FamiTracker 文件”
-  是两回事。声音引擎导出中的样式延迟目前要求 FamiStudio 速度模式。
-  无法表达调音/新演奏语义的 FamiTracker、FamiTone2、MIDI 等出口会报错。
-  VGM 不支持本分支样式延迟/循环变奏/高倍率输出。
-• 噪声、DPCM、节奏声部继续受真实硬件行为限制。FM 比率及调制仍参与音色。
-  立体声分轨混音不保证等于原本单声道的非线性混音。
+既有功能
 
-验证及平台状态
---------------
-R10 直接硬件按钮已通过七语言 100% 和中文 150% 的八次隔离界面运行，
-共 1,981 条 PASS。四曲各十二秒、各 529,200 个 PCM 采样与 R9 完全相同。
-本次仅改名称，沿用上述界面和四曲证明，不重复计为新跑检查。
-最终 Windows 自包含发布及 Linux/macOS 托管编译均零错误。新命名构建与
-启动器另行验证：FamiStudio-Extended.exe 的 -help 通过，兼容启动器 1×
-与新启动器 1×/2×/4× 共四次四秒导出，每次 176,400 个 PCM 采样完全
-相同，也等于已有的原创时钟参考。八个原生 DLL 和用户 INI 哈希不变。
-具体提交和测试归属见整合说明及验证报告。下列 R9 数据保留原版本归属；
-本轮未改引擎、原生 DSP 或工程格式。
-
-R9 已通过 4,732 项后台检查：重跑八套回归共 2,896 项（基础 1,506、
-发声播放 124、包络时钟 134、乐器发声属性 76、噪声包络 141、噪声跟随
-597、保存 22、更新率 296），新增迁移检查 1,836 项，含 36 种场景、
-PAL/NTSC 及 1×/2×/4× 下 72 份实际 NSF CPU 执行。七语言 100% 与中文
-150% 的八次界面运行全部通过，共 1,869 条 PASS 记录，覆盖窄标签布局和
-旧噪波迁移入口。最终界面测试使用独立便携目录，非便携模式在应用初始化
-之前拒绝执行，避免测试写入日常使用的配置。
-独立的四曲迁移验证中，完整混音与单独噪声共 53,314,344 个编辑器
-PCM 采样完全相同。实际 NSF CPU 执行的 36,328 个音乐 tick 中，258,397
-次有序 APU/S5B 地址/数值写入完全相同；不宣称 CPU 写入时刻或 NSF PCM
-相同。最终自包含 EXE 另验证四曲各 12 秒、各 529,200 个采样与上一版本
-完全相同，原创示例 1×/2×/4× 各 176,400 个采样也完全相同。
-R9 Windows 自包含发布及 Linux/macOS 托管编译均为零错误，发布的八个
-原生 DLL 与源码目录、R8 发布版的 SHA256 一致。R9 未修改引擎及原生 DSP，
-因此沿用而不重算 R8 的引擎证据：64 种配置四汇编器字节一致，60 个
-NES/FDS 模板通过 31,956 项布局检查，原创定时器卡带每档通过八圈 CPU
-和独立 FCEUmm 的 660 视频帧检查。这些不是本轮重跑的检查数量。
-Windows 账户不能创建
-符号链接，该检查明确跳过；Unix 权限/链接、原生播放、设备和签名/打包仍
-需在目标平台验证，不能以托管编译代替运行证据。Android
-尚缺本机匹配的 .NET 9 Android 工具链和设备验证。未在物理 FC/NES 上验证。
-公开应用和源码包仅纳入上述用户指定的四曲 Gimmick 替代示范，保留原示范
-的工程名、作者及既有版权/许可说明，不为新曲谱另作许可声明。ROM、其他
-提取中间文件及私人项目不随包发布。其他上游示范保留原样。功能 PR 可以
-排除本次示范替换，作为单独素材改动审阅。
-示范使用分支格式 1007，需要对应格式及功能支持，不能直接作为官方
-4.5.3 的通用示范替换。
-
+歌曲和样式的独立调音、工程级芯片调律曲线、多子曲 NSF 导入、实时声像、
+可重复扩展芯片、保留既有速度的更新时钟、硬件演奏参数及“另存为”继续
+保留。Gimmick! 示范曲扩充至四首，利用扩展功能再现游戏中的演奏效果，
+并保留原工程名称与作者信息。
 
 English
-========
 
-This is an independent development fork, not an official FamiStudio release.
-The display name is FamiStudio Extended; the repository/package slug and launcher
-use FamiStudio-Extended. Existing source
-namespaces, engine symbols and settings paths remain to limit porting churn.
-The complete feature patch applies without conflicts to public master 70625dd,
-checked on 2026-10-20, and preserves its latest changelog. The resulting merge
-tree has not been independently built or run; future/private branches are not covered.
-Upstream copyright and license notices are retained. Repository publication and
-the upstream proposal remain preparation work; neither has been posted or sent.
-Extract the full Windows package and run FamiStudio-Extended.exe. FamiStudio.exe remains
-a compatible launcher.
+Added and improved
 
-Revision 10 changes and retained editor workflow
------------------------------------------------
-• Hardware settings now contains hardware-volume and envelope-restart buttons
-  directly. Each shows its step count or unused state and opens the existing
-  envelope editor without an intermediate menu. Existing seven-language labels
-  are reused. The extra noise shortcut in the main instrument row and the
-  instrument's Noise settings context-menu entry are removed. Regular instruments
-  retain their four native envelope icons. Legacy period data adds a direct
-  conversion button in the same hardware group.
-• Less-used hardware options start folded into one inline row with an enabled
-  count. Folding never changes sound. Disabled sweep hides its three subordinate
-  controls. Save As stays visibly labeled but loses the second disk icon. Its
-  shortcut and the Save context menu remain available.
-• New noise pitch uses keys and the native instrument arpeggio. The separate
-  noise-period editor and follow-note switch are removed from the UI. Hardware
-  volume/restart controls and their software-volume override help remain.
-• Old projects are never silently migrated or retuned. Legacy period data remains
-  readable, playable and exportable, with a visible compatibility hint. An explicit
-  Convert legacy noise pitch to arpeggio action checks whether the conversion is
-  lossless. Shared channels, existing nonzero arpeggios, independent arpeggios,
-  incompatible fixed-period notes/slides, no-attack continuity and unsupported
-  data report a reason and remain intact. Successful migration is undoable.
-• Revision 9's seven-language migration help and INI-semicolon fix remain.
-  Revision 10 only changes access to existing editors. Format remains 1007,
-  with no engine-stream, native DSP or ABI change.
-• The bundled Gimmick demo is replaced with the user-selected four-song version,
-  retaining the original metadata: Gimmick!, Masashi Kageyama,Naohisa Morota,
-  and 1992 Sunsoft. It is music
-  demonstration material, not an original synthetic test fixture.
-
-Revision 8's atomic save protection remains: cancelled/failed writes preserve
-the path, dirty state and original file and block pending close/open operations.
-Successful Save As becomes the target of subsequent saves. Platform metadata and
-link validation boundaries remain documented in PLATFORM_HANDOFF.txt.
-
-Cumulative fork features
-------------------------
-• Song and pattern-column overrides of A4 reference and twelve cents offsets;
-  disabled overrides inherit. A4: 300–580 Hz; pitch-class offsets: +/-1200 cents.
-• Project-global 96-note integer hardware curves for eight chip types, with a
-  full horizontal keyboard, zoom, scrolling, drag and direct input. The visible
-  +/-50 band is relative to each default; manual values may exceed it within the
-  selected hardware representation. Playback/export share pitch quantization.
-• Expansion-copy counts beside their checkboxes (up to eight per type, 64 total
-  channels), and per-song channel stereo/pan for preview, playback and audio.
-• Multi-subsong NSF/NSFe capture into one project, individual durations, safe
-  resource merging and cancellation. This is not a general source-engine decoder.
-• Native noise arpeggios, hardware volume/restart macros, compatible legacy period
-  data, software envelope decay, delayed patterns and loop
-  variants; optional APU attack phase reset, pitch-envelope low-byte saturation
-  and hardware pulse sweep; full 0–127 initial DAC in each DPCM key mapping.
-• Independent 1x/2x/4x output, song and envelope clocks. Changing output rate keeps
-  existing music speed and authored grid resolution. New resources use the
-  current output clock. Envelope-rate conversion preserves duration where exactly
-  representable, otherwise reports the incompatible resource before mutation.
-• Seven-language controls, larger numeric hit areas, direct input, deterministic
-  S5B reset, NSF timing/sweep corrections and lossless Brotli project storage.
+• Independent DPCM and PCM libraries, with separate source data, processing,
+  folders and ordering. Matching names across libraries remain distinct assets.
+• One keyboard map for 2A03 instruments, with either DPCM or PCM assigned to
+  each key. PCM uses the native 7-bit DAC and shares its physical voice with DPCM.
+• PCM-only keyboard mappings for MMC5 instruments. The independent 8-bit PCM
+  voice complements the five APU voices and the two MMC5 pulse voices.
+• Sample mappings for VRC6 instruments. Each pulse can play 4-bit PCM while
+  occupying that pulse. Unmapped notes resume ordinary pulse playback.
+  The sawtooth channel retains its existing behavior.
+• PCM transpose, looping, volume, live pan, waveform editing, audition and
+  audio export.
+• Matching sound-engine and NSF2 outputs, including PCM/ordinary-voice handoff.
+  NES music-player export selects a dedicated template for its output chip.
+• Separate libraries throughout saving, text interchange, clipboard, undo,
+  cleanup and project merging. R11 shared samples migrate automatically,
+  preserving the original DPCM data and PCM sound.
+• Controls and messages in all seven existing languages.
 
 Compatibility
--------------
-R10 retains R8/R9's format 1007 and reads official formats through 19 plus fork
-1001–1007, including both 1006 compression variants. Earlier releases share the
-file format but not the full current editor workflow. The official application and fork revisions
-through 7 cannot read 1007. Use Save As to retain originals. Settings use the
-separate FamiStudio-Tuning path.
 
-Hardware exports require matching engine sources and the options emitted in the
-export header. New standalone engine options default off. Additional chip copies
-are audio-only and rejected by NSF/NES/FDS/engine/VGM exports; stereo/pan is not
-encoded into hardware data. Noise, samples and rhythm retain hardware limits.
+• Software PCM requires continuous CPU service. Editor and NSF2 sample clocks
+  are approximately 4 kHz, independent of 1×/2×/4× music updates. Hardware
+  output precision depends on the selected destination.
+• PCM NSF/NSFe exports require an NSF2 IRQ-capable player and the project's
+  explicit region.
+  Concurrent PCM and music updates share a CPU budget. Overload is rejected.
+• PCM NES export is a static music player with 1× music updates. MMC5 projects use
+  mapper 5; APU-only and VRC6 projects use mapper 24. The APU PCM NES player is not NROM.
+  Samples are resampled for the NES clock to preserve pitch and duration.
+  Current NES templates allow one active PCM voice, with alternating DACs.
+  Overlapping PCM is rejected.
+  PCM NES supports base APU, one MMC5 or one VRC6, not arbitrary multi-expansion
+  layouts.
+• Game integration must coordinate interrupts, banking, music and graphics.
+  Native 2A03 nonlinear mixing also lets DAC output affect triangle/noise gain.
+• NSF2 PCM currently cannot coexist with EPSM. Unsupported formats reject PCM.
+  NSF import does not reconstruct editable software-PCM sample tracks.
+• New saves use format 1009 and require this revision or newer. Windows native
+  libraries are included. Other platforms also need rebuilt native libraries.
 
-High-rate playback/audio/engine/NSF/NSFe currently require the same video region.
-High-rate cross-region operation, ordinary NES/FDS templates and unsupported
-legacy formats are rejected. A separate original mapper-timer cartridge shows
-uniform game scheduling; integrators must provide the timer/IRQ and CPU budget.
-Editor FamiTracker tempo remains supported; FamiTracker file export is a separate
-compatibility question. Engine pattern delay currently requires FamiStudio tempo.
-VGM rejects delay, loop variants and high rate. Other legacy exporters reject
-features they cannot preserve instead of silently dropping them.
+Existing features
 
-Verification and distribution
------------------------------
-R10 direct controls pass eight isolated UI runs: seven languages at 100% and
-Chinese at 150%, with 1,981 PASS records. Four 12-second excerpts match R9 PCM
-exactly (529,200 samples each). Those UI/four-song results are retained for this
-naming-only change, without counting them as rerun tests.
-Final Windows publication and Linux/macOS managed builds complete with zero
-errors. The renamed build and launcher are checked separately: -help succeeds,
-and four four-second exports (compatibility launcher at 1x, new launcher at
-1x/2x/4x) produce identical 176,400-sample PCM matching the existing clock reference.
-Eight native DLLs and user INI hashes remain unchanged. Exact commit/test
-attribution is in the integration notes and reports. The following R9 results
-retain their original revision. Engine, native DSP and project format are unchanged.
+Song/pattern tuning, project-wide chip curves, multi-subsong NSF import, live
+pan, optional chip copies, speed-preserving update clocks, hardware articulation
+and Save As remain available. The Gimmick! demonstration contains four songs,
+using the extended features to reproduce the game's musical effects while
+retaining the original project title and author credits.
 
-R9 passes 4,732 backend checks: eight repeated suites total 2,896 (default 1,506,
-articulation playback 124, envelope clocks 134, instrument articulation 76, noise
-envelopes 141, noise following 597, saving 22 and update rates 296). The 1,836 new
-migration checks cover 36 scenarios and 72 actual NSF executions at PAL/NTSC and
-1x/2x/4x. All seven UI languages at 100% and Chinese at 150% pass: eight runs and
-1,869 PASS records, including narrow-label geometry and legacy-conversion access.
-The final GUI runs use an isolated portable directory. Non-portable test execution
-is refused before application initialization to protect everyday settings.
-A separate four-song migration comparison matches 53,314,344 editor PCM samples
-across the full mix and isolated noise. Actual NSF CPU execution matches 258,397
-ordered APU/S5B address/value writes over 36,328 music ticks. CPU write timestamps
-and NSF PCM are not claimed identical. The final self-contained EXE also matches
-the preceding release for four 12-second excerpts of 529,200 samples each, while
-an original clock example matches all 176,400 samples at each of 1x/2x/4x.
-R9 Windows self-contained publication and Linux/macOS managed builds succeed with
-zero errors. All eight native DLLs match the source directory and R8 by SHA256.
-The engine and native DSP are unchanged, so R8 engine evidence is retained rather
-than counted as rerun R9 tests: 64 four-assembler configurations, 31,956 layout
-checks over 60 NES/FDS templates, and eight CPU loops plus 660 independent FCEUmm
-video frames per original timer-cartridge rate.
-The Windows account cannot create symbolic links, so that test is explicitly
-skipped. Unix permissions/links, target-OS audio and packaging still need runtime
-validation. Rebuild the native ABI on each target OS. Android
-still needs the matching .NET 9 Android toolchain and device testing. No physical
-NES/FC console has been tested. Public application/source packages include only
-the designated four-song Gimmick replacement demo from this local music work,
-with the original project name/author and existing notices retained. No new
-license grant for the score is asserted. ROMs, other extraction intermediates and
-private projects are excluded; other upstream demos remain unchanged. Functional
-upstream PRs can exclude this demo replacement for separate asset review.
-The demo uses fork format 1007 and its corresponding features; it is not a
-drop-in replacement for official 4.5.3.
+An independent development fork. Original copyright and license notices remain.
+Integration guide / 整合说明：
+Docs/docs/development/mmc5-pcm-integration.md

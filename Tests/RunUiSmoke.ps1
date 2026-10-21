@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
     [string]$InputProject = (Join-Path $PSScriptRoot 'TuningRegression/Fixtures/format1003.fms'),
     [string]$DotnetPath = 'dotnet',
+    [ValidateSet('', '--mmc5-pcm-ui')][string]$Mode = '',
     [string[]]$Cases = @('zho:100', 'eng:100', 'deu:100', 'spa:100', 'por:100', 'rus:100', 'kor:100', 'zho:150')
 )
 $ErrorActionPreference = 'Stop'
@@ -36,10 +37,11 @@ try {
         $name = "$language-$scale"
         $captures = Join-Path $destination $name
         $log = Join-Path $destination "$name.log"
-        & $DotnetPath (Join-Path $taskRuntime 'TuningRegression.dll') --ui $language $captures $inputFile $scale *> $log
+        & $DotnetPath (Join-Path $taskRuntime 'TuningRegression.dll') --ui $language $captures $inputFile $scale $Mode *> $log
         $code = $LASTEXITCODE
         $lines = Get-Content -LiteralPath $log
-        $passed = $code -eq 0 -and $lines[-1] -eq "PASS UI $language scale=$scale"
+        $expected = if ($Mode -eq '--mmc5-pcm-ui') { "PASS PCM UI $language" } else { "PASS UI $language scale=$scale" }
+        $passed = $code -eq 0 -and $lines[-1] -eq $expected
         $results += [pscustomobject]@{
             language = $language; scale = $scale; exit_code = $code; passed = $passed
             pass_lines = @($lines | Where-Object { $_ -match '^PASS ' }).Count

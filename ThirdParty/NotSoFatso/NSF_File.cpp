@@ -103,8 +103,15 @@ int CNSFFile::LoadFile_NESM(FILE* file,BYTE needdata,BYTE ignoreversion)
 	if(hdr.nHeaderExtra != 0x1A)				return -1;
 	if((!ignoreversion) && (hdr.nVersion > 2))	return -1; //stupid NSFs claim to be above version 1  >_>
 
-	// We support the NSF2 format, but none of its advanced features yet.
-	if (hdr.nVersion == 2 && hdr.nNSF2Features != 0) return -1;
+	// IRQ-driven, returning INIT/PLAY is supported. Do not silently accept
+	// non-returning INIT, suppressed PLAY, or mandatory metadata.
+	if (hdr.nVersion == 2 && (hdr.nNSF2Features & ~0x10)) return -1;
+	nNSF2Features = hdr.nVersion == 2 ? hdr.nNSF2Features : 0;
+	if (hdr.nVersion == 2 && hdr.nProgramLen)
+	{
+		if (hdr.nProgramLen > (UINT)len) return -1;
+		len = hdr.nProgramLen;
+	}
 
 	//NESM is generally easier to work with (but limited!)
 	//  just move the data over from NESM_HEADER over to our member data
@@ -204,6 +211,11 @@ int CNSFFile::LoadFile_NSFE(FILE* file,BYTE needdata)
             if (nChunkSize >= 4 && fread(&nPAL_PlaySpeed, 2, 1, file) != 1) return -1;
             if (nChunkSize > 4) fseek(file, nChunkSize - 4, SEEK_CUR);
             break;
+
+		case CHUNKTYPE_NSF2:
+			if (!bInfoFound || nChunkSize != 1) return -1;
+			if (fread(&nNSF2Features, 1, 1, file) != 1 || (nNSF2Features & ~0x10)) return -1;
+			break;
 
 		case CHUNKTYPE_DATA:
 			if(!bInfoFound)						return -1;
@@ -379,7 +391,9 @@ int CNSFFile::SaveFile_NESM(FILE* file)
 
 	hdr.nHeader =				HEADERTYPE_NESM;
 	hdr.nHeaderExtra =			0x1A;
-	hdr.nVersion =				1;
+	hdr.nVersion =				nNSF2Features ? 2 : 1;
+	hdr.nNSF2Features =			nNSF2Features;
+	hdr.nProgramLen =			nNSF2Features ? nDataBufferSize : 0;
 	hdr.nTrackCount =			nTrackCount;
 	hdr.nInitialTrack =			nInitialTrack + 1;
 	hdr.nLoadAddress =			nLoadAddress;
@@ -434,6 +448,15 @@ int CNSFFile::SaveFile_NSFE(FILE* file)
 	fwrite(&nChunkSize,4,1,file);
 	fwrite(&nChunkType,4,1,file);
 	fwrite(&info,nChunkSize,1,file);
+
+	if (nNSF2Features)
+	{
+		nChunkType = CHUNKTYPE_NSF2;
+		nChunkSize = 1;
+		fwrite(&nChunkSize,4,1,file);
+		fwrite(&nChunkType,4,1,file);
+		fwrite(&nNSF2Features,1,1,file);
+	}
 
 	//if we need bankswitching... throw it in
 	for(nChunkSize = 0; nChunkSize < 8; nChunkSize++)

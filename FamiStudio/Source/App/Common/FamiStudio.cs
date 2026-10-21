@@ -40,6 +40,7 @@ namespace FamiStudio
         private int lastTickCurrentFrame = -1;
         private int previewDPCMSampleId = -1;
         private int previewDPCMSampleRate = 44100;
+        private float previewDPCMStartTime;
         private int lastRecordingKeyDown = -1;
         private int lastPlayPosition = 0;
         private bool previewDPCMIsSource = false;
@@ -117,6 +118,7 @@ namespace FamiStudio
         public int  PreviewDPCMWavPosition => instrumentPlayer != null ? instrumentPlayer.RawPcmSamplePlayPosition : 0;
         public int  PreviewDPCMSampleId    => previewDPCMSampleId;
         public int  PreviewDPCMSampleRate  => previewDPCMSampleRate;
+        public float PreviewDPCMStartTime => previewDPCMStartTime;
         public bool PreviewDPCMIsSource    => previewDPCMIsSource;
 
         public static Project    StaticProject  { get; set; }
@@ -306,7 +308,7 @@ namespace FamiStudio
 
                             PianoRoll.StartEditInstrument(selectedInstrument, envType);
                         }
-                        else if (PianoRoll.IsEditingDPCMSampleMapping && selectedInstrument != null && selectedInstrument.Expansion == ExpansionType.None)
+                        else if (PianoRoll.IsEditingDPCMSampleMapping && selectedInstrument != null && selectedInstrument.SupportsPcmMapping)
                         {
                             PianoRoll.StartEditDPCMMapping(selectedInstrument);
                         }
@@ -336,8 +338,16 @@ namespace FamiStudio
 
         public void StartEditDPCMMapping(Instrument instrument)
         {
-            if (Platform.IsMobile)
-                SelectedInstrument = instrument;
+            SelectedInstrument = instrument;
+            int type = instrument.IsMmc5 ? ChannelType.Mmc5Pcm :
+                instrument.IsVrc6 ? ChannelType.Vrc6Square1 : ChannelType.Dpcm;
+            // A mapping key is auditioned on the hardware that can play it.
+            // Keep either selected VRC6 pulse, but never redirect the saw.
+            if (!(instrument.IsVrc6 && (SelectedChannel.Type == ChannelType.Vrc6Square1 || SelectedChannel.Type == ChannelType.Vrc6Square2)))
+            {
+                int channel = Array.FindIndex(song.Channels, c => c.Type == type);
+                if (channel >= 0) SelectedChannelIndex = channel;
+            }
             PianoRoll.StartEditDPCMMapping(instrument);
             ConditionalSwitchToPianoRoll();
         }
@@ -1058,6 +1068,19 @@ namespace FamiStudio
 
         public void OpenProjectFileAsync(string filename, bool allowComplexFormats, Action<Project> action)
         {
+            Action<Project> completeLoad = p =>
+            {
+                if (p != null && p.UsesPcm && !NesApu.SupportsPcm)
+                {
+                    Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.NativeLibraryRequired);
+                    action(null);
+                }
+                else
+                {
+                    action(p);
+                }
+            };
+
             var extension = Path.GetExtension(filename.ToLower());
 
             var fms = extension == ".fms";
@@ -1087,7 +1110,7 @@ namespace FamiStudio
                     // Undo the hack mentionned above.
                     this.song = null;
                     this.project = null;
-                    action(p);
+                    completeLoad(p);
                 };
 
                 if (mid)
@@ -1138,7 +1161,7 @@ namespace FamiStudio
                     }
                 }
 
-                action(project);
+                completeLoad(project);
             }
 
             if (Platform.IsDesktop && allowComplexFormats)
@@ -1561,7 +1584,7 @@ namespace FamiStudio
                 projectFile = System.IO.Path.GetFileName(project.Filename);
 
             var version = Utils.SplitVersionNumber(Platform.ApplicationVersion, out var betaNumber);
-            var title = $"FamiStudio Extended R10 (based on FamiStudio {version}) - {projectFile}";
+            var title = $"FamiStudio Extended R12 (based on FamiStudio {version}) - {projectFile}";
 
             if (betaNumber > 0)
                 title += $" - BETA {betaNumber} - DEVELOPMENT VERSION DO NOT DISTRIBUTE!";
@@ -1620,6 +1643,7 @@ namespace FamiStudio
             var channel = song.Channels[selectedChannelIndex];
 
             if (selectedInstrument != null && 
+                channel.SupportsReleaseNotes &&
                 selectedInstrument.CanRelease(channel) &&
                 channel.SupportsInstrument(selectedInstrument))
             {
@@ -1749,6 +1773,19 @@ namespace FamiStudio
         {
             previewDPCMSampleId = sample.Id;
             previewDPCMIsSource = source;
+            previewDPCMStartTime = source ? 0 : sample.ProcessedStartTime;
+
+            if (!source && sample.IsPcm)
+            {
+                var preview = sample.GetPcmPreviewWave(palPlayback);
+                previewDPCMSampleRate = Mmc5PcmPreviewWave.PlaybackSampleRate;
+                previewDPCMStartTime = preview.StartTime;
+                var pcmWave = preview.GetPlaybackSamples();
+                if (pcmWave.Length > 0)
+                    instrumentPlayer.PlayRawPcmSample(pcmWave, previewDPCMSampleRate,
+                        NesApu.DPCMVolume * Utils.DbToAmplitude(Settings.GlobalVolumeDb));
+                return;
+            }
 
             byte[] dmcData = null;
             int    dmcRateIndex = 15;

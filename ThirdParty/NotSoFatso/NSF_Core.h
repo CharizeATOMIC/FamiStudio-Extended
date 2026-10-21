@@ -284,13 +284,15 @@ protected:
 	 *	Memory Read/Write routines
 	 */
 	BYTE FASTCALL		ReadMemory_RAM(WORD a)				{ return pRAM[a & 0x07FF]; }
-	BYTE FASTCALL		ReadMemory_ExRAM(WORD a)			{ nPlayCalled |= (a == 0x5007); return pExRAM[a & 0x0FFF]; }
+	BYTE FASTCALL		ReadMemory_ExRAM(WORD a)			{ if (!(nNSF2Features & 0x10)) nPlayCalled |= (a == 0x5007); return pExRAM[a & 0x0FFF]; }
 	BYTE FASTCALL		ReadMemory_SRAM(WORD a)				{ return pSRAM[a & 0x1FFF]; }
 	BYTE FASTCALL		ReadMemory_pAPU(WORD a);
 	BYTE FASTCALL		ReadMemory_ROM(WORD a)				{ return pROM[(a >> 12) - 6][a & 0x0FFF]; }
 	BYTE FASTCALL		ReadMemory_Default(WORD a)			{ return (a >> 8); }
 
 	BYTE FASTCALL		ReadMemory_N106(WORD a);
+	BYTE FASTCALL		ReadMemory_NSF2Vector(WORD a);
+	void FASTCALL		WriteMemory_NSF2Vector(WORD a, BYTE v);
 
 
 	void FASTCALL		WriteMemory_RAM(WORD a,BYTE v)		{ pRAM[a & 0x07FF] = v; }
@@ -312,6 +314,9 @@ protected:
 	 */
 	void				EmulateAPU(BYTE bBurnCPUCycles);
 	UINT				Emulate6502(UINT runto);
+	void				ClockNSF2Timer();
+	void				ClockNSF2TimerTo(UINT cycle);
+	void				ResetCPUCycleCounters();
 
 
 protected:
@@ -378,6 +383,23 @@ protected:
 	BYTE		nBankswitchInitValues[10];	//banks to swap to on tune init
 	WORD		nPlayAddress;				// Play routine address
 	WORD		nInitAddress;				// Init routine address
+	BYTE		nNSF2Features;
+	BYTE		nNSF2IRQVector[2];
+	WORD		nNSF2TimerReload;
+	int			nNSF2TimerCounter;
+	UINT		nNSF2TimerCycle;
+	BYTE		bNSF2TimerActive;
+	BYTE		bNSF2TimerPending;
+	BYTE		bNSF2IRQReady;
+	BYTE		bNSF2IRQBeforeFinalCycle;
+	BYTE		bNSF2PlayPending;
+	BYTE		bNSF2PlayExecuting;
+	UINT		nNSF2PlayStartCycle;
+	UINT		nNSF2PlayElapsed;
+	UINT		nNSF2LastPlayCycles;
+	UINT		nNSF2MaxPlayCycles;
+	ReadProc	readNSF2Underlying;
+	WriteProc	writeNSF2Underlying;
 
 	BYTE		nExternalSound;				// external sound chips
 	BYTE		nCurTrack;

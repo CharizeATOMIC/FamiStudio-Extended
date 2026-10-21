@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
@@ -33,6 +34,68 @@ namespace FamiStudio
         
         public const int RomMaxSongs     = 48;
         public const int RomMaxSongsEpsm = 32;
+
+        // The current cartridge clock has room for one active PCM feeder.
+        // Different DACs may alternate at the same musical tick: the cartridge
+        // handles explicit stops atomically before publishing new triggers.
+        private static void ValidatePcmSchedule(Mmc5PcmExportData data, bool pal)
+        {
+            double samplesPerFrame = data.SampleRate *
+                (pal ? 33247.5 / 1662607.125 : 29780.5 / 1789772.7272727273);
+            foreach (var track in data.Tracks.Values)
+            {
+                var remaining = new double[4];
+                var commandsByTick = new Dictionary<int, Mmc5PcmExportData.Event[]>();
+                foreach (var group in track.Events.GroupBy(e => e.Tick))
+                {
+                    var triggered = new HashSet<int>();
+                    var earlyStops = new List<Mmc5PcmExportData.Event>();
+                    foreach (var command in group)
+                    {
+                        if (command.Command == 1) triggered.Add(command.Destination);
+                        if ((command.Command == 2 || command.Command == 6) && !triggered.Contains(command.Destination))
+                            earlyStops.Add(command);
+                    }
+                    // Match the serialized stream's ordering exactly; a real
+                    // trigger-then-stop on the same DAC must remain in order.
+                    commandsByTick.Add(group.Key, earlyStops.Concat(group.Where(e => !earlyStops.Contains(e))).ToArray());
+                }
+                int total = track.EndTick + (track.LoopTick >= 0 ? 2 * (track.EndTick - track.LoopTick) : 0);
+                for (int tick = 0; tick < total; tick++)
+                {
+                    for (int v = 0; v < 4; v++)
+                    {
+                        if (remaining[v] > 0 && !double.IsPositiveInfinity(remaining[v]))
+                        {
+                            remaining[v] -= samplesPerFrame;
+                        }
+                    }
+                    int sourceTick = tick < track.EndTick ? tick :
+                        track.LoopTick + (tick - track.EndTick) % (track.EndTick - track.LoopTick);
+                    if (!commandsByTick.TryGetValue(sourceTick, out var commands)) continue;
+                    foreach (var command in commands)
+                    {
+                        int destination = command.Destination;
+                        if (command.Command == 1)
+                        {
+                            for (int other = 0; other < 4; other++)
+                            {
+                                if (other != destination && remaining[other] > 0)
+                                    throw new InvalidOperationException(Mmc5PcmStrings.NesConcurrentPcmError);
+                            }
+                            var sample = data.Samples[command.SampleIndex];
+                            // A one-shot's final byte and neutral-DAC completion
+                            // can straddle IRQ edges. Reserve two sample periods.
+                            remaining[destination] = sample.Loop ? double.PositiveInfinity : sample.Data.Length + 2;
+                        }
+                        else if (command.Command == 2 || command.Command == 6)
+                        {
+                            remaining[destination] = 0;
+                        }
+                    }
+                }
+            }
+        }
 
         public unsafe bool Save(Project originalProject, string filename, int[] songIds, string name, string author, bool pal)
         {
@@ -71,6 +134,30 @@ namespace FamiStudio
                     project.SetExpansionAudioMask(0);
                 }
 
+                if (project.UsesPcm && project.UsesAnyExpansionAudio &&
+                    !project.UsesMmc5Expansion && !project.UsesVrc6Expansion)
+                {
+                    Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.NesMapperError);
+                    return false;
+                }
+                // Mapper 5 follows actual PPU scanlines. Mapper 24's independent
+                // prescaler counts 341/3 CPU cycles even on PAL and in blanking.
+                bool pcmMapper5 = project.UsesMmc5Expansion;
+                double pcmRate = pcmMapper5
+                    ? (pal ? 1662607.125 * 78 / 33247.5 : 1789772.7272727273 * 131 / (29780.5 * 2))
+                    : (pal ? 1662607.125 : 1789772.7272727273) / (341 * 4.0 / 3);
+                var pcmData = project.UsesPcm
+                    ? Mmc5PcmExportData.Capture(project, songIds, pal,
+                        pcmRate, pcmMapper5 ? RomBankSize : RomBankSizeVrc6)
+                    : null;
+
+                if (pcmData != null)
+                {
+                    ValidatePcmSchedule(pcmData, pal);
+                    Log.LogMessage(LogSeverity.Warning, Mmc5PcmStrings.NesSampleRateWarning);
+                }
+                bool mapper24 = project.UsesVrc6Expansion || (pcmData != null && !pcmMapper5);
+
                 var headerBytes = new byte[RomHeaderLength];
                 var prgBytes    = new byte[RomPrgAndTocSize];
                 var chrBytes    = new byte[RomChrSize];
@@ -78,6 +165,12 @@ namespace FamiStudio
                 // Load ROM header (16 bytes) + code/tiles (12KB).
                 var romName = "FamiStudio.Rom.rom";
                 var expSuffix = project.UsesAnyExpansionAudio ? $"_{ExpansionType.InternalNames[project.SingleExpansion].ToLower()}{(project.UsesN163Expansion ? $"_{project.ExpansionNumN163Channels}ch" : "")}" : "";
+                if (pcmData != null)
+                {
+                    int mask = pcmData.DestinationsMask;
+                    if (mask == 0) mask = pcmMapper5 ? 2 : 1;
+                    expSuffix = $"_{(pcmMapper5 ? "mmc5" : project.UsesVrc6Expansion ? "vrc6" : "apu")}_pcm_m{mask}";
+                }
 
                 romName += expSuffix;
                 romName += pal ? "_pal" : "_ntsc";
@@ -85,6 +178,8 @@ namespace FamiStudio
                 romName += ".nes";
 
                 var romBinStream = typeof(RomFile).Assembly.GetManifestResourceStream(romName);
+                if (romBinStream == null)
+                    throw new InvalidOperationException("Missing PCM cartridge resource: " + romName);
                 romBinStream.Read(headerBytes, 0, RomHeaderLength);
                 romBinStream.Seek(-RomPrgAndTocSize - RomChrSize, SeekOrigin.End);
                 romBinStream.Read(prgBytes, 0, RomPrgAndTocSize);
@@ -108,15 +203,21 @@ namespace FamiStudio
 
                 // Gather song data.
                 var songBanks = new List<List<byte>>();
-                var songBankSize = project.UsesVrc6Expansion ? RomBankSizeVrc6 : RomBankSize;
+                var songBankSize = mapper24 ? RomBankSizeVrc6 : RomBankSize;
                 var songBankSizeInKB = songBankSize / 1024;
                 var bankSize = RomBankSize;
                 var bankSizeInKB = RomBankSize / 1024;
                 var numDpcmBanks = 0;
+                var numPcmBanks = pcmData == null ? 0 : pcmData.BankData.Length / RomBankSize;
 
                 if (project.UsesSamples)
                 {
-                    numDpcmBanks = project.AutoAssignSamplesBanks(bankSize, out _);
+                    numDpcmBanks = project.AutoAssignSamplesBanks(bankSize, out var overflow);
+                    if (pcmData != null && overflow)
+                    {
+                        Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.SampleBankOverflow);
+                        return false;
+                    }
                 }
 
                 // Export each song individually, build TOC at the same time.
@@ -129,10 +230,15 @@ namespace FamiStudio
                     }
 
                     var song = project.Songs[i];
-                    var songBytes = new FamitoneMusicFile(FamiToneKernel.FamiStudio, false).GetBytes(project, new int[] { song.Id }, RomSongDataStart, bankSize, DpcmExportMode.All, false, RomDpcmStart, pal ? MachineType.PAL : MachineType.NTSC); 
+                    var songBytes = new FamitoneMusicFile(FamiToneKernel.FamiStudio, false) { PcmData = pcmData }.GetBytes(project, new int[] { song.Id }, RomSongDataStart, bankSize, DpcmExportMode.All, false, RomDpcmStart, pal ? MachineType.PAL : MachineType.NTSC);
 
                     if (songBytes.Length > MaxSongSize)
                     {
+                        if (pcmData != null)
+                        {
+                            Log.LogMessage(LogSeverity.Error, $"Song '{song.Name}' exceeds the {MaxSongSize}-byte cartridge music-data limit. PCM control data cannot be truncated.");
+                            return false;
+                        }
                         Log.LogMessage(LogSeverity.Warning, $"Song {song.Name} has a size of {songBytes.Length}, which is larger than the maximum allowed for ROM export ({MaxSongSize}). Truncating.");
                         Array.Resize(ref songBytes, MaxSongSize);
                     }
@@ -155,7 +261,7 @@ namespace FamiStudio
                             {
                                 songBank = j;
                                 songAddr = RomSongDataStart + songBanks[j].Count;
-                                songBytes = new FamitoneMusicFile(FamiToneKernel.FamiStudio, false).GetBytes(project, new int[] { song.Id }, songAddr, bankSize, DpcmExportMode.All, false, RomDpcmStart, pal ? MachineType.PAL : MachineType.NTSC); 
+                                songBytes = new FamitoneMusicFile(FamiToneKernel.FamiStudio, false) { PcmData = pcmData }.GetBytes(project, new int[] { song.Id }, songAddr, bankSize, DpcmExportMode.All, false, RomDpcmStart, pal ? MachineType.PAL : MachineType.NTSC);
                                 Debug.Assert(songBytes.Length <= freeSpace);
                                 foundExistingBank = true;
                                 break;
@@ -198,13 +304,19 @@ namespace FamiStudio
 
                 var numCodeBanks = 1;
                 var numPaddingBanks = 0;
-                var romSizeInKb  = (numCodeBanks + numDpcmBanks) * bankSizeInKB + (songBanks.Count * songBankSizeInKB);
+                var pcmAlignmentBanks = pcmData != null && mapper24 ? numDpcmBanks & 1 : 0;
+                var romSizeInKb  = (numCodeBanks + numDpcmBanks + numPcmBanks + pcmAlignmentBanks) * bankSizeInKB + (songBanks.Count * songBankSizeInKB);
 
                 // Add extra empty banks if we haven't reached the minimum or if not a power-of-two.
                 while (romSizeInKb < MinRomSizeInKB || Utils.NextPowerOfTwo(romSizeInKb) != romSizeInKb)
                 {
                     numPaddingBanks++;
                     romSizeInKb += bankSizeInKB;
+                }
+                if (pcmData != null && romSizeInKb > (mapper24 ? 256 : 1024))
+                {
+                    Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.NesPrgSizeError);
+                    return false;
                 }
 
                 // Build final song bank data.
@@ -214,6 +326,8 @@ namespace FamiStudio
 
                 // VRC6 uses 16KB pages, but we count in 8KB pages, so x2.
                 projectInfo.firstDpcmBank = (byte)(songBanks.Count * (songBankSize / bankSize));
+                if (pcmData != null)
+                    projectInfo.reserved[0] = (byte)(projectInfo.firstDpcmBank + numDpcmBanks + pcmAlignmentBanks);
 
                 var tocOffset = project.UsesEPSMExpansion ? RomTocOffsetEpsm : RomTocOffset;
 
@@ -243,6 +357,11 @@ namespace FamiStudio
                     Utils.PadToNextBank(ref dpcmBankBytes, bankSize);
                     romBytes.AddRange(dpcmBankBytes);
                 }
+
+                if (pcmAlignmentBanks != 0)
+                    romBytes.AddRange(new byte[bankSize]);
+                if (pcmData != null)
+                    romBytes.AddRange(pcmData.BankData);
 
                 for (int i = 0; i < numPaddingBanks; i++)
                 {

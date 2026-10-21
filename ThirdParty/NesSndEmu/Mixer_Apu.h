@@ -43,6 +43,28 @@ public:
     void reset() { each([](Simple_Apu& a){ a.reset(); }); }
     void end_frame() { each([](Simple_Apu& a){ a.end_frame(); }); }
     void set_update_rate_multiplier(int value) { each([&](Simple_Apu& a){ a.set_update_rate_multiplier(value); }); }
+    bool start_pcm(int destination, const unsigned char* data, int length, uint32_t period, int loopStart, int loopEnd, int volume) {
+        if (!Simple_Apu::start_pcm(destination, data, length, period, loopStart, loopEnd, volume)) return false;
+        const int expansion = destination == 0 ? expansion_none : destination == 1 ? expansion_mmc5 : expansion_vrc6;
+        for (auto& s : stems) if (expansion == expansion_none || s.expansion == expansion)
+            if (!s.apu->start_pcm(destination, data, length, period, loopStart, loopEnd, volume)) {
+                stop_pcm(destination); return false;
+            }
+        return true;
+    }
+    void stop_pcm(int destination) { each([&](Simple_Apu& a){ a.stop_pcm(destination); }); }
+    void release_pcm(int destination) { each([&](Simple_Apu& a){ a.release_pcm(destination); }); }
+    void set_pcm_volume(int destination, int volume) { each([&](Simple_Apu& a){ a.set_pcm_volume(destination, volume); }); }
+    bool start_mmc5_pcm(const unsigned char* data, int length, uint32_t period, int loopStart, int loopEnd, int volume) {
+        if (!Simple_Apu::start_mmc5_pcm(data, length, period, loopStart, loopEnd, volume)) return false;
+        for (auto& s : stems) if (s.expansion == expansion_mmc5)
+            if (!s.apu->start_mmc5_pcm(data, length, period, loopStart, loopEnd, volume)) {
+                stop_mmc5_pcm(); return false;
+            }
+        return true;
+    }
+    void stop_mmc5_pcm() { each([](Simple_Apu& a){ a.stop_mmc5_pcm(); }); }
+    void set_mmc5_pcm_volume(int volume) { each([&](Simple_Apu& a){ a.set_mmc5_pcm_volume(volume); }); }
     int skip_cycles(long cycles) { int n=Simple_Apu::skip_cycles(cycles); for(auto& s:stems) s.apu->skip_cycles(cycles); return n; }
     void start_seeking() { each([](Simple_Apu& a){ a.start_seeking(); }); }
     void stop_seeking() { each([](Simple_Apu& a){ a.stop_seeking(); }); }

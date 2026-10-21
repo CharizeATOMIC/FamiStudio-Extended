@@ -9,6 +9,14 @@ namespace FamiStudio
 
         public override void UpdateAPU()
         {
+            if (UpdatePcmSample(NesApu.PcmDestinationApu))
+            {
+                // The software stream owns $4011; a DPCM counter effect must
+                // not fight its regularly spaced samples.
+                note.HasDeltaCounter = false;
+                base.UpdateAPU();
+                return;
+            }
             var setCounter = false;
 
             if (note.IsStop)

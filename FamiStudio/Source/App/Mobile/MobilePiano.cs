@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 
 using Color     = System.Drawing.Color;
@@ -149,9 +149,9 @@ namespace FamiStudio
 
         private bool GetDPCMKeyColor(int note, out Color color)
         {
-            if (App.SelectedChannel.Type == ChannelType.Dpcm && App.SelectedInstrument != null && App.SelectedInstrument.HasAnyMappedSamples)
+            if ((App.SelectedChannel.IsSampleChannel || App.SelectedChannel.Type == ChannelType.Vrc6Square1 || App.SelectedChannel.Type == ChannelType.Vrc6Square2) && App.SelectedInstrument != null && App.SelectedInstrument.HasAnyMappedSamples)
             {
-                var mapping = App.SelectedInstrument.GetDPCMMapping(note);
+                var mapping = App.SelectedInstrument.GetSampleMapping(note);
                 if (mapping != null)
                 {
                     color = mapping.Sample.Color;

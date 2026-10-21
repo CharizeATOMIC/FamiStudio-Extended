@@ -47,6 +47,8 @@ namespace FamiStudio
             if (project.Copyright != "")    projectLine += GenerateAttribute("Copyright", project.Copyright);
             if (project.PalMode)            projectLine += GenerateAttribute("PAL", true);
             if (project.HasVirtualChips) projectLine += GenerateAttribute("ChipInstances", string.Join(",", Enumerable.Range(0, ExpansionType.Count).Select(project.GetExpansionInstances)));
+            if (project.Mmc5PcmEnabled) projectLine += GenerateAttribute("Mmc5PcmEnabled", true);
+            projectLine += GenerateAttribute("IndependentPcmSamples", true);
             if (project.Tuning    != 440)   projectLine += GenerateAttribute("Tuning", project.Tuning);
 
             if (project.UsesAnyExpansionAudio)
@@ -93,12 +95,50 @@ namespace FamiStudio
                 }
 
             // DPCM samples
-            foreach (var sample in project.Samples)
+            foreach (var sample in project.AllSamples)
             {
+                // PCM uses the source wave, so retain its editable processing
+                // state separately from the portable final DMC representation.
+                string pcmSourceLine = null;
+                if (project.Mmc5PcmEnabled || sample.IsPcm)
+                {
+                    byte[] sourceBytes;
+                    if (sample.SourceDataIsWav)
+                    {
+                        sourceBytes = new byte[sample.SourceWavData.Samples.Length * 2];
+                        for (int i = 0; i < sample.SourceWavData.Samples.Length; i++)
+                        {
+                            sourceBytes[i * 2] = (byte)sample.SourceWavData.Samples[i];
+                            sourceBytes[i * 2 + 1] = (byte)(sample.SourceWavData.Samples[i] >> 8);
+                        }
+                    }
+                    else sourceBytes = sample.SourceDmcData.Data;
+                    pcmSourceLine = (sample.IsPcm ? "\tPCMSample" : "\tSampleSource") + GenerateAttribute("Name", sample.Name)
+                        + ConditionalGenerateAttribute("Color", sample.Color.ToHexString(), sample.IsPcm && !noColors)
+                        + (sample.IsPcm ? GenerateAttributeIfNonEmpty("Folder", sample.FolderName) : "")
+                        + GenerateAttribute("Format", sample.SourceDataIsWav ? "Wav16" : "Dmc")
+                        + GenerateAttribute("Rate", sample.SourceDataIsWav ? sample.SourceWavData.SampleRate : 0)
+                        + GenerateAttribute("Data", Convert.ToBase64String(sourceBytes))
+                        + GenerateAttribute("SampleRate", sample.SampleRate)
+                        + GenerateAttribute("PreviewRate", sample.PreviewRate)
+                        + GenerateAttribute("Volume", sample.VolumeAdjust)
+                        + GenerateAttribute("FinePitch", sample.FinePitch)
+                        + GenerateAttribute("Padding", sample.PaddingMode)
+                        + GenerateAttribute("InitialValue", sample.DmcInitialValueDiv2)
+                        + GenerateAttribute("ReverseBits", sample.ReverseBits)
+                        + GenerateAttribute("Trim", sample.TrimZeroVolume)
+                        + GenerateAttribute("PAL", sample.PalProcessing)
+                        + GenerateAttribute("VolumeEnvelope", string.Join(";", sample.VolumeEnvelope.Select(v => v.sample.ToString(CultureInfo.InvariantCulture) + "," + v.volume.ToString("R", CultureInfo.InvariantCulture))));
+                }
+                if (sample.IsPcm)
+                {
+                    lines.Add(pcmSourceLine);
+                    continue;
+                }
                 // We don't include any DPCM sample source data or processing data. We simply write the final
                 // processed data. Including giant WAV files or asking other importers to implement all the 
                 // processing options is unrealistic.
-                if (sample.HasAnyProcessingOptions)
+                if (sample.HasAnyProcessingOptions && pcmSourceLine == null)
                 {
                     if (sample.SourceDataIsWav)
                         Log.LogMessage(LogSeverity.Warning, $"The sample {sample.Name} has WAV data as source. Only the final processed DMC data will be exported.");
@@ -111,6 +151,7 @@ namespace FamiStudio
                 Debug.Assert(!sample.HasAnyProcessingOptions);
 
                 lines.Add($"\tDPCMSample{GenerateAttribute("Name", sample.Name)}{ConditionalGenerateAttribute("Color", sample.Color.ToHexString(), !noColors)}{GenerateAttributeIfNonEmpty("Folder", sample.FolderName)}{ConditionalGenerateAttribute("DmcInitialValue", sample.DmcInitialValueDiv2, sample.DmcInitialValueDiv2 != 32)}{GenerateAttribute("Data", String.Join("", sample.ProcessedData.Select(x => $"{x:x2}")))}");
+                if (pcmSourceLine != null) lines.Add(pcmSourceLine);
             }
 
             // Instruments
@@ -209,10 +250,17 @@ namespace FamiStudio
 
                         if (mapping != null && mapping.Sample != null)
                         {
+                            if (mapping.Sample.IsPcm)
+                            {
+                                lines.Add($"\t\tPCMMapping{GenerateAttribute("Note", Note.GetFriendlyName(kv.Key))}{GenerateAttribute("Sample", mapping.Sample.Name)}{GenerateAttribute("Pitch", mapping.PcmPitch)}{GenerateAttribute("Loop", mapping.Loop)}");
+                                continue;
+                            }
                             var mappingStr = $"\t\tDPCMMapping{GenerateAttribute("Note", Note.GetFriendlyName(kv.Key))}{GenerateAttribute("Sample", mapping.Sample.Name)}{GenerateAttribute("Pitch", mapping.Pitch)}{GenerateAttribute("Loop", mapping.Loop)}{GenerateAttribute("Bank", mapping.Sample.Bank)}";
 
                             if (mapping.OverrideDmcInitialValue)
                                 mappingStr += $"{GenerateAttribute("DmcInitialValueRaw", mapping.DmcInitialValue)}";
+                            if (mapping.PcmPitch != 0)
+                                mappingStr += GenerateAttribute("PcmPitch", mapping.PcmPitch);
 
                             lines.Add(mappingStr);
                         }
@@ -450,6 +498,7 @@ namespace FamiStudio
                 var channel = (Channel)null;
                 var pattern = (Pattern)null;
                 var loopVariants = new List<(Pattern Pattern, string Name)>();
+                var independentPcmSamples = false;
 
                 SetInvariantCulture();
 
@@ -464,6 +513,8 @@ namespace FamiStudio
                             var currentVersion = Utils.SplitVersionNumber(Platform.ApplicationVersion, out _);
 
                             project = new Project();
+                            if (parameters.TryGetValue("IndependentPcmSamples", out var independentPcm))
+                                independentPcmSamples = bool.Parse(independentPcm);
                             if (!parameters.TryGetValue("Version", out var version))
                                 version = currentVersion;
                             if (parameters.TryGetValue("Name", out var name)) project.Name = name;
@@ -472,6 +523,7 @@ namespace FamiStudio
                             if (parameters.TryGetValue("TempoMode", out var tempoMode)) project.TempoMode = TempoType.GetValueForName(tempoMode);
                             if (parameters.TryGetValue("PAL", out var pal)) project.PalMode = bool.Parse(pal);
                             if (parameters.TryGetValue("UpdateRateMultiplier", out var rate)) project.UpdateRateMultiplier = int.Parse(rate);
+                            if (parameters.TryGetValue("Mmc5PcmEnabled", out var mmc5Pcm)) project.Mmc5PcmEnabled = bool.Parse(mmc5Pcm);
                             if (parameters.TryGetValue("ChipInstances", out var chipInstances)) project.SetExpansionInstances(chipInstances.Split(',').Select(int.Parse).ToArray());
                             if (parameters.TryGetValue("Tuning", out var tuning)) project.Tuning = int.Parse(tuning);
                             if (parameters.TryGetValue("Expansions", out var expansions))
@@ -548,6 +600,58 @@ namespace FamiStudio
                                 sample.Color = Theme.EnforceThemeColor(Color.FromHexString(hexColor));
                             if (parameters.TryGetValue("DmcInitialValue", out var initialValue))
                                 sample.DmcInitialValueDiv2 = int.Parse(initialValue);
+                            break;
+                        }
+                        case "PCMSample":
+                        case "SampleSource":
+                        {
+                            var isPcm = cmd == "PCMSample";
+                            var sample = isPcm ? project.CreatePcmSample(parameters["Name"]) : project.GetSample(parameters["Name"]);
+                            if (sample == null) throw new InvalidDataException("SampleSource must follow its DPCMSample.");
+                            if (isPcm)
+                            {
+                                if (parameters.TryGetValue("Folder", out var pcmFolder))
+                                {
+                                    project.CreateFolder(FolderType.PcmSample, pcmFolder);
+                                    sample.FolderName = pcmFolder;
+                                }
+                                if (parameters.TryGetValue("Color", out var pcmColor))
+                                    sample.Color = Theme.EnforceThemeColor(Color.FromHexString(pcmColor));
+                            }
+                            var data = Convert.FromBase64String(parameters["Data"]);
+                            if (parameters["Format"] == "Wav16")
+                            {
+                                int rate = int.Parse(parameters["Rate"]);
+                                if ((data.Length & 1) != 0 || rate < 1 || rate > 768000)
+                                    throw new InvalidDataException("Invalid PCM source wave.");
+                                var wave = new short[data.Length / 2];
+                                for (int i = 0; i < wave.Length; i++) wave[i] = (short)(data[i * 2] | (data[i * 2 + 1] << 8));
+                                sample.SetWavSourceData(wave, rate, "", true);
+                            }
+                            else if (parameters["Format"] == "Dmc")
+                                sample.SetDmcSourceData(data, "", true);
+                            else throw new InvalidDataException("Unknown sample source format.");
+                            sample.SampleRate = int.Parse(parameters["SampleRate"]);
+                            sample.PreviewRate = int.Parse(parameters["PreviewRate"]);
+                            sample.VolumeAdjust = int.Parse(parameters["Volume"]);
+                            sample.FinePitch = float.Parse(parameters["FinePitch"], CultureInfo.InvariantCulture);
+                            sample.PaddingMode = int.Parse(parameters["Padding"]);
+                            sample.DmcInitialValueDiv2 = int.Parse(parameters["InitialValue"]);
+                            sample.ReverseBits = bool.Parse(parameters["ReverseBits"]);
+                            sample.TrimZeroVolume = bool.Parse(parameters["Trim"]);
+                            sample.PalProcessing = bool.Parse(parameters["PAL"]);
+                            var envelope = parameters["VolumeEnvelope"].Split(';');
+                            if (envelope.Length != sample.VolumeEnvelope.Length)
+                                throw new InvalidDataException("Invalid sample volume envelope.");
+                            for (int i = 0; i < envelope.Length; i++)
+                            {
+                                var point = envelope[i].Split(',');
+                                sample.VolumeEnvelope[i] = new SampleVolumePair(int.Parse(point[0]), float.Parse(point[1], CultureInfo.InvariantCulture));
+                            }
+                            if (sample.SampleRate < 0 || sample.SampleRate > 15 || sample.PreviewRate < 0 || sample.PreviewRate > 15 ||
+                                !float.IsFinite(sample.FinePitch) || sample.FinePitch <= 0)
+                                throw new InvalidDataException("Invalid sample processing settings.");
+                            sample.Process();
                             break;
                         }
                         case "Instrument":
@@ -639,8 +743,19 @@ namespace FamiStudio
 
                             break;
                         }
+                        case "PCMMapping":
+                        {
+                            if (instrument == null || !instrument.SupportsPcmMapping)
+                                throw new InvalidDataException("This instrument does not support PCM mappings.");
+                            instrument.MapPcmSample(Note.FromFriendlyName(parameters["Note"]), project.GetPcmSample(parameters["Sample"]),
+                                parameters.TryGetValue("Pitch", out var pcmPitch) ? int.Parse(pcmPitch) : 0,
+                                parameters.TryGetValue("Loop", out var pcmLoop) && bool.Parse(pcmLoop));
+                            break;
+                        }
                         case "DPCMMapping":
                         {
+                            if (instrument == null || !instrument.SupportsDpcmMapping)
+                                throw new InvalidDataException("Only 2A03 instruments support DPCM mappings.");
                             if (instrument != null && instrument.IsRegular)
                             {
                                 var pitch = 15;
@@ -650,6 +765,7 @@ namespace FamiStudio
                                 if (parameters.TryGetValue("Loop", out var loopStr)) loop = bool.Parse(loopStr);
                                 if (parameters.TryGetValue("Bank", out var bankStr)) bank = int.Parse(bankStr);
                                 var mapping = instrument.MapDPCMSample(Note.FromFriendlyName(parameters["Note"]), project.GetSample(parameters["Sample"]), pitch, loop, bank);
+                                if (parameters.TryGetValue("PcmPitch", out var pcmPitch)) mapping.PcmPitch = int.Parse(pcmPitch);
                                 if (parameters.TryGetValue("DmcInitialValue", out var dmcInitialStr))
                                 {
                                     mapping.OverrideDmcInitialValue = true;
@@ -817,7 +933,9 @@ namespace FamiStudio
                                 note.Duration = 1;
                             if (note.IsMusical && parameters.TryGetValue("Release", out var releaseStr))
                                 note.Release = int.Parse(releaseStr);
-                            if (note.IsMusical && parameters.TryGetValue("Instrument", out var instStr) && channel.SupportsInstrument(project.GetInstrument(instStr)))
+                            if (note.IsMusical && parameters.TryGetValue("Instrument", out var instStr) &&
+                                (channel.SupportsInstrument(project.GetInstrument(instStr)) ||
+                                 (!independentPcmSamples && channel.IsMmc5PcmChannel && project.GetInstrument(instStr)?.IsRegular == true)))
                                 note.Instrument = project.GetInstrument(instStr);
                             if (note.IsMusical && parameters.TryGetValue("Arpeggio", out var arpStr) && channel.SupportsArpeggios)
                                 note.Arpeggio = project.GetArpeggio(arpStr);
@@ -891,6 +1009,8 @@ namespace FamiStudio
                     inst.PerformPostLoadActions();
                 }
 
+                if (!independentPcmSamples)
+                    project.MigrateSharedMmc5PcmSamples();
                 project.AutoSortSongs = false;
                 project.ConditionalSortEverything();
                 var updateRateError = project.GetUpdateRateError(project.UpdateRateMultiplier);

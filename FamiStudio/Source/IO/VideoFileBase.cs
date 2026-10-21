@@ -139,11 +139,13 @@ namespace FamiStudio
                             if (note.Instrument != null && colorMode == OscilloscopeColorType.Instruments)
                             {
                                 // Use sample colours for DPCM based on user settings.
-                                if (Settings.DpcmColorMode == Settings.ColorModeSample && channels[j].channel.Type == ChannelType.Dpcm)
+                                if (Settings.DpcmColorMode == Settings.ColorModeSample && channels[j].channel.SupportsSampleMappings)
                                 {
-                                    var mapping = note.Instrument.GetDPCMMapping(note.Value);
+                                    var mapping = note.Instrument.GetSampleMapping(note.Value);
                                     if (mapping != null && mapping.Sample != null)
                                         color = mapping.Sample.Color;
+                                    else
+                                        color = note.Instrument.Color;
                                 }
                                 else
                                 {

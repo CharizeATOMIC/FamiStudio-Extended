@@ -60,6 +60,10 @@ namespace FamiStudio
         protected int volumeSlideTarget = 0;
         protected byte noteValueBeforeSlide = 0;
         protected IPlayerInterface player;
+        protected bool pcmPlaying;
+        protected bool pcmOwnsVoice;
+        private int pcmDestination = -1;
+        private int previousPcmVolume = -1;
 
         sealed class ScheduledEvent
         {
@@ -373,10 +377,16 @@ namespace FamiStudio
             }
             else if (newNote.IsMusical)
             {
-                var instrumentChanged = note.Instrument != newNote.Instrument || forceInstrumentReload;
+                // A tied key may acquire a DAC after a rest or an ordinary
+                // note. There is no running PCM envelope to continue then.
+                var acquiringPcm = !pcmPlaying &&
+                    (channelType == ChannelType.Dpcm || channelType == ChannelType.Mmc5Pcm ||
+                     channelType == ChannelType.Vrc6Square1 || channelType == ChannelType.Vrc6Square2) &&
+                    newNote.Instrument?.GetPcmMapping(newNote.Value) != null;
+                var instrumentChanged = note.Instrument != newNote.Instrument || forceInstrumentReload || acquiringPcm;
                 var arpeggioChanged   = note.Arpeggio   != newNote.Arpeggio;
 
-                var noteHasAttack = newNote.HasAttack || !Channel.CanDisableAttack(channelType, note.Instrument, newNote.Instrument);
+                var noteHasAttack = newNote.HasAttack || acquiringPcm || !Channel.CanDisableAttack(channelType, note.Instrument, newNote.Instrument);
 
                 note = newNote;
 
@@ -407,7 +417,7 @@ namespace FamiStudio
                 }
 
                 // DPCM should always retrigger. Attack only affects initial DMC value.
-                if (channelType == ChannelType.Dpcm)
+                if (channelType == ChannelType.Dpcm && note.Instrument?.GetPcmMapping(note.Value) == null)
                 {
                     noteTriggered = true;
                     resetInstrumentOnNextAttack = false;
@@ -702,6 +712,64 @@ namespace FamiStudio
             NesApu.SkipCycles(apuIdx, cycles);
         }
 
+        // A mapped PCM note owns its physical voice until stop or a normal note.
+        // These synthetic events are captured by the hardware exporters.
+        protected bool UpdatePcmSample(int destination)
+        {
+            var mapping = note.IsMusical ? note.Instrument?.GetPcmMapping(note.Value) : null;
+            if (mapping == null)
+            {
+                if (note.IsMusical)
+                {
+                    if (pcmOwnsVoice)
+                    {
+                        NesApu.ReleasePcm(apuIdx, pcmDestination);
+                        player.NotifyRegisterWrite(apuIdx, NesApu.PcmRegister(pcmDestination, 3), 0);
+                        pcmOwnsVoice = pcmPlaying = false;
+                    }
+                    return false;
+                }
+                StopPcmSample();
+                return pcmOwnsVoice;
+            }
+            if (noteTriggered || !pcmPlaying)
+            {
+                var data = mapping.Sample.GetPcmData(palPlayback, mapping.PcmPitch);
+                if (data.Length == 0)
+                {
+                    pcmDestination = destination;
+                    pcmOwnsVoice = pcmPlaying = true;
+                    StopPcmSample();
+                    return true;
+                }
+                if (NesApu.StartPcm(apuIdx, destination, data, data.Length,
+                    (uint)Mmc5PcmTiming.GetPeriod(palPlayback) << 16,
+                    mapping.Loop ? 0 : -1, mapping.Loop ? data.Length : -1, GetVolume()) == 0)
+                    throw new InvalidOperationException("The native PCM stream could not be started.");
+                pcmDestination = destination;
+                pcmOwnsVoice = pcmPlaying = true;
+                previousPcmVolume = -1;
+                player.NotifyRegisterWrite(apuIdx, NesApu.PcmRegister(destination, 0), note.Value, note.Instrument.Id);
+            }
+            int sampleVolume = GetVolume();
+            if (sampleVolume != previousPcmVolume)
+            {
+                NesApu.SetPcmVolume(apuIdx, destination, sampleVolume);
+                player.NotifyRegisterWrite(apuIdx, NesApu.PcmRegister(destination, 2), sampleVolume);
+                previousPcmVolume = sampleVolume;
+            }
+            return true;
+        }
+
+        private void StopPcmSample()
+        {
+            if (!pcmPlaying) return;
+            NesApu.StopPcm(apuIdx, pcmDestination);
+            player.NotifyRegisterWrite(apuIdx, NesApu.PcmRegister(pcmDestination, 1), 0);
+            pcmPlaying = false;
+            previousPcmVolume = -1;
+        }
+
         protected void WriteRegister(int reg, int data, int skipCycles = 4, int metadata = 0)
         {
             Debug.Assert(data >= 0 && data <= 255);
@@ -726,6 +794,8 @@ namespace FamiStudio
 
         public void ClearNote()
         {
+            StopPcmSample();
+            pcmOwnsVoice = false;
             arpeggioEnvelopeOverride = false;
             note.Arpeggio = null;
             note.Instrument = null;

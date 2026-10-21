@@ -98,6 +98,11 @@ namespace FamiStudio
         public Folder Folder => string.IsNullOrEmpty(folderName) ? null : project.GetFolder(FolderType.Instrument, folderName);
 
         public bool IsRegular => expansion == ExpansionType.None;
+        public bool IsMmc5    => expansion == ExpansionType.Mmc5;
+        public bool SupportsDpcmMapping => IsRegular;
+        public bool SupportsPcmMapping => IsRegular || IsMmc5 || IsVrc6;
+        public bool HasAnyPcmMappings => samplesMapping != null && samplesMapping.Values.Any(m => m.Sample?.IsPcm == true);
+        public bool HasAnyDpcmMappings => samplesMapping != null && samplesMapping.Values.Any(m => m.Sample != null && !m.Sample.IsPcm);
         public bool IsFds     => expansion == ExpansionType.Fds;
         public bool IsVrc6    => expansion == ExpansionType.Vrc6;
         public bool IsVrc7    => expansion == ExpansionType.Vrc7;
@@ -157,7 +162,7 @@ namespace FamiStudio
                 epsmPatch = EpsmInstrumentPatch.Default;
                 Array.Copy(EpsmInstrumentPatch.Infos[EpsmInstrumentPatch.Default].data, epsmPatchRegs, 31);
             }
-            else if (expansion == ExpansionType.None)
+            if (SupportsPcmMapping)
             {
                 samplesMapping = new Dictionary<int, DPCMSampleMapping>();
             }
@@ -708,6 +713,8 @@ namespace FamiStudio
         public DPCMSampleMapping MapDPCMSample(int note, DPCMSample sample, int pitch = 15, bool loop = false, int bank = 0)
         {
             Debug.Assert(Note.IsMusicalNote(note));
+            if (!SupportsDpcmMapping || sample?.IsPcm == true)
+                throw new ArgumentException("DPCM mappings require a 2A03 instrument and a DPCM asset.");
 
             if (sample != null)
             {
@@ -723,12 +730,33 @@ namespace FamiStudio
             return null;
         }
 
+        public DPCMSampleMapping MapPcmSample(int note, DPCMSample sample, int pitch = 0, bool loop = false)
+        {
+            if (!Note.IsMusicalNote(note) || !SupportsPcmMapping || sample == null || !sample.IsPcm)
+                throw new ArgumentException("PCM mappings require a PCM asset and a 2A03, MMC5 or VRC6 instrument.");
+            var mapping = new DPCMSampleMapping { Sample = sample, PcmPitch = pitch, Loop = loop };
+            samplesMapping.Add(note, mapping);
+            return mapping;
+        }
+
         public void UnmapDPCMSample(int note)
         {
             samplesMapping.Remove(note);
         }
 
         public DPCMSampleMapping GetDPCMMapping(int note)
+        {
+            var mapping = GetSampleMapping(note);
+            return mapping?.Sample != null && !mapping.Sample.IsPcm ? mapping : null;
+        }
+
+        public DPCMSampleMapping GetPcmMapping(int note)
+        {
+            var mapping = GetSampleMapping(note);
+            return mapping?.Sample?.IsPcm == true ? mapping : null;
+        }
+
+        public DPCMSampleMapping GetSampleMapping(int note)
         {
             if (samplesMapping != null)
             { 
@@ -786,7 +814,8 @@ namespace FamiStudio
                     if (kv.Value.Sample != null && !visitedSamples.Contains(kv.Value.Sample))
                     {
                         visitedSamples.Add(kv.Value.Sample);
-                        size += Utils.AlignSampleOffset(kv.Value.Sample.ProcessedData.Length);
+                        if (!kv.Value.Sample.IsPcm)
+                            size += Utils.AlignSampleOffset(kv.Value.Sample.ProcessedData.Length);
                     }
                 }
             }
@@ -906,15 +935,16 @@ namespace FamiStudio
                 Debug.Assert(FdsModulationEnvelope.ValidatePreset(EnvelopeType.FdsModulation, fdsModPreset));
 
             Debug.Assert(
-                expansion != ExpansionType.None && samplesMapping == null ||
-                expansion == ExpansionType.None && samplesMapping != null);
+                !SupportsPcmMapping && samplesMapping == null ||
+                SupportsPcmMapping && samplesMapping != null);
 
             if (samplesMapping != null)
             {
                 foreach (var kv in samplesMapping)
                 {
                     Debug.Assert(kv.Value != null); // Null sample is ok-ish, null mapping isnt.
-                    Debug.Assert(kv.Value.Sample == null || project.Samples.Contains(kv.Value.Sample));
+                    Debug.Assert(kv.Value.Sample == null || project.SampleExists(kv.Value.Sample));
+                    Debug.Assert(kv.Value.Sample == null || kv.Value.Sample.IsPcm || SupportsDpcmMapping);
                     kv.Value.ValidateIntegrity(project, idMap);
                 }
             }
@@ -1140,7 +1170,7 @@ namespace FamiStudio
                 envelopes[EnvelopeType.WaveformRepeat].Length = 1;
             }
 
-            if (IsRegular)
+            if (IsRegular || (buffer.Version >= Project.IndependentPcmFormatVersion && SupportsPcmMapping))
             {
                 if (buffer.IsReading)
                     samplesMapping = new Dictionary<int, DPCMSampleMapping>();
@@ -1184,6 +1214,13 @@ namespace FamiStudio
                     }
                 }
             }
+            else if (buffer.IsReading)
+                // Clipboard preflight reuses a temporary Instrument across chips.
+                // Never retain mappings from the previously deserialized type.
+                samplesMapping = SupportsPcmMapping ? new Dictionary<int, DPCMSampleMapping>() : null;
+            if (!SupportsDpcmMapping && samplesMapping != null &&
+                samplesMapping.Values.Any(m => m.Sample != null && !m.Sample.IsPcm))
+                throw new InvalidOperationException("This instrument cannot contain DPCM mappings.");
 
             if (buffer.Version >= Project.InstrumentArticulationFormatVersion)
             {
@@ -1477,6 +1514,9 @@ namespace FamiStudio
             }
 
             convertFunction(src, dst);
+            if (src.SupportsPcmMapping && dst.SupportsPcmMapping)
+                foreach (var entry in src.SamplesMapping.Where(kv => kv.Value.Sample?.IsPcm == true))
+                    dst.MapPcmSample(entry.Key, entry.Value.Sample, entry.Value.PcmPitch, entry.Value.Loop);
         }
     }
 }

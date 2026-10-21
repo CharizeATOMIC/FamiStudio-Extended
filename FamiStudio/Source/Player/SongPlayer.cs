@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,13 +24,39 @@ namespace FamiStudio
             if (audioStream == null)
                 return;
 
+            // Resampling can be expensive. Prepare only the samples used by
+            // this arrangement before starting the real-time audio thread.
+            if (song.Project.UsesPcm)
+            {
+                var patterns = new HashSet<Pattern>();
+                var mappings = new HashSet<DPCMSampleMapping>();
+                foreach (var channel in song.Channels)
+                {
+                    if (!channel.IsMmc5PcmChannel && !channel.IsDpcmChannel &&
+                        channel.Type != ChannelType.Vrc6Square1 && channel.Type != ChannelType.Vrc6Square2) continue;
+                    for (int i = 0; i < song.Length; i++)
+                    {
+                        var pattern = channel.PatternInstances[i];
+                        if (pattern == null) continue;
+                        patterns.Add(pattern);
+                        if (pattern.LoopVariant != null) patterns.Add(pattern.LoopVariant);
+                    }
+                }
+                foreach (var pattern in patterns)
+                foreach (var note in pattern.Notes.Values)
+                    if (note.IsMusical && note.Instrument?.GetPcmMapping(note.Value) is DPCMSampleMapping mapping)
+                        mappings.Add(mapping);
+                foreach (var mapping in mappings)
+                    mapping.Sample?.GetPcmData(palPlayback, mapping.PcmPitch);
+            }
+
             var startNote = playPosition;
 
             BeginPlaySong(song);
 
             if (startNote > 0)
             {
-                if (accurateSeek)
+                if (UseAccurateSeeking)
                 {
                     abortSeek = false;
                     seekTask = Task.Factory.StartNew(() => { while (SeekTo(startNote) && !abortSeek); });

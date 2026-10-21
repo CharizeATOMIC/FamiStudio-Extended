@@ -382,7 +382,7 @@ namespace FamiStudio
             for (int i = vals.Count - 1; i >= 0; i--)
             {
                 var note = vals[i];
-                if (note != null && note.IsMusical && (note.Instrument == null || note.Instrument.GetDPCMMapping(note.Value) == null))
+                if (note != null && note.IsMusical && (note.Instrument == null || note.Instrument.GetSampleMapping(note.Value) == null))
                 { 
                     note.Clear(true);
                     if (note.IsEmpty)

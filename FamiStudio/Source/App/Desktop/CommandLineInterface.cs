@@ -178,13 +178,14 @@ namespace FamiStudio
             Console.WriteLine($"  -nsf-nsfe : Use NSFe format (default:off).");
             Console.WriteLine($"");
             Console.WriteLine($"ROM export specific options");
-            Console.WriteLine($"  -rom-export-mode:<mode> : Target machine: ntsc, pal or dual (default:project mode).");
+            Console.WriteLine($"  -rom-export-mode:<mode> : Target machine: ntsc or pal (default:project mode).");
             Console.WriteLine($"");
             Console.WriteLine($"FamiStudio text export specific options");
             Console.WriteLine($"  -famistudio-txt-cleanup : Cleanup unused data on export (default:disabled).");
             Console.WriteLine($"");
             Console.WriteLine($"FamiStudio sound engine export specific options");
-            Console.WriteLine($"  -famistudio-asm-format:<format> : Assembly format to export to : nesasm, ca65 or asm6 (default:nesasm).");
+            Console.WriteLine($"  -famistudio-asm-format:<format> : Assembly format to export to : nesasm, ca65, asm6 or sdas (default:nesasm).");
+            Console.WriteLine($"  -famistudio-asm-mode:<mode> : Target machine: ntsc, pal or dual (default:project mode with MMC5 PCM, otherwise dual).");
             Console.WriteLine($"  -famistudio-asm-seperate-files : Export songs to individual files, output filename is the output path (default:disabled).");
             Console.WriteLine($"  -famistudio-asm-seperate-song-pattern:<pattern> : Name pattern to use when exporting songs to seperate files (default:{{project}}_{{song}}).");
             Console.WriteLine($"  -famistudio-asm-seperate-dmc-pattern:<pattern> : DMC filename pattern to use when exporting songs to seperate files (default:{{project}}).");
@@ -398,7 +399,7 @@ namespace FamiStudio
                     return;
                 }
 
-                var machineString = ParseOption("nsf-export-mode", project.PalMode ? "pal" : "ntsc");
+                var machineString = ParseOption("rom-export-mode", ParseOption("nsf-export-mode", project.PalMode ? "pal" : "ntsc"));
                 var pal = project.PalMode;
 
                 switch (machineString.ToLower())
@@ -491,6 +492,18 @@ namespace FamiStudio
             var extension = (format == AssemblyFormat.CA65 || format == AssemblyFormat.SDAS) ? ".s" : ".asm";
             var seperate = HasOption($"{engineName}-asm-seperate-files");
             var generateInclude = HasOption($"{engineName}-asm-generate-list");
+            var machineString = ParseOption($"{engineName}-asm-mode",
+                project.UsesPcm ? (project.PalMode ? "pal" : "ntsc") : "dual");
+            int machine;
+            switch (machineString.ToLower())
+            {
+                case "ntsc": machine = MachineType.NTSC; break;
+                case "pal":  machine = MachineType.PAL; break;
+                case "dual": machine = MachineType.Dual; break;
+                default:
+                    Log.LogMessage(LogSeverity.Error, "Unknown sound engine target machine. Use ntsc, pal or dual.");
+                    return;
+            }
 
             if (!seperate && !ValidateExtension(filename, extension))
                 return;
@@ -533,7 +546,7 @@ namespace FamiStudio
                         Log.LogMessage(LogSeverity.Info, $"Exporting song '{song.Name}' as a separate assembly file.");
 
                         FamitoneMusicFile f = new FamitoneMusicFile(kernel, true);
-                        f.Save(project, new int[] { songId }, format, -1, true, songFilename, dpcmFilename, dpcmExportMode, dpcmExportUnusedMappings, includeFilename, MachineType.Dual); 
+                        f.Save(project, new int[] { songId }, format, -1, true, songFilename, dpcmFilename, dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine);
                     }
                 }
                 else
@@ -543,7 +556,7 @@ namespace FamiStudio
                     Log.LogMessage(LogSeverity.Info, $"Exporting all songs to a single assembly file.");
 
                     FamitoneMusicFile f = new FamitoneMusicFile(kernel, true);
-                    f.Save(project, exportSongIds, format, -1, false, filename, Path.ChangeExtension(filename, ".dmc"), dpcmExportMode, dpcmExportUnusedMappings, includeFilename, MachineType.Dual);
+                    f.Save(project, exportSongIds, format, -1, false, filename, Path.ChangeExtension(filename, ".dmc"), dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine);
                 }
             }
         }

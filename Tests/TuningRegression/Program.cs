@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -33,6 +33,16 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--pcm-nes") { PcmNesRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pcm-playback") { PcmPlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pcm-libraries") { IndependentPcmModelRegression.Run(args[1], args.Length > 2 ? args[2] : null); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--mmc5-pcm-native-guard") { Mmc5PcmNativeGuardRegression.Run(args[1], bool.Parse(args[2])); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--mmc5-pcm-import") { Mmc5PcmImportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--mmc5-pcm-nes") { Mmc5PcmNesRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--mmc5-pcm-preview") { Mmc5PcmPreviewRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--mmc5-pcm-export") { Mmc5PcmExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pcm-destination-export") { PcmDestinationExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--mmc5-pcm") { Mmc5PcmRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--noise-pitch-migration") { NoisePitchMigrationRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--save-project") { SaveProjectRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--noise-follow") { NoiseFollowRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }

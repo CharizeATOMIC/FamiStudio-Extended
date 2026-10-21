@@ -90,6 +90,7 @@ namespace FamiStudio
         }
         public int ExpansionMask   => GetSelectedExpansionMask();
         public int NumN163Channels => ExpansionPage.GetPropertyValue<int>(1);
+        public bool Mmc5PcmEnabled => (ExpansionMask & ExpansionType.Mmc5Mask) != 0 && ExpansionPage.GetPropertyValue<bool>(2);
 
         public bool DPCMBankswitching => SoundEnginePage.GetPropertyValue<bool>(1);
         public bool DPCMExtendedRange => SoundEnginePage.GetPropertyValue<bool>(2);
@@ -161,6 +162,10 @@ namespace FamiStudio
                     }, expansionData, numExpansions, ExpansionAudioTooltip + " " + TuningStrings.InstancesTooltip, GridOptions.NoHeader); // 0
                     page.AddNumericUpDown(N163ChannelsLabel.Colon, project.ExpansionNumN163Channels, 1, 8, 1, ExpansionNumChannelsTooltip); // 1
                     page.SetPropertyEnabled(1, project.UsesExpansionAudio(ExpansionType.N163));
+                    var pcmTooltip = NesApu.SupportsPcm ? Mmc5PcmStrings.EnableTooltip.ToString() :
+                        Mmc5PcmStrings.EnableTooltip + "\n" + Mmc5PcmStrings.NativeLibraryRequired;
+                    page.AddCheckBox(Mmc5PcmStrings.EnableLabel, project.Mmc5PcmEnabled, pcmTooltip); // 2
+                    page.SetPropertyEnabled(2, project.UsesExpansionAudio(ExpansionType.Mmc5) && NesApu.SupportsPcm);
                     page.PropertyChanged += Expansion_PropertyChanged;
                     UpdateExpansionWarnings(page);
                     break;
@@ -241,6 +246,7 @@ namespace FamiStudio
                 var expansionMask = GetSelectedExpansionMask();
 
                 props.SetPropertyEnabled(1, (expansionMask & ExpansionType.N163Mask) != 0);
+                props.SetPropertyEnabled(2, (expansionMask & ExpansionType.Mmc5Mask) != 0 && NesApu.SupportsPcm);
 
                 infoPage.SetPropertyEnabled(4, infoPage.GetSelectedIndex(3) == TempoType.FamiStudio);
                 infoPage.SetDropDownListIndex(4, app.Project.PalMode ? 1 : 0);
@@ -259,6 +265,11 @@ namespace FamiStudio
                 props.SetPropertyWarning(0, CommentType.Warning, MultipleExpansionsROMWarning);
             else
                 props.SetPropertyWarning(0, CommentType.Good, "");
+
+            if (!NesApu.SupportsPcm)
+                props.SetPropertyWarning(2, CommentType.Warning, Mmc5PcmStrings.NativeLibraryRequired);
+            else
+                props.SetPropertyWarning(2, CommentType.Good, "");
         }
 
         public void EditProjectPropertiesAsync(Action<DialogResult> callback)

@@ -65,6 +65,7 @@ namespace FamiStudio
         protected bool stereo = false;
         public bool ApplySongPan { get; set; } = true;
         protected bool accurateSeek = false;
+        protected bool UseAccurateSeeking => accurateSeek || song?.Project.UsesPcm == true;
         protected bool forceReadRegisterValues = false;
         protected volatile bool reachedEnd = false;
         protected int  tndMode = NesApu.TND_MODE_SINGLE;
@@ -324,6 +325,9 @@ namespace FamiStudio
 
         public void BeginPlaySong(Song s)
         {
+            if (s.Project.UsesPcm && !NesApu.SupportsPcm)
+                throw new InvalidOperationException(Mmc5PcmStrings.NativeLibraryRequired);
+
             Debug.Assert(s.Project.OutputsStereoAudio == stereo);
 
             ReleaseExtraApus();
@@ -372,7 +376,7 @@ namespace FamiStudio
                 }
 
                 // In accurate seek mode, this can be slow, so the caller must call in a loop until we return false.
-                if (accurateSeek)
+                if (UseAccurateSeeking)
                 {
                     EndSeekFrame();
                     break;
@@ -470,13 +474,13 @@ namespace FamiStudio
         protected void StartSeeking()
         {
             seeking = true;
-            if (!accurateSeek)
+            if (!UseAccurateSeeking)
                 foreach (var apu in instanceApus) NesApu.StartSeeking(apu);
         }
 
         protected void StopSeeking()
         {
-            if (!accurateSeek)
+            if (!UseAccurateSeeking)
                 foreach (var apu in instanceApus) NesApu.StopSeeking(apu);
             seeking = false;
         }
@@ -623,6 +627,8 @@ namespace FamiStudio
                 case ChannelType.Mmc5Square1:
                 case ChannelType.Mmc5Square2:
                     return new ChannelStateMmc5Square(this, apuIdx, channelType, tuning, pal);
+                case ChannelType.Mmc5Pcm:
+                    return new ChannelStateMmc5Pcm(this, apuIdx, channelType, tuning, pal);
                 case ChannelType.N163Wave1:
                 case ChannelType.N163Wave2:
                 case ChannelType.N163Wave3:
@@ -680,7 +686,7 @@ namespace FamiStudio
 
         private unsafe void EndSeekFrame()
         {
-            Debug.Assert(accurateSeek);
+            Debug.Assert(UseAccurateSeeking);
 
             foreach (var apu in instanceApus) { NesApu.EndFrame(apu); NesApu.ReadSamples(apu, IntPtr.Zero, NesApu.SamplesAvailable(apu)); }
         }

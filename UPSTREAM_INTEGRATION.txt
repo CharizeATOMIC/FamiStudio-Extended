@@ -1,5 +1,47 @@
 FamiStudio Extended — upstream integration plan / 上游整合说明
 Display name: FamiStudio Extended. Slug: FamiStudio-Extended.
+PCM follow-up / PCM 后续改动
+----------------------------
+R12 uses independent DPCM and PCM collections, with 2A03/MMC5/VRC6 mapping and
+playback. This is separate from the historical R10 application proof below.
+Do not infer new upstream merge compatibility from that earlier patch check.
+
+Suggested review sequence:
+1. Project/Instrument/sample persistence and the R11 shared-asset migration.
+   Keep Project.Samples DPCM-only; add Project.PcmSamples with unique IDs.
+   Review text, clipboard, undo, merge and cleanup alongside the model.
+2. Native four-destination PCM ABI and managed channel ownership/handoff.
+   Destination 0 shares the APU DPCM DAC; 1 is MMC5; 2/3 are VRC6 pulses.
+   Rebuild each platform's native libraries before enabling the capability.
+3. Optional common engine service, four assembler variants, generated streams,
+   NSF2 timer support and CPU-budget rejection. Disabled PCM must preserve the
+   ordinary engine path. NSF2 native support is separately reviewable.
+4. Mapper-specific NES players and their measured schedules. These are host
+   integrations, not promises that a game's existing interrupt budget fits.
+5. Shared UI controls and seven-language strings, then target-platform testing.
+
+The fork uses format 1009. Upstream should allocate its own version and native
+ABI identifiers. The existing DPCMSample processing class is retained with an
+IsPcm discriminator, but library objects, sources, IDs and folders are distinct.
+MMC5 PCM uses a previously reserved channel type. 2A03/VRC6 reuse existing
+voices and therefore require explicit handoff rather than new channel IDs.
+Source namespaces and historical method names were retained where practical
+to reduce unrelated changes. Port by behavior/dependency rather than replacing
+whole files from this fork onto a newer upstream tree.
+
+See Docs/docs/development/mmc5-pcm-integration.md for the integration contract,
+and Docs/docs/development/pcm-expansion-notes.md for hardware references and
+regression entry points. Windows has native/runtime evidence. Managed desktop
+builds do not replace Linux/macOS native and Android device testing.
+
+R12 将 DPCM/PCM 拆为独立资源，并支持 2A03、MMC5、VRC6。建议按数据模型与
+迁移、原生播放与声部交接、可选引擎/NSF2、NES 模板、界面与各平台验证的
+依赖顺序审阅。上游可自行分配格式与 ABI 编号，不必接受本分支的 1009。
+普通模式保持原路径，PCM 需同时移植相关层才可启用。旧 R10 的补丁应用
+结果不覆盖此批改动，也不保证对作者尚未公开的开发分支无冲突。
+
+Historical R10 integration record / R10 历史整合记录
+----------------------------------------------------
 基于 FamiStudio 4.5.3 的独立分支，修订版 10，保留原名并增加 Extended 后缀。
 
 Status and scope / 状态与范围
@@ -10,7 +52,7 @@ A subsequent naming-only correction f41abaa616f0b811cddf6f8c50fac042abfe7333
 changes FamiSpectrum to FamiStudio Extended.
 The final optional branding patch must include both branding commits; its
 regeneration follows the final naming commit. The feature patch still ends at 52a246f.
-The user-selected four-song demo replacement is a separate commit,
+The four-song demo replacement is a separate commit,
 4e021755c5c5a7f48d119a508c52cedda816b744. It is included in final source/history,
 not in the feature-only patch or its application proof below.
 Public upstream checked on 2026-10-20:
@@ -197,7 +239,7 @@ bd9fbe1  Atomic save/visible Save As and noise-follow UI share a commit. Save I/
          FamiStudio Extended. The final optional-branding.patch combines both
          commits. Branding need not be ported upstream. Internal compatibility
          identifiers remain intact. Final correction: f41abaa616f0b811cddf6f8c50fac042abfe7333.
-4e02175  User-selected four-song Gimmick demo replacement only. Retains original
+4e02175  Four-song Gimmick demo replacement only. Retains original
          project metadata. Review separately or omit it from functional PRs.
 
 可优先抽取的最小修复是 9158e13 中的 S5B 源码重置逻辑，而不是连 Windows
@@ -212,7 +254,7 @@ and history bundle after the final naming/document commit. Planned contents:
   features-from-4.5.3.patch       full feature delta, base c09dca6 -> 52a246f
   r10-direct-noise-controls.patch isolated R10 UI follow-up on the R9 model/UI
   optional-branding.patch         69c62a8 plus f41abaa naming correction
-  optional-gimmick-demo.patch     isolated user-selected four-song demo replacement
+  optional-gimmick-demo.patch     isolated four-song demo replacement
   integration-verification.json  exact public target and application evidence
 The full feature patch SHA256 is
 87cbd577db99aaa82c5475eb533f214d0fc0a50b62c1dc623d1d1e0ac23b7999.
@@ -227,7 +269,7 @@ Acceptance checklist / 合入验收
 Record the actual upstream target SHA, compare its current equivalents, and
 port one unit onto a clean branch. Use upstream's own serialization/opcode/API
 choices. Keep original synthetic fixtures separate from music demonstrations.
-The final source/history includes the user-selected four-song replacement at
+The final source/history includes the four-song replacement at
 Setup/Demo Songs/Gimmick.fms. Retained metadata is Name="Gimmick!",
 Author="Masashi Kageyama,Naohisa Morota", Copyright="1992 Sunsoft". This is music
 demonstration material, not an original synthetic fixture or a new score license.

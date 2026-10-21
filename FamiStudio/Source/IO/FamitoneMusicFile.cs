@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -286,6 +286,11 @@ namespace FamiStudio
                     }
                 }
 
+                if (usesMmc5Pcm)
+                {
+                    lines.Add($"\t{dw} {llp}pcm_song_{i}");
+                    size += 2;
+                }
                 if (song.UsesFamiTrackerTempo)
                 {
                     int tempoPal  = 256 * song.FamitrackerTempo / (50 * 60 / 24);
@@ -2331,6 +2336,34 @@ namespace FamiStudio
             project = originalProject.DeepClone();
             project.Filename = originalProject.Filename;
             project.DeleteAllSongsBut(songIds, false);
+            usesMmc5Pcm = project.UsesPcm;
+            if (usesMmc5Pcm)
+            {
+                if (kernel != FamiToneKernel.FamiStudio || machine == MachineType.Dual)
+                    throw new InvalidOperationException("PCM requires the FamiStudio engine and one explicit PAL/NTSC region.");
+                pcmData = suppliedPcmData ?? Mmc5PcmExportData.Capture(project, songIds, machine == MachineType.PAL);
+                // DPCM DMA must stop when its shared DAC becomes a PCM voice.
+                // Preserve persistent effects. VRC6 keeps its original score
+                // and envelope state for legato handoff: the engine suppresses
+                // only physical pulse writes while PCM owns that pulse.
+                foreach (var song in project.Songs)
+                    foreach (var channel in song.Channels)
+                        if (channel.Type == ChannelType.Dpcm)
+                            foreach (var pattern in channel.Patterns)
+                                foreach (var entry in pattern.Notes.ToArray())
+                                    if (entry.Value.IsMusical && entry.Value.Instrument?.GetPcmMapping(entry.Value.Value) != null)
+                                    {
+                                        var stop = entry.Value.Clone();
+                                        stop.Clear();
+                                        stop.Value = Note.NoteStop;
+                                        pattern.Notes[entry.Key] = stop;
+                                    }
+                project.Mmc5PcmEnabled = false;
+                foreach (var instrument in project.Instruments)
+                    if (instrument.SamplesMapping != null)
+                        foreach (var entry in instrument.SamplesMapping.Where(kv => kv.Value.Sample?.IsPcm == true).ToArray())
+                            instrument.UnmapDPCMSample(entry.Key);
+            }
             var compiledPlaybackSongs = CompilePlaybackPatterns();
             foreach (var song in project.Songs)
                 if (!compiledPlaybackSongs.Contains(song))
@@ -2534,6 +2567,17 @@ namespace FamiStudio
             if (project.Tuning != 440)
                 flags.Add("Project uses non-standard tuning, the note tables were dumped in .bin files. You will need to replace those in the sound engine code to hear the correct tuning.");
 
+            if (usesMmc5Pcm)
+            {
+                if (pcmData.DestinationsMask == 0 || (pcmData.DestinationsMask & 1) != 0) flags.Add("FAMISTUDIO_USE_APU_PCM = 1");
+                if ((pcmData.DestinationsMask & 2) != 0) flags.Add("FAMISTUDIO_USE_MMC5_PCM = 1");
+                if ((pcmData.DestinationsMask & 12) != 0)
+                {
+                    flags.Add("FAMISTUDIO_USE_VRC6_PCM = 1");
+                    flags.Add("FAMISTUDIO_PCM_VRC6_MASK = " + ((pcmData.DestinationsMask >> 2) & 3));
+                }
+                flags.Add("PCM requires an independent periodic IRQ, bank/restore callbacks and a 4 KiB gain table. The host must budget the combined ISR/music/game workload. NSF export requires an NSF2-compatible player.");
+            }
             return flags;
         }
 
@@ -2623,6 +2667,7 @@ namespace FamiStudio
                     Log.LogMessage(LogSeverity.Info, $"Song '{project.Songs[i].Name}' size: {songSize} bytes.");
             }
             
+            OutputPcmStreams(filename);
             lines.AddRange(tuningTableLines);
             var usedFlags = kernel == FamiToneKernel.FamiStudio ? GetRequiredFlags() : new List<string>();
             var pattern = @"FAMISTUDIO_\S+\s*=\s*[1-8]";

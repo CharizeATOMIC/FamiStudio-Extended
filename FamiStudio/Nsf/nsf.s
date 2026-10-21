@@ -1,3 +1,16 @@
+.ifndef FAMISTUDIO_USE_APU_PCM
+FAMISTUDIO_USE_APU_PCM = 0
+.endif
+.ifndef FAMISTUDIO_USE_MMC5_PCM
+FAMISTUDIO_USE_MMC5_PCM = 0
+.endif
+.ifndef FAMISTUDIO_USE_VRC6_PCM
+FAMISTUDIO_USE_VRC6_PCM = 0
+.endif
+FAMISTUDIO_USE_PCM = FAMISTUDIO_USE_APU_PCM + FAMISTUDIO_USE_MMC5_PCM + FAMISTUDIO_USE_VRC6_PCM
+.if ::FAMISTUDIO_USE_PCM
+    FAMISTUDIO_PCM_WINDOW = nsf_dpcm_page_start - $2000
+.endif
 
 .ifdef FAMISTUDIO
 
@@ -136,13 +149,20 @@ nsf_song_table_idx: .res 1
     jsr FamiToneMusicPlay
 .endif
 
+    .if ::FAMISTUDIO_USE_PCM
+    jmp nsf_pcm_enable
+    .else
     rts
+    .endif
 
 .endproc
 
 .segment "CODE_PLAY"
 
 .proc nsf_play
+.if ::FAMISTUDIO_USE_PCM
+    cli
+.endif
 .ifdef FAMISTUDIO
     jsr famistudio_update
 .else
@@ -164,7 +184,13 @@ nsf_num_song_banks:  .res 1
 ;  - address of the start of the song in page starting at 0x9000 (2 byte)
 ;  - unused (1-byte)
 
-nsf_song_table:      .res 252
+.if ::FAMISTUDIO_USE_PCM
+nsf_pcm_page_start: .res 1
+nsf_pcm_page_reg: .res 1
+nsf_song_table: .res 250 ; 62 entries and 2 padding bytes
+.else
+nsf_song_table: .res 252
+.endif
 
 .segment "CODE"
 
@@ -178,6 +204,57 @@ nsf_song_table:      .res 252
 .endproc
 .endif
 
-.segment "VECTORS"
+.if ::FAMISTUDIO_USE_PCM
+.proc famistudio_pcm_bank_callback
+    ; Preserve the service's state-slot index in X.
+    clc
+    adc nsf_pcm_page_start
+    ldy nsf_pcm_page_reg
+    sta $5ff8,y
+    rts
+.endproc
+.proc famistudio_pcm_restore_callback
+    rts
+.endproc
+.proc nsf_pcm_enable
+    sei
+    lda #<nsf_pcm_irq
+    sta $fffe
+    lda #>nsf_pcm_irq
+    sta $ffff
+.ifdef NSF_PAL_SUPPORT
+    lda #159
+.else
+    lda #191
+.endif
+    sta $401b
+    lda #1
+    sta $401c
+    lda #1
+    sta $401d
+    cli
+    rts
+.endproc
+.proc nsf_pcm_irq
+    pha
+    txa
+    pha
+    tya
+    pha
+    lda $401d
+    jsr famistudio_pcm_service
+    pla
+    tay
+    pla
+    tax
+    pla
+    rti
+.endproc
+.endif
 
+.segment "VECTORS"
+.if ::FAMISTUDIO_USE_PCM
+.word 0,0,nsf_pcm_irq
+.else
 .res 6
+.endif

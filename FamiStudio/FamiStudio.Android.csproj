@@ -147,6 +147,10 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Source\AudioStreams\AndroidAudioStream.cs" />
+    <Compile Include="Source\Project\Mmc5Pcm.cs" />
+    <Compile Include="Source\ChannelStates\ChannelStateMmc5Pcm.cs" />
+    <Compile Include="Source\App\Common\Dialogs\Mmc5PcmStrings.cs" />
+    <Compile Include="Source\IO\Mmc5PcmExportData.cs" />
     <Compile Include="Source\ChannelStates\ChannelState.cs" />
     <Compile Include="Source\ChannelStates\ChannelStateDpcm.cs" />
     <Compile Include="Source\ChannelStates\ChannelStateEPSMFm.cs" />
@@ -1168,5 +1172,15 @@
     <EmbeddedResource Include="..\Setup\Demo Songs\*.fms">
       <Link>DemoSongs/%(FileName)%(Extension)</Link>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Nsf\*_pcm.bin" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Nsf\*_pcm.tbl" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Rom\rom_mmc5_pcm_*.nes" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Rom\rom_mmc5_pcm_*.tbl" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Rom\rom_vrc6_pcm_*.nes" />
+    <EmbeddedResource Include="Rom\rom_vrc6_pcm_*.tbl" />
+    <EmbeddedResource Include="Rom\rom_apu_pcm_*.nes" />
+    <EmbeddedResource Include="Rom\rom_apu_pcm_*.tbl" />
   </ItemGroup>
 </Project>

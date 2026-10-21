@@ -38,6 +38,10 @@ namespace FamiStudio
             if (IsPlaying)
             {
                 var selected = FamiStudio.StaticInstance?.SelectedSong;
+                if (selected != null && channel >= 0 && channel < selected.Channels.Length &&
+                    note.IsMusical &&
+                    note.Instrument?.GetPcmMapping(note.Value) is DPCMSampleMapping mapping)
+                    mapping.Sample?.GetPcmData(palPlayback, mapping.PcmPitch);
                 var position = FamiStudio.StaticInstance?.CurrentFrame ?? 0;
                 var pattern = selected == null ? -1 : selected.PatternIndexFromAbsoluteNoteIndex(position);
                 var tuning = selected?.GetTuning(pattern);

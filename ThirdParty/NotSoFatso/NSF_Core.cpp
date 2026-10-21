@@ -69,6 +69,16 @@ const WORD NOISE_FREQ_TABLE[0x10] = {
 BYTE FASTCALL CNSFCore::ReadMemory_pAPU(WORD a)
 {
 	EmulateAPU(1);
+	ClockNSF2Timer();
+	if ((nNSF2Features & 0x10) && a >= 0x401B && a <= 0x401D)
+	{
+		ClockNSF2Timer();
+		if (a == 0x401B) return (BYTE)nNSF2TimerReload;
+		if (a == 0x401C) return (BYTE)(nNSF2TimerReload >> 8);
+		BYTE status = (bNSF2TimerPending ? 0x80 : 0) | bNSF2TimerActive;
+		bNSF2TimerPending = 0;
+		return status;
+	}
 
 	if(a == 0x4015)
 	{
@@ -110,6 +120,56 @@ BYTE FASTCALL CNSFCore::ReadMemory_N106(WORD a)
 	return ret;
 }
 
+BYTE FASTCALL CNSFCore::ReadMemory_NSF2Vector(WORD a)
+{
+	if (a >= 0xFFFE) return nNSF2IRQVector[a - 0xFFFE];
+	return (this->*readNSF2Underlying)(a);
+}
+
+void FASTCALL CNSFCore::WriteMemory_NSF2Vector(WORD a, BYTE v)
+{
+	if (a >= 0xFFFE)
+		nNSF2IRQVector[a - 0xFFFE] = v;
+	else
+		(this->*writeNSF2Underlying)(a, v);
+}
+
+void CNSFCore::ClockNSF2TimerTo(UINT cycle)
+{
+	if (cycle <= nNSF2TimerCycle) return;
+	UINT elapsed = cycle - nNSF2TimerCycle;
+	nNSF2TimerCycle = cycle;
+	if (!bNSF2TimerActive)
+		nNSF2TimerCounter = nNSF2TimerReload;
+	else if (elapsed > (UINT)nNSF2TimerCounter)
+	{
+		elapsed -= nNSF2TimerCounter + 1;
+		nNSF2TimerCounter = nNSF2TimerReload - elapsed % (nNSF2TimerReload + 1);
+		bNSF2TimerPending = 1;
+	}
+	else
+		nNSF2TimerCounter -= elapsed;
+}
+
+void CNSFCore::ClockNSF2Timer()
+{
+	if (!(nNSF2Features & 0x10) || nCPUCycle <= nNSF2TimerCycle) return;
+	// The 6502 polls the IRQ line before the final bus cycle. Preserve that
+	// state even when the final read acknowledges $401D.
+	ClockNSF2TimerTo(nCPUCycle - 1);
+	bNSF2IRQBeforeFinalCycle = bNSF2TimerPending || bFrameIRQPending || mWave_TND.bDMCIRQPending;
+	ClockNSF2TimerTo(nCPUCycle);
+}
+
+void CNSFCore::ResetCPUCycleCounters()
+{
+	ClockNSF2Timer();
+	if (bNSF2PlayExecuting)
+		nNSF2PlayElapsed += nCPUCycle - nNSF2PlayStartCycle;
+	nNSF2PlayStartCycle = 0;
+	nCPUCycle = nAPUCycle = nNSF2TimerCycle = 0;
+}
+
 //////////////////////////////////////////////////////////////////////////
 //
 //		Write Memory Procs
@@ -138,9 +198,20 @@ void FASTCALL CNSFCore::WriteMemory_ExRAM(WORD a,BYTE v)
 void FASTCALL CNSFCore::WriteMemory_pAPU(WORD a,BYTE v)
 {
 	EmulateAPU(1);
+	ClockNSF2Timer();
 
 	if (apuRegWriteCallback)
 		apuRegWriteCallback(a, v);
+
+	if ((nNSF2Features & 0x10) && a >= 0x401B && a <= 0x401D)
+	{
+		ClockNSF2Timer();
+		if (a == 0x401B) nNSF2TimerReload = (nNSF2TimerReload & 0xFF00) | v;
+		if (a == 0x401C) nNSF2TimerReload = (nNSF2TimerReload & 0x00FF) | (v << 8);
+		if (!bNSF2TimerActive) nNSF2TimerCounter = nNSF2TimerReload;
+		if (a == 0x401D) bNSF2TimerActive = v & 1;
+		return;
+	}
 
 
 	if ((a <= 0x401f) && (a >= 0x401c) && (nExternalSound & EXTSOUND_EPSM))
@@ -480,6 +551,10 @@ void FASTCALL CNSFCore::WriteMemory_VRC6(WORD a,BYTE v)
 {
 	EmulateAPU(1);
 
+	if (apuRegWriteCallback &&
+		((a >= 0x9000 && a <= 0x9002) || (a >= 0xA000 && a <= 0xA002) || (a >= 0xB000 && a <= 0xB002)))
+		apuRegWriteCallback(a, v);
+
 	if((a < 0xA000) && (nExternalSound & EXTSOUND_VRC7))
 		WriteMemory_VRC7(a,v);
 	else if(nExternalSound & EXTSOUND_FDS)
@@ -548,6 +623,8 @@ void FASTCALL CNSFCore::WriteMemory_MMC5(WORD a,BYTE v)
 	if((a <= 0x5015))
 	{
 		EmulateAPU(1);
+		if (apuRegWriteCallback)
+			apuRegWriteCallback(a, v);
 		switch(a)
 		{
 			//////////////////////////
@@ -598,8 +675,11 @@ void FASTCALL CNSFCore::WriteMemory_MMC5(WORD a,BYTE v)
 				mWave_MMC5Square[1].nLengthCount = LENGTH_COUNTER_TABLE[v >> 3];
 			break;
 
+		case 0x5010:
+			mWave_MMC5Voice.WriteControl(v);
+			break;
 		case 0x5011:
-			mWave_MMC5Voice.nOutput = v & 0x7F;
+			mWave_MMC5Voice.WriteDac(v);
 			break;
 		
 
@@ -1533,12 +1613,16 @@ int CNSFCore::LoadNSF(const CNSFFile* fl)
 	if(!fl)								return 0;
 	if(fl->nDataBufferSize < 1)			return 0;
 	if(!fl->pDataBuffer)				return 0;
+	// This fork's EPSM ports overlap the standard NSF2 timer ($401C/$401D).
+	// Neither device can be silently remapped or omitted during playback.
+	if ((fl->nNSF2Features & 0x10) && (fl->nChipExtensions & EXTSOUND_EPSM)) return 0;
 
 	int i;
 
 	bFileLoaded = 0;
 	bTrackSelected = 0;
 	nExternalSound = fl->nChipExtensions;
+	nNSF2Features = fl->nNSF2Features;
 	if(fl->nIsPal & 2)
 		bPALMode = bPALPreference;
 	else
@@ -1729,6 +1813,14 @@ int CNSFCore::LoadNSF(const CNSFFile* fl)
 	if(nExternalSound & EXTSOUND_MMC5)			//MMC5 still has a multiplication reg that needs to be available on PAL tunes
 		WriteMemory[0x05] = &CNSFCore::WriteMemory_MMC5;
 
+	if (nNSF2Features & 0x10)
+	{
+		readNSF2Underlying = ReadMemory[0x0F];
+		writeNSF2Underlying = WriteMemory[0x0F];
+		ReadMemory[0x0F] = &CNSFCore::ReadMemory_NSF2Vector;
+		WriteMemory[0x0F] = &CNSFCore::WriteMemory_NSF2Vector;
+	}
+
 	return 1;
 }
 
@@ -1752,6 +1844,13 @@ void CNSFCore::SetTrack(BYTE track)
 	if(bCleanAXY)
 		regP = 0x04;
 	bCPUJammed = 0;
+	nNSF2TimerReload = 0;
+	nNSF2TimerCounter = 0;
+	nNSF2TimerCycle = 0;
+	bNSF2TimerActive = bNSF2TimerPending = bNSF2IRQReady = bNSF2IRQBeforeFinalCycle = bNSF2PlayPending = 0;
+	bNSF2PlayExecuting = 0;
+	nNSF2PlayStartCycle = nNSF2PlayElapsed = nNSF2LastPlayCycles = nNSF2MaxPlayCycles = 0;
+	if (nNSF2Features & 0x10) { regP = 0x04; nPlayCalled = 0; }
 
 	nCPUCycle = nAPUCycle = 0;
 	nDMCPop_Prev = 0;
@@ -1765,10 +1864,15 @@ void CNSFCore::SetTrack(BYTE track)
 	WriteMemory_pAPU(0x4014,0);
 	WriteMemory_pAPU(0x4015,0);
 	WriteMemory_pAPU(0x4015,0x0F);
-	WriteMemory_pAPU(0x4017,0);
+	WriteMemory_pAPU(0x4017,(nNSF2Features & 0x10) ? 0x40 : 0);
 
 	for(int i = 0; i < 10; i++)
 		WriteMemory_ExRAM(0x5FF6 + i,nBankswitchInitValues[i]);
+	if (nNSF2Features & 0x10)
+	{
+		nNSF2IRQVector[0] = (this->*readNSF2Underlying)(0xFFFE);
+		nNSF2IRQVector[1] = (this->*readNSF2Underlying)(0xFFFF);
+	}
 
 	ZeroMemory(pRAM,0x0800);
 	ZeroMemory(pSRAM,0x2000);
@@ -1812,6 +1916,7 @@ void CNSFCore::SetTrack(BYTE track)
 	mWave_MMC5Square[0].nVolume = 0;
 	mWave_MMC5Square[1].nVolume = 0;
 	mWave_MMC5Voice.nOutput = 0;
+	mWave_MMC5Voice.nControl = 0;
 
 	/*	Reset N106	*/
 	ZeroMemory(mWave_N106.nRAM,0x100);
@@ -2395,7 +2500,7 @@ void CNSFCore::RebuildOutputTables(UINT chans)
 	if(chans & 0x00000400)		//MMC5 Voice
 	{
 		CalculateChannelVolume(15000,tl,tr,nChannelVol[10],nChannelPan[10]);
-		for(i = 0; i < 0x10; i++)
+		for(i = 0; i < 0x100; i++)
 		{
 			mWave_MMC5Voice.nOutputTable_L[i] = tl * i / 0x7F;
 			mWave_MMC5Voice.nOutputTable_R[i] = tr * i / 0x7F;
@@ -2555,20 +2660,25 @@ void CNSFCore::SetPlayCalls(float plays)
 
 	while(runto)
 	{
-		nCPUCycle = nAPUCycle = 0;
+		ResetCPUCycleCounters();
 		tick = (int)ceil(fTicksUntilNextPlay);
 		if(tick > runto)
 			tick = runto;
 
-		if(!bCPUJammed)
+		if(!bCPUJammed || ((nNSF2Features & 0x10) && bCPUJammed == 2))
 			tick = Emulate6502(tick);
+		else if (nNSF2Features & 0x10)
+			nCPUCycle += tick;
+		if (nNSF2Features & 0x10) EmulateAPU(1);
 
-		runto -= tick;
+		runto -= (nNSF2Features & 0x10) ? min(tick, runto) : tick;
 		fTicksUntilNextPlay -= tick;
 		if(fTicksUntilNextPlay <= 0)
 		{
 			fTicksUntilNextPlay += fTicksPerPlay;
-			if(bCPUJammed == 2)
+			if (nNSF2Features & 0x10)
+				bNSF2PlayPending = 1;
+			else if(bCPUJammed == 2)
 			{
 				nTotalPlays++;
 				bCPUJammed = 0;
@@ -2577,7 +2687,7 @@ void CNSFCore::SetPlayCalls(float plays)
 	}
 
 	EmulateAPU(0);
-	nCPUCycle = nAPUCycle = 0;
+	ResetCPUCycleCounters();
 
 
 	if(bFade)
@@ -2696,15 +2806,19 @@ int CNSFCore::RunOneFrame()
 		return 0;
 
 	ResetFrameState();
+	// NSF2 IRQ handlers can consume enough CPU time for a PLAY call to span
+	// host intervals. Report this interval's completed call, not a sticky flag.
+	// Preserve NSF1's historical importer contract.
+	if (nNSF2Features & 0x10) nPlayCalled = 0;
 
-	nCPUCycle = nAPUCycle = 0;
+	ResetCPUCycleCounters();
 	UINT tick;
 		
 	while (1)
 	{
 		tick = (UINT)ceil(fTicksUntilNextPlay);
 
-		if (bCPUJammed)
+		if (bCPUJammed && !((nNSF2Features & 0x10) && bCPUJammed == 2))
 		{
 			nCPUCycle += tick;
 			EmulateAPU(0);
@@ -2719,7 +2833,9 @@ int CNSFCore::RunOneFrame()
 		if (fTicksUntilNextPlay <= 0)
 		{
 			fTicksUntilNextPlay += fTicksPerPlay;
-			if ((bCPUJammed == 2) || bNoWaitForReturn)
+			if (nNSF2Features & 0x10)
+				bNSF2PlayPending = 1;
+			else if ((bCPUJammed == 2) || bNoWaitForReturn)
 			{
 				regX = regY = regA = (bCleanAXY ? 0 : 0xCD);
 				regPC = 0x5004;
@@ -2733,7 +2849,7 @@ int CNSFCore::RunOneFrame()
 	}
 
 	nLastFrameCycles = nAPUCycle;
-	nCPUCycle = nAPUCycle = 0;
+	ResetCPUCycleCounters();
 	bIsGeneratingSamples = 0;
 
 	return nPlayCalled;
@@ -2768,6 +2884,10 @@ int CNSFCore::GetState(int channel, int state, int sub)
     // They expose actual CPU timing without changing emulation or the ABI.
     if(channel == -1 && state == 1000) return nAPUCycle;
     if(channel == -1 && state == 1001) return nLastFrameCycles;
+    if(channel == -1 && state == 1002) return nTotalPlays;
+    if(channel == -1 && state == 1003) return nNSF2MaxPlayCycles;
+    if(channel == -1 && state == 1004) return bNSF2PlayExecuting ? nNSF2PlayElapsed + nCPUCycle - nNSF2PlayStartCycle : 0;
+    if(channel == -1 && state == 1005) return nNSF2LastPlayCycles;
 	switch (channel)
 	{
 		case CHANNEL_SQUARE1:
@@ -2920,6 +3040,9 @@ int CNSFCore::GetState(int channel, int state, int sub)
 			}
 			break;
 		}
+		case MMC5_DPCM:
+			if (state == STATE_VOLUME) return mWave_MMC5Voice.nOutput;
+			break;
 		case N163_WAVE1:
 		case N163_WAVE2:
 		case N163_WAVE3:
@@ -3042,7 +3165,7 @@ int CNSFCore::GetSamples(BYTE* buffer,int buffersize)
 	
 	pOutput = pVRC7Buffer = buffer;
 	UINT runtocycle = (UINT)((buffersize / ((nMonoStereo == 2) ? 4 : 2)) * fTicksPerSample);
-	nCPUCycle = nAPUCycle = 0;
+	ResetCPUCycleCounters();
 	UINT tick;
 
 	while(1)
@@ -3051,7 +3174,7 @@ int CNSFCore::GetSamples(BYTE* buffer,int buffersize)
 		if((tick + nCPUCycle) > runtocycle)
 			tick = runtocycle - nCPUCycle;
 
-		if(bCPUJammed)
+		if(bCPUJammed && !((nNSF2Features & 0x10) && bCPUJammed == 2))
 		{
 			nCPUCycle += tick;
 			EmulateAPU(0);
@@ -3066,7 +3189,9 @@ int CNSFCore::GetSamples(BYTE* buffer,int buffersize)
 		if(fTicksUntilNextPlay <= 0)
 		{
 			fTicksUntilNextPlay += fTicksPerPlay;
-			if((bCPUJammed == 2) || bNoWaitForReturn)
+			if (nNSF2Features & 0x10)
+				bNSF2PlayPending = 1;
+			else if((bCPUJammed == 2) || bNoWaitForReturn)
 			{
 				regX = regY = regA = (bCleanAXY ? 0 : 0xCD);
 				regPC = 0x5004;
@@ -3095,7 +3220,7 @@ int CNSFCore::GetSamples(BYTE* buffer,int buffersize)
 	if((nExternalSound & EXTSOUND_VRC7))
 		VRC7_Mix();
 
-	nCPUCycle = nAPUCycle = 0;
+	ResetCPUCycleCounters();
 	bIsGeneratingSamples = 0;
 	pVRC7Buffer = NULL;
 

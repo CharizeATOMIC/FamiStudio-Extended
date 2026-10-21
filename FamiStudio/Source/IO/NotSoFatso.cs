@@ -68,10 +68,16 @@ namespace FamiStudio
         public const int EXTSOUND_S5B   = 0x20;
         public const int EXTSOUND_EPSM  = 0x80;
 
-        // Channel -1: current CPU write cycle and duration of the completed PLAY
-        // interval, for independent timing-aware APU validation.
+        // Channel -1: current CPU write cycle, elapsed host interval, and
+        // actual PLAY entries (an over-budget call can span host intervals).
         public const int STATE_CPUCYCLE           = 1000;
         public const int STATE_FRAMECYCLES        = 1001;
+        public const int STATE_PLAYCALLS          = 1002;
+        // NSF2 elapsed CPU cycles include interrupts, DMA, and the 6-cycle
+        // host JSR bridge, so they are conservative music deadline measures.
+        public const int STATE_MAX_PLAY_CYCLES    = 1003;
+        public const int STATE_ACTIVE_PLAY_CYCLES = 1004;
+        public const int STATE_LAST_PLAY_CYCLES   = 1005;
         public const int STATE_VOLUME             = 0;
         public const int STATE_PERIOD             = 1;
         public const int STATE_DUTYCYCLE          = 2;

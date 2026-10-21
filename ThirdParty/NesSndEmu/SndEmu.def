@@ -28,3 +28,14 @@ NesApuDestroy
 NesApuConfigureOutput
 NesApuSetPan
 NesApuSetUpdateRateMultiplier
+NesApuStartMmc5Pcm
+NesApuStopMmc5Pcm
+NesApuSetMmc5PcmVolume
+NesApuGetMmc5PcmDac
+    NesApuGetMmc5PcmPosition
+    NesApuStartPcm
+    NesApuStopPcm
+    NesApuReleasePcm
+    NesApuSetPcmVolume
+    NesApuGetPcmDac
+    NesApuGetPcmPosition

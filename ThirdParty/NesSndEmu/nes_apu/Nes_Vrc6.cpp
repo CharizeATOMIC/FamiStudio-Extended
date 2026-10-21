@@ -226,7 +226,9 @@ void Nes_Vrc6::run_square( Vrc6_Osc& osc, cpu_time_t end_time )
 	}
 	else
 	{
-		if (osc.last_amp) {
+		// Gate mode ignores duty and holds the requested four-bit DAC level.
+		// Only the filtered ultrasonic/disabled oscillator case is silenced.
+		if (!gate && osc.last_amp) {
 			square_synth.offset(time, -osc.last_amp, output);
 			osc.last_amp = 0;
 		}

@@ -13,10 +13,61 @@ namespace FamiStudio
     {
         private const string NesSndEmuDll = Platform.DllStaticLib ? "__Internal" : Platform.DllPrefix + "NesSndEmu" + Platform.DllExtension;
 
+        private static readonly Lazy<bool> supportsMmc5Pcm = new Lazy<bool>(() =>
+        {
+            try
+            {
+                // The query safely creates an unused APU context if necessary.
+                // Use P/Invoke so this also works with static __Internal builds.
+                GetMmc5PcmPosition(APU_WAV_EXPORT);
+                return true;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return false;
+            }
+        });
+
+        public static bool SupportsMmc5Pcm => supportsMmc5Pcm.Value;
+        private static readonly Lazy<bool> supportsPcm = new Lazy<bool>(() =>
+        {
+            try { GetPcmPosition(APU_WAV_EXPORT, PcmDestinationApu); return true; }
+            catch (EntryPointNotFoundException) { return false; }
+        });
+        public static bool SupportsPcm => supportsPcm.Value;
+        public const int PcmDestinationApu = 0;
+        public const int PcmDestinationMmc5 = 1;
+        public const int PcmDestinationVrc6Square1 = 2;
+        public const int PcmDestinationVrc6Square2 = 3;
+        public static int PcmRegister(int destination, int command) => 0x20000 + destination * 0x10 + command;
+
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuStartPcm")]
+        public extern static int StartPcm(int apuIdx, int destination, byte[] data, int length, uint periodQ16, int loopStart, int loopEnd, int volume);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuStopPcm")]
+        public extern static void StopPcm(int apuIdx, int destination);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuReleasePcm")]
+        public extern static void ReleasePcm(int apuIdx, int destination);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuSetPcmVolume")]
+        public extern static void SetPcmVolume(int apuIdx, int destination, int volume);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuGetPcmDac")]
+        public extern static int GetPcmDac(int apuIdx, int destination);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuGetPcmPosition")]
+        public extern static int GetPcmPosition(int apuIdx, int destination);
+
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuInit")]
         public extern static int Init(int apuIdx, int sampleRate, int bassFreq, int pal, int seperateTnd, int expansion, [MarshalAs(UnmanagedType.FunctionPtr)] DmcReadDelegate dmcCallback);
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuWriteRegister")]
         public extern static void WriteRegister(int apuIdx, int addr, int data);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuStartMmc5Pcm")]
+        public extern static int StartMmc5Pcm(int apuIdx, byte[] data, int length, uint periodQ16, int loopStart, int loopEnd, int volume);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuStopMmc5Pcm")]
+        public extern static void StopMmc5Pcm(int apuIdx);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuSetMmc5PcmVolume")]
+        public extern static void SetMmc5PcmVolume(int apuIdx, int volume);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuGetMmc5PcmDac")]
+        public extern static int GetMmc5PcmDac(int apuIdx);
+        [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuGetMmc5PcmPosition")]
+        public extern static int GetMmc5PcmPosition(int apuIdx);
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuSamplesAvailable")]
         public extern static int SamplesAvailable(int apuIdx);
         [DllImport(NesSndEmuDll, CallingConvention = CallingConvention.StdCall, EntryPoint = "NesApuReadSamples")]

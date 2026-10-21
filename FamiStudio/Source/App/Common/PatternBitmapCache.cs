@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 
@@ -134,7 +134,7 @@ namespace FamiStudio
                     var time1 = musicalNotes[i].Item1;
                     var time2 = (int)Math.Min(time1 + Math.Ceiling(note.Duration * scaleX), i < musicalNotes.Count - 1 ? musicalNotes[i + 1].Item1 : patternCacheSizeX);
 
-                    DrawPatternBitmapNote(project, time1, time2, note, patternCacheSizeX, clampedPatternCacheSizeY, noteSizeY, minNote, maxNote, scaleY, pattern.ChannelType == ChannelType.Dpcm, data);
+                    DrawPatternBitmapNote(project, time1, time2, note, patternCacheSizeX, clampedPatternCacheSizeY, noteSizeY, minNote, maxNote, scaleY, pattern.Channel.SupportsSampleMappings, data);
                 }
             }
 
@@ -268,9 +268,11 @@ namespace FamiStudio
             {
                 if (dpcm && Settings.DpcmColorMode == Settings.ColorModeSample)
                 {
-                    var mapping = instrument.GetDPCMMapping(note.Value);
+                    var mapping = instrument.GetSampleMapping(note.Value);
                     if (mapping != null && mapping.Sample != null)
                         color = mapping.Sample.Color;
+                    else
+                        color = instrument.Color;
                 }
                 else if (instrument != null)
                 {

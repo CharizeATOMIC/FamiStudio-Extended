@@ -68,6 +68,7 @@ namespace FamiStudio
 
         public bool Save(Project project, int[] songIds, int format, int machine, int kernel, string filename, string includeFilename)
         {
+            if (project.UsesPcm) { Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.UnsupportedExport); return false; }
             if (project.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
 
             // Traditional SFX streams count video frames and have no independent

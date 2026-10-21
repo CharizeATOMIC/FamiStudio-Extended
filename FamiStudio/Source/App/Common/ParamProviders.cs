@@ -665,9 +665,9 @@ namespace FamiStudio
             Localization.LocalizeStatic(typeof(DPCMSampleParamProvider));
         }
 
-        static public ParamInfo[] GetParams(DPCMSample sample)
+        static public ParamInfo[] GetParams(DPCMSample sample, bool pcmContext = false)
         {
-            return new[]
+            var parameters = new[]
             {
                 new DPCMSampleParamInfo(sample, PreviewRateLabel, 0, 15, 15, PreviewRateTooltip, true)
                     { GetValue = () => { return sample.PreviewRate; }, GetValueString = () => { return DPCMSampleRate.GetString(true, FamiStudio.StaticInstance.PalPlayback, true, false, sample.PreviewRate); }, SetValue = (v) => { sample.PreviewRate = (byte)v; } },
@@ -690,6 +690,15 @@ namespace FamiStudio
                 new DPCMSampleParamInfo(sample, BankNumberLabel, 0, Project.MaxDPCMBanks - 1, 0, BankNumberTooltip)
                     { GetValue = () => { return sample.Bank; }, SetValue = (v) => { sample.Bank = v; } },
             };
+            if (!sample.IsPcm) return parameters;
+            var pcm = new List<ParamInfo>();
+            if (!sample.SourceDataIsWav) pcm.Add(parameters[3]);
+            pcm.Add(parameters[4]);
+            pcm.Add(parameters[5]);
+            if (!sample.SourceDataIsWav) pcm.Add(parameters[6]);
+            pcm.Add(parameters[7]);
+            if (!sample.SourceDataIsWav) pcm.Add(parameters[8]);
+            return pcm.ToArray();
         }
     }
 }

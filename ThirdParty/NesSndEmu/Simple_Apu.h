@@ -6,6 +6,7 @@
 #ifndef SIMPLE_APU_H
 #define SIMPLE_APU_H
 
+#include <vector>
 #include "nes_apu/Nes_Apu.h"
 #include "nes_apu/Nes_Vrc6.h"
 #include "nes_apu/Nes_Vrc7.h"
@@ -71,6 +72,18 @@ public:
 	// Write to register (0x4000-0x4017, except 0x4014 and 0x4016)
 	void write_register( cpu_addr_t, int data );
 	void set_update_rate_multiplier(int value);
+	// Destinations: 0=$4011, 1=MMC5 $5011, 2/3=VRC6 pulse gate DACs.
+	bool start_pcm(int destination, const unsigned char* data, int length, uint32_t period_q16, int loop_start, int loop_end, int volume);
+	void stop_pcm(int destination);
+	void release_pcm(int destination);
+	void set_pcm_volume(int destination, int volume);
+	int get_pcm_dac(int destination) const;
+	int get_pcm_position(int destination) const;
+	bool start_mmc5_pcm(const unsigned char* data, int length, uint32_t period_q16, int loop_start, int loop_end, int volume);
+	void stop_mmc5_pcm();
+	void set_mmc5_pcm_volume(int volume);
+	int get_mmc5_pcm_dac() const { return mmc5.get_pcm_dac(); }
+	int get_mmc5_pcm_position() const { return mmc5.get_pcm_position(); }
 	void get_register_values(int exp, void* regs);
 
 	int get_namco_wave_pos(int n163ChanIndex);
@@ -118,6 +131,16 @@ public:
 	bool is_seeking() const { return seeking; }
 
 private:
+	struct PcmStream {
+		std::vector<unsigned char> data;
+		uint32_t period_q16 = 0;
+		int64_t next_time_q16 = 0;
+		int position = 0, loop_start = -1, loop_end = -1, volume = 15, raw = 128, dac = 0;
+		bool playing = false;
+	};
+	PcmStream pcm_streams[4]; // MMC5 retains its chip-local stream for ABI compatibility.
+	void run_pcm_until(cpu_time_t end_time);
+	void write_pcm_sample(int destination, cpu_time_t clock, int raw);
 	bool pal_mode;
 	bool seeking;
 	float tnd_volume;
