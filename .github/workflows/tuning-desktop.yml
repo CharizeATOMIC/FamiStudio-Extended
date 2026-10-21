@@ -33,10 +33,20 @@ on:
       - 'nuget.config'
       - '.github/workflows/tuning-desktop.yml'
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Select the operation to run
+        type: choice
+        required: true
+        default: build
+        options:
+          - build
+          - publish-r12
 permissions:
   contents: read
 jobs:
   desktop:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation != 'publish-r12'
     strategy:
       fail-fast: false
       matrix:
@@ -113,3 +123,33 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-pitch-migration work/noise-pitch-migration-tests
 
+  publish:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'CharizeATOMIC/FamiStudio-Extended' && github.ref == 'refs/heads/master' && inputs.operation == 'publish-r12'
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-verified-r12
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out this exact reviewed master revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify publisher and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 'aad3c51253c504b69fcfcf784ab6b7e47f388b576641f796303caf633f0f2368' 'r12-publish-manifest.json' | sha256sum --check --strict
+          printf '%s  %s\n' '884da36cdc820291efa627e35b48f914a81229a6dd0eb4d0364752d5a9bf566c' 'r12-release-publish.py' | sha256sum --check --strict
+      - name: Reconstruct, verify and publish only the matching R12 draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TZ: Asia/Hong_Kong
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'true'
+        run: python3 r12-release-publish.py --publish --repository . --payload . --output "${{ runner.temp }}/r12-reconstructed"
