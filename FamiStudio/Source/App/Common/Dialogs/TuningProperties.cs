@@ -8,6 +8,14 @@ namespace FamiStudio
             if (targetRate != 1 && targetRate != 2 && targetRate != 4) return false;
             int sourceRate = envelope.TickRateMultiplier;
             if (sourceRate == targetRate) return true;
+            // An absolute, permanently held value has no timed transition.
+            // In particular, new high-rate instruments use a one-value volume
+            // envelope which remains exact at every supported output clock.
+            if (targetRate < sourceRate && envelope.Length == 1 && envelope.Release < 0 && !envelope.Relative && !waveformRepeat && !pulse)
+            {
+                envelope.TickRateMultiplier = targetRate;
+                return true;
+            }
             int length = envelope.Length, loop = envelope.Loop, release = envelope.Release;
             var converted = new sbyte[envelope.Values.Length];
             if (waveformRepeat)
@@ -99,6 +107,7 @@ namespace FamiStudio
         public static LocalizedString ExtendedFormatExportError, ScheduledVgmExportError;
         public static LocalizedString UpdateRateLabel, UpdateRateTooltip, UpdateRateExportError, UpdateRateImportError, UpdateRateMergeError;
         public static LocalizedString UpdateRateIncompatibleError, UpdateRateRegionError, SongClockLabel, SongClockTooltip;
+        public static LocalizedString EditingRateError, EditingRateAlignmentError, EditingRateRangeError, EditingRateTempoError, EditingRateEffectClockError, EditingRateEnvelopeError;
         public static LocalizedString EnvelopeClockLabel, EnvelopeClockTooltip, EnvelopeClockConversionError;
         public static LocalizedString CurveTitle, CurveZoomLabel, CurveUnitLabel, CurveValueLabel, CurveResetNote, CurveResetChip, CurveTooltip, CurveHelp, CurveMergeError;
         public static LocalizedString CurveTimerUnit, CurvePeriodUnit, CurveFrequencyUnit, CurveFmUnit, CurveDefaultLabel, CurveBoundsLabel;

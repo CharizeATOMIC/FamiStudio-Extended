@@ -108,7 +108,7 @@ static class SaveProjectRegression
         var button = (Button)Field(toolbar, "buttonSaveAs");
         var save = (Button)Field(toolbar, "buttonSave");
         var help = (Button)Field(toolbar, "buttonHelp");
-        Check(button.Visible && !string.IsNullOrEmpty(button.Text) && button.Left == save.Right, "visible named Save As action sits next to Save: " + language);
+        Check(button.Visible && button.Image != null && button.ImageName == "SaveAs" && button.Width == save.Width && button.Left == save.Right, "Save As icon sits next to Save with the same hit area: " + language);
         Check(button.ToolTip.Contains(Settings.FileSaveAsShortcut.TooltipString), "visible Save As action advertises the existing keyboard shortcut");
         int oldWidth = toolbar.Width;
         foreach (int logicalWidth in new[] { 1024, 800 })

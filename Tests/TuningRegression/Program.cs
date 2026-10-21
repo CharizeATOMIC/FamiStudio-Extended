@@ -33,6 +33,7 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--song-grid-clocks") { SongGridClockExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pcm-nes") { PcmNesRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pcm-playback") { PcmPlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pcm-libraries") { IndependentPcmModelRegression.Run(args[1], args.Length > 2 ? args[2] : null); Init.ShutdownBaseSystems(); return; }
@@ -51,6 +52,7 @@ static class Program
         if (args.Length > 0 && args[0] == "--project-compression") { ProjectCompressionRegression.Run(args[1], args.Length > 2 ? args[2] : null); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--envelope-clock") { EnvelopeClockRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--update-rate") { UpdateRateRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--song-editing-rate") { SongEditingRateRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pulse-sweep") { PulseSweepRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pulse-sweep-nsf") { PulseSweepRegression.RunNsf(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--dpcm-effects") { DpcmEffectRegression.Run(args[1]); GimmickEffectCleanup.Regression(); Init.ShutdownBaseSystems(); return; }

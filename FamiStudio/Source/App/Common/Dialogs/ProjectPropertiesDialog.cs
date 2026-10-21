@@ -63,6 +63,7 @@ namespace FamiStudio
         private Project project;
         private MixerProperties mixerProperties;
         private ChipTuningSettings chipTuning;
+        private bool restoringUpdateRate;
         public ChipTuningSettings ChipTuning => chipTuning;
         
         public PropertyPage InfoPage        => dialog.GetPropertyPage((int)ProjectSection.Info);
@@ -210,12 +211,14 @@ namespace FamiStudio
 
         private void Info_PropertyChanged(PropertyPage props, int propIdx, int rowIdx, int colIdx, object value)
         {
-            if (propIdx == 7)
+            if (propIdx == 7 && !restoringUpdateRate)
             {
-                var error = project.GetUpdateRateError(UpdateRateMultiplier);
+                var error = project.GetEditingRateError(UpdateRateMultiplier);
                 if (error != null)
                 {
-                    props.SetDropDownListIndex(7, project.UpdateRateMultiplier == 4 ? 2 : project.UpdateRateMultiplier - 1);
+                    restoringUpdateRate = true;
+                    try { props.SetDropDownListIndex(7, project.UpdateRateMultiplier == 4 ? 2 : project.UpdateRateMultiplier - 1); }
+                    finally { restoringUpdateRate = false; }
                     dialog.ParentWindow.FamiStudio.DisplayNotification(error, true, true);
                 }
             }

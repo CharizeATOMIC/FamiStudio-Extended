@@ -19,8 +19,13 @@ Suggested review sequence:
 4. Mapper-specific NES players and their measured schedules. These are host
    integrations, not promises that a game's existing interrupt budget fits.
 5. Shared UI controls and seven-language strings, then target-platform testing.
+6. Editing-grid conversion is a separate review unit: explicit transactional
+   conversion, generalized groove padding, and independent Song.EffectRateMultiplier.
+   Keep the raw output-rate setter for loading and existing programmatic callers.
+   Port managed effect clocks, music export and optional engine instruction $65
+   together; regenerate NSF kernels. Reject inexact conversions before mutation.
 
-The fork uses format 1009. Upstream should allocate its own version and native
+The fork uses format 1010. Upstream should allocate its own version and native
 ABI identifiers. The existing DPCMSample processing class is retained with an
 IsPcm discriminator, but library objects, sources, IDs and folders are distinct.
 MMC5 PCM uses a previously reserved channel type. 2A03/VRC6 reuse existing
@@ -36,9 +41,11 @@ builds do not replace Linux/macOS native and Android device testing.
 
 R12 将 DPCM/PCM 拆为独立资源，并支持 2A03、MMC5、VRC6。建议按数据模型与
 迁移、原生播放与声部交接、可选引擎/NSF2、NES 模板、界面与各平台验证的
-依赖顺序审阅。上游可自行分配格式与 ABI 编号，不必接受本分支的 1009。
+依赖顺序审阅。上游可自行分配格式与 ABI 编号，不必接受本分支的 1010。
 普通模式保持原路径，PCM 需同时移植相关层才可启用。旧 R10 的补丁应用
 结果不覆盖此批改动，也不保证对作者尚未公开的开发分支无冲突。
+编辑网格转换可单独审阅，但须一起移植事务预检、groove 子帧、音符效果时钟、
+播放与导出，以及可选引擎指令 $65；不应仅修改工程倍率或界面标签。
 
 Historical R10 integration record / R10 历史整合记录
 ----------------------------------------------------

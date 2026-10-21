@@ -1,0 +1,47 @@
+/****************************************************************************
+
+  emu2149.c -- YM2149/AY-3-8910 emulator by Mitsutaka Okazaki 2001-2022
+
+  2001 04-28 : Version 1.00beta -- 1st Beta Release.
+  2001 08-14 : Version 1.10
+  2001 10-03 : Version 1.11     -- Added PSG_set_quality().
+  2002 03-02 : Version 1.12     -- Removed PSG_init & PSG_close.
+  2002 10-13 : Version 1.14     -- Fixed the envelope unit.
+  2003 09-19 : Version 1.15     -- Added PSG_setMask and PSG_toggleMask
+  2004 01-11 : Version 1.16     -- Fixed the envelope problem where the envelope 
+                                   frequency register is written before key-on.
+  2015 12-13 : Version 1.17     -- Changed own integer types to C99 stdint.h types.
+  2016 09-06 : Version 1.20     -- Support per-channel output.
+  2021 09-29 : Version 1.30     -- Fix some envelope generator problems (issue #2).
+  2022-11-25 : Version 1.40     -- Fix the bug with the changing period register
+                                   faster than frequency (issue #3).
+                                -- Fix the confusing PSG_setVolumeMode type argument.
+                                -- Rename PSG_set_rate to PSG_setRate.
+                                -- Rename PSG_set_quality to PSG_setQuality.
+                                -- Restore PSG_setClock that was removed on v1.20 for
+                                   compatibility.
+                                -- Add PSG_setClockDivider function.
+                                -- Fix noise period at zero frequency.
+  2022-11-26 : Version 1.41     -- Fix a problem with DC offset when muting a channel
+                                   (issue #4).
+                                -- Disable frequency limiter if the internal rate 
+                                   converter is not active (i.e. quality == 0).
+  
+  Further modifications done by alexmush:
+  
+  2024-02-29 :      --  Fixed the noise generator 
+                        (now accurate to real YM2149 and YM6630 hardware)
+                    --  Shifted volume table & adjusted regular volume assignment for it
+                        (now YM envelopes sound like intended)
+                    --  Envelopes now *fully* reset on write to 0xD
+                                
+
+  References:
+    psg.vhd        -- 2000 written by Kazuhiro Tsujikawa.
+    s_fme7.c       -- 1999,2000 written by Mamiya (NEZplug).
+    ay8910.c       -- 1998-2001 Author unknown (MAME).
+    MSX-Datapack   -- 1991 ASCII Corp.
+    AY-3-8910 data sheet
+    YM2149 data sheet
+    
+*****************************************************************************/

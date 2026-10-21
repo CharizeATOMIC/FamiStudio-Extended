@@ -165,7 +165,7 @@ namespace FamiStudio
                     }
                 }
 
-                if (logicalUpdate || noteTriggered)
+                if (effectUpdate || noteTriggered)
                     modDelayActive = modDelayCounter != 0;
 
                 if (!modDelayActive)
@@ -181,7 +181,7 @@ namespace FamiStudio
                 else
                 {
                     ResetModulation();
-                    if (logicalUpdate)
+                    if (effectUpdate)
                         modDelayCounter--;
                 }
             }

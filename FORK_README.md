@@ -6,7 +6,7 @@ The display name is **FamiStudio Extended**, retaining the original project name
 
 ## Features
 
-- Independent DPCM and PCM sample libraries. A 2A03 instrument can map either kind per key, MMC5 instruments accept PCM only, and each VRC6 pulse can play mapped PCM while occupying that pulse. Hardware output precision is 7, 8 and 4 bits respectively. Matching engine/NSF2 support includes ordinary-voice handoff. See [PCM integration](Docs/docs/development/mmc5-pcm-integration.md) for NES templates, CPU limits and platform requirements. New projects use format 1009; R11 shared PCM projects migrate automatically without modifying their DPCM source assets.
+- Independent DPCM and PCM sample libraries. A 2A03 instrument can map either kind per key, MMC5 instruments accept PCM only, and each VRC6 pulse can play mapped PCM while occupying that pulse. Ordinary 2A03 PCM mappings can also be used directly on MMC5 PCM. Hardware output precision is 7, 8 and 4 bits respectively. Matching engine/NSF2 support includes ordinary-voice handoff. See [PCM integration](Docs/docs/development/mmc5-pcm-integration.md) for NES templates, CPU limits and platform requirements. New projects use format 1010; R11 shared PCM projects migrate automatically without modifying their DPCM source assets.
 
 - Song tuning overrides the project reference; timeline pattern-column tuning overrides the song. A disabled override inherits its parent. Overrides are complete snapshots containing A4 reference and twelve cents offsets, repeated in every octave.
 - A4 range: 300–580 Hz in 1 Hz steps. C through B offsets: −1200 to +1200 cents in 1-cent steps. The A offset also affects the reference note. Note names and existing channel octave conventions are unchanged.
@@ -18,6 +18,14 @@ The display name is **FamiStudio Extended**, retaining the original project name
 - All seven existing languages include the new controls and messages: English, Chinese, German, Spanish, Portuguese, Russian and Korean.
 - Revision 2 enlarges numeric hit targets. Click a table's number to type cents or chip count; Enter accepts and Escape cancels. Shift-click steps by ten. Typed pan values preview during playback. Reference-Hz fields remain directly editable.
 - Revision 3 replaces the NSF/NSFe song selector with a checklist. Import several subsongs from one file into one project, with a separate editable duration for each selection and Select All / Select None. Import progress can be cancelled. This retains the existing register-capture importer; it does not reconstruct a game's source instruments or sequencer commands.
+
+## Revision 12: editing grid and Save As
+
+The project 1x/2x/4x control now converts existing song grids as well as the output clock. On NTSC, 4x provides approximately 240 note-placement steps per second. Conversion scales note positions, durations, releases, pattern settings and delays while preserving musical speed. Existing timed note effects retain an independent clock, and envelopes retain their duration. Lowering the rate requires an exact, representable conversion; otherwise the complete project is left unchanged with an explanation.
+
+New saves use format 1010 for the independent note-effect clock. Clocked engine streams can use optional instruction `$65` alongside `$64`; use the matching engine and regenerated NSF kernels. The PCM sample clock remains independent and approximately 4 kHz in this release.
+
+Save As has its own floppy-and-pencil toolbar icon beside Save, with the existing shortcut and all seven translated tooltips. It uses the same atomic save workflow. The sections below retain the history of earlier revisions.
 
 ## Revision 10: noise envelopes directly in hardware settings
 

@@ -305,6 +305,7 @@ namespace FamiStudio
             {
                 var songStr = $"\tSong{GenerateAttribute("Name", song.Name)}{ConditionalGenerateAttribute("Color", song.Color.ToHexString(), !noColors)}{GenerateAttributeIfNonEmpty("Folder", song.FolderName)}{GenerateAttribute("Length", song.Length)}{GenerateAttribute("LoopPoint", song.LoopPoint)}";
                 if (song.LogicRateMultiplier != 1) songStr += GenerateAttribute("LogicRateMultiplier", song.LogicRateMultiplier);
+                if (song.EffectRateMultiplier != song.LogicRateMultiplier) songStr += GenerateAttribute("EffectRateMultiplier", song.EffectRateMultiplier);
 
                 if (song.UsesFamiTrackerTempo)
                 {
@@ -823,6 +824,7 @@ namespace FamiStudio
                         {
                             song = project.CreateSong(parameters["Name"]);
                             song.LogicRateMultiplier = parameters.TryGetValue("LogicRateMultiplier", out var logicRate) ? int.Parse(logicRate) : 1;
+                            song.EffectRateMultiplier = parameters.TryGetValue("EffectRateMultiplier", out var effectRate) ? int.Parse(effectRate) : song.LogicRateMultiplier;
                             song.SetLength(int.Parse(parameters["Length"]));
                             if (parameters.TryGetValue("Tuning", out var tuningHz))
                                 song.TuningSettings = new TuningSettings { Override = true, ReferenceHz = int.Parse(tuningHz), Cents = parameters["Cents"].Split(',').Select(int.Parse).ToArray() };

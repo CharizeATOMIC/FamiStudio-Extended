@@ -89,7 +89,7 @@ namespace FamiStudio
                 return allowNull;
 
             if (IsMmc5PcmChannel)
-                return instrument.IsMmc5 || (song.Project.LoadingLegacySharedPcm && instrument.IsRegular);
+                return instrument.IsMmc5 || instrument.IsRegular;
 
             if (instrument.Expansion == ExpansionType.None && (IsRegularChannel || IsMmc5Channel))
                 return true;
@@ -511,7 +511,7 @@ namespace FamiStudio
         public int GetSlideNoteDuration(NoteLocation location)
         {
             Debug.Assert(GetNoteAt(location).IsMusical);
-            FindNextNoteForSlide(location, 256, out var nextLocation, true); // 256 is kind of arbitrary. 
+            FindNextNoteForSlide(location, SlideSearchLength, out var nextLocation, true);
             return Song.CountNotesBetween(location, nextLocation);
         }
 
@@ -519,7 +519,7 @@ namespace FamiStudio
         public int GetVolumeSlideDuration(NoteLocation location)
         {
             Debug.Assert(GetNoteAt(location).HasVolume);
-            FindNextNoteForVolumeSlide(location, 256, out var nextLocation); // 256 is kind of arbitrary. 
+            FindNextNoteForVolumeSlide(location, SlideSearchLength, out var nextLocation);
             return Song.CountNotesBetween(location, nextLocation);
         }
 
@@ -539,6 +539,8 @@ namespace FamiStudio
         {
             return new SparseChannelNoteIterator(this, start, end, filter);
         }
+
+        private int SlideSearchLength => 256 * song.LogicRateMultiplier / song.EffectRateMultiplier;
 
         public bool ComputeSlideNoteParams(Note note, NoteLocation location, int famitrackerSpeed, ushort[] noteTable, bool pal, bool applyShifts, out int pitchDelta, out int stepSize, out float stepSizeFloat)
         {
@@ -560,7 +562,7 @@ namespace FamiStudio
                 pitchDelta = slideShift < 0 ? (pitchDelta << -slideShift) : (pitchDelta >> slideShift);
 
                 // Find the next note to calculate the slope.
-                FindNextNoteForSlide(location, 256, out var nextLocation, false); // 256 is kind of arbitrary. 
+                FindNextNoteForSlide(location, SlideSearchLength, out var nextLocation, false);
 
                 // Approximate how many frames separates these 2 notes.
                 var frameCount = 0.0f;
@@ -598,6 +600,7 @@ namespace FamiStudio
                 }
 
                 // Compute slide params.
+                frameCount *= song.EffectRateMultiplier / (float)song.LogicRateMultiplier;
                 var absStepPerFrame = Math.Abs(pitchDelta) / Math.Max(1, frameCount);
 
                 stepSize = Utils.Clamp((int)Math.Ceiling(absStepPerFrame) * -Math.Sign(pitchDelta), sbyte.MinValue, sbyte.MaxValue);
@@ -623,7 +626,7 @@ namespace FamiStudio
             if (volumeDelta != 0)
             {
                 // Find the next note to calculate the slope.
-                FindNextNoteForVolumeSlide(location, 256, out var nextLocation); // 256 is kind of arbitrary. 
+                FindNextNoteForVolumeSlide(location, SlideSearchLength, out var nextLocation);
 
                 // Approximate how many frames separates these 2 notes.
                 var delayFrames = -(note.HasNoteDelay ? note.NoteDelay : 0);
@@ -634,7 +637,8 @@ namespace FamiStudio
                         delayFrames += nextNote.NoteDelay;
                 }
 
-                var frameCount = Song.CountFramesBetween(location, nextLocation, famitrackerSpeed, pal) + delayFrames;
+                var frameCount = (Song.CountFramesBetween(location, nextLocation, famitrackerSpeed, pal) + delayFrames) *
+                    (song.EffectRateMultiplier / (float)song.LogicRateMultiplier);
                 var volumeDeltaUnshifted = volumeDelta;
 
                 volumeDelta <<= 4;

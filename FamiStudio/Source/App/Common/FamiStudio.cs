@@ -341,9 +341,9 @@ namespace FamiStudio
             SelectedInstrument = instrument;
             int type = instrument.IsMmc5 ? ChannelType.Mmc5Pcm :
                 instrument.IsVrc6 ? ChannelType.Vrc6Square1 : ChannelType.Dpcm;
-            // A mapping key is auditioned on the hardware that can play it.
-            // Keep either selected VRC6 pulse, but never redirect the saw.
-            if (!(instrument.IsVrc6 && (SelectedChannel.Type == ChannelType.Vrc6Square1 || SelectedChannel.Type == ChannelType.Vrc6Square2)))
+            // Keep a compatible sample destination, including MMC5 PCM when
+            // editing a regular instrument shared with the 2A03 key map.
+            if (!SelectedChannel.SupportsSampleMappings || !SelectedChannel.SupportsInstrument(instrument))
             {
                 int channel = Array.FindIndex(song.Channels, c => c.Type == type);
                 if (channel >= 0) SelectedChannelIndex = channel;

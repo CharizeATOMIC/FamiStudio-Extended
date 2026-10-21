@@ -1,6 +1,6 @@
 FamiStudio Extended R12 — Development preview / 开发预览版
 Based on FamiStudio 4.5.3 / 基于 FamiStudio 4.5.3
-Project format / 工程格式：1009
+Project format / 工程格式：1010
 
 中文
 
@@ -12,6 +12,7 @@ Project format / 工程格式：1009
   PCM 通过原生 7 位 DAC 播放，与 DPCM 轮流占用同一个硬件声部。
 • MMC5 乐器支持 PCM 键位映射，仅接受 PCM 采样。独立 8 位 PCM 通道
   可与原生五声部及 MMC5 两个方波同时编曲。
+  普通 2A03 乐器的 PCM 键位也可直接在 MMC5 PCM 通道使用。
 • VRC6 乐器增加采样映射。两个方波通道分别支持 4 位 PCM，播放期间
   占用对应方波，普通未映射音符可恢复方波演奏；锯齿波保持原有功能。
 • PCM 支持移调、循环、音量、实时声像、波形编辑、试听及音频导出。
@@ -20,11 +21,17 @@ Project format / 工程格式：1009
 • 保存、文本导入导出、复制粘贴、撤销、清理及工程合并均识别两套采样库。
   R11 工程打开时自动拆分旧共享采样，保留 DPCM 原始数据和 PCM 声音。
 • 新界面与提示适配现有七种语言。
+• 工程的 1×/2×/4× 更新率同步转换编辑网格，保留既有音乐速度和包络时长。
+  4× 网格可在 NTSC 240 Hz / PAL 200 Hz 的时间精度上放置音符。
+  无法精确表示的转换会说明原因并保留原工程。
+• “另存为”使用独立的工具栏图标，保留快捷键与各语言提示。
+• 修正相同 BPM 的不同节奏排列选择，以及起始填充节奏在 NSF 导出中的首帧偏移。
 
 兼容性
 
 • PCM 需要 CPU 持续供样。编辑器与 NSF2 使用约 4 kHz 的采样时钟，
-  与音乐的 1×/2×/4× 更新率独立。硬件有效精度取决于所选输出芯片。
+  与音乐的 1×/2×/4× 更新率独立。这是当前驱动的实现选择，并非硬件采样率上限。
+  硬件有效精度取决于所选输出芯片。
 • 含 PCM 的 NSF/NSFe 导出需要支持 NSF2 IRQ 的播放器，并选择与工程相同的
   PAL/NTSC 制式。
   多路 PCM 与音乐更新共享 CPU 预算；超载组合会拒绝导出。
@@ -37,7 +44,7 @@ Project format / 工程格式：1009
   2A03 DAC 还会通过原生非线性混音影响三角波和噪波的实际响度。
 • NSF2 PCM 暂不与 EPSM 同时导出。不支持 PCM 的格式会明确拒绝导出。
   NSF 导入尚不支持将软件 PCM 重建为可编辑采样轨道。
-• 新工程格式为 1009，旧版本不能打开新保存的文件。Windows 原生库
+• 新工程格式为 1010，旧版本不能打开新保存的文件。Windows 原生库
   随本版更新；其他平台也必须重建原生库，不能只替换托管程序集。
 
 既有功能
@@ -57,6 +64,7 @@ Added and improved
   each key. PCM uses the native 7-bit DAC and shares its physical voice with DPCM.
 • PCM-only keyboard mappings for MMC5 instruments. The independent 8-bit PCM
   voice complements the five APU voices and the two MMC5 pulse voices.
+  Regular 2A03 instruments' PCM keys can also be used directly on MMC5 PCM.
 • Sample mappings for VRC6 instruments. Each pulse can play 4-bit PCM while
   occupying that pulse. Unmapped notes resume ordinary pulse playback.
   The sawtooth channel retains its existing behavior.
@@ -68,12 +76,19 @@ Added and improved
   cleanup and project merging. R11 shared samples migrate automatically,
   preserving the original DPCM data and PCM sound.
 • Controls and messages in all seven existing languages.
+• Project 1×/2×/4× changes convert the editing grid while retaining musical
+  speed and envelope duration. The 4× grid supports note placement at NTSC
+  240 Hz / PAL 200 Hz resolution. Inexact conversions leave the project intact.
+• A dedicated Save As toolbar icon, with localized help and the existing shortcut.
+• Correct selection of different grooves with the same BPM and first-frame timing
+  for beginning-padded grooves in NSF exports.
 
 Compatibility
 
 • Software PCM requires continuous CPU service. Editor and NSF2 sample clocks
   are approximately 4 kHz, independent of 1×/2×/4× music updates. Hardware
-  output precision depends on the selected destination.
+  output precision depends on the selected destination. This rate is an
+  implementation choice, not a fixed hardware sample-rate ceiling.
 • PCM NSF/NSFe exports require an NSF2 IRQ-capable player and the project's
   explicit region.
   Concurrent PCM and music updates share a CPU budget. Overload is rejected.
@@ -88,7 +103,7 @@ Compatibility
   Native 2A03 nonlinear mixing also lets DAC output affect triangle/noise gain.
 • NSF2 PCM currently cannot coexist with EPSM. Unsupported formats reject PCM.
   NSF import does not reconstruct editable software-PCM sample tracks.
-• New saves use format 1009 and require this revision or newer. Windows native
+• New saves use format 1010 and require this revision or newer. Windows native
   libraries are included. Other platforms also need rebuilt native libraries.
 
 Existing features

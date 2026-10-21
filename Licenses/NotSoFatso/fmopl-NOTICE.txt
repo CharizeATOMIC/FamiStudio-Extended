@@ -1,0 +1,39 @@
+/* taken from FCE Ultra - NES/Famicom Emulator
+ *
+ * Copyright notice for this file:
+ *  Copyright (C) 1999,2000 Tatsuyuki Satoh
+ *  Copyright (C) 2001,2002 Ben Parnell
+ *  Copyright (C) 2004      Disch
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+ */
+
+/* This file has been heavily modified from the original(mostly unused
+   code was removed).  If you want to use it for anything other than
+   VRC7 sound emulation, you should get the original from the AdPlug
+   source distribution or the MAME(version 0.37b16) source distribution
+   (but be careful about the different licenses).
+        - Xodnizel
+*/
+
+/* I added a few modifications to YM3812UpdateOne and OPL_CALC_CH
+   to get channel volume/pan control.  I also added stuff to YM3812UpdateOne
+   to get Right channel inversion and frequency cutoff working.
+   
+   Other than that, things are pretty much the way Xodnizel left them.
+   
+   All my changes are commented, so search the file for "Disch" to see alterations.
+		- Disch
+*/

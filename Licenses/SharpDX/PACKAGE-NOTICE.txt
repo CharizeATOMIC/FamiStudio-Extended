@@ -1,0 +1,4 @@
+SharpDX and SharpDX.XAudio2 4.2.0
+Copyright (c) 2010-2016 Alexandre Mutel
+Repository commit: 8e5df9f17b1d328c595a9df5851dbb2537b55621
+The original repository License.txt retains its own 2010-2014 copyright line.

@@ -1,0 +1,161 @@
+{
+  "runtime_version": "8.0.32",
+  "records": [
+    {
+      "file": "FamiStudio/LICENSE.txt",
+      "source": "LICENSE",
+      "scope": "verbatim repository license or original readme",
+      "sha256_lf": "5e3b4767eb00d525a783f678d7a8cf3c71a7fc33de218bbcfd84abf76a2b8106"
+    },
+    {
+      "file": "GLFW/LICENSE-3.4.txt",
+      "source": "https://raw.githubusercontent.com/glfw/glfw/3.4/LICENSE.md",
+      "scope": "verbatim complete license",
+      "sha256_lf": "149704059b5d0bf551637e50042dd4de9c2cae921021f6636298911e3a5f9462"
+    },
+    {
+      "file": "GifDec/README-public-domain.txt",
+      "source": "ThirdParty/GifDec/README",
+      "scope": "verbatim repository license or original readme",
+      "sha256_lf": "1fe4138aae8ad65658ab496a4befd2167d703acbc01cacc07fdb52bd4bb5fec3"
+    },
+    {
+      "file": "NesSndEmu/LGPL-2.1.txt",
+      "source": "ThirdParty/NesSndEmu/LGPL.txt",
+      "scope": "verbatim repository license or original readme",
+      "sha256_lf": "a190dc9c8043755d90f8b0a75fa66b9e42d4af4c980bf5ddc633f0124db3cee7"
+    },
+    {
+      "file": "NesSndEmu/NukedOPN2-NOTICE.txt",
+      "source": "ThirdParty/NesSndEmu/nes_apu/ym3438.cpp:1-29",
+      "scope": "verbatim copyright and attribution header",
+      "sha256_lf": "0845188cbe2ea8d70ce60758e6f1efafeeb6297be5b71e2f19a6c91a637a5425"
+    },
+    {
+      "file": "NesSndEmu/README-original.txt",
+      "source": "ThirdParty/NesSndEmu/readme.txt",
+      "scope": "verbatim repository license or original readme",
+      "sha256_lf": "4178565c9d0766c77289535c1492b24eaafbfa6525d2c7d6c58ae15b818815ca"
+    },
+    {
+      "file": "NesSndEmu/emu2149-LICENSE-1.41.txt",
+      "source": "https://raw.githubusercontent.com/digital-sound-antiques/emu2149/1.41/LICENSE",
+      "scope": "verbatim complete license",
+      "sha256_lf": "e0db14654c1f977ec384c3fad3baf6e1f4d21c8369946823bbb6d4e06ebc372b"
+    },
+    {
+      "file": "NesSndEmu/emu2149-NOTICE.txt",
+      "source": "ThirdParty/NesSndEmu/nes_apu/emu2149.c:1-47",
+      "scope": "verbatim copyright and attribution header",
+      "sha256_lf": "67836a66f68b588e05d9141a877c450d1c938ec3e7f5921fede02649b9889de0"
+    },
+    {
+      "file": "NesSndEmu/emu2413-LICENSE-1.2.7.txt",
+      "source": "https://raw.githubusercontent.com/digital-sound-antiques/emu2413/1.2.7/LICENSE",
+      "scope": "verbatim complete license",
+      "sha256_lf": "8fb093f26ed0d78c8ca033bbec7063ac5b34c5d2475e6bd121d03ccfaaf2355f"
+    },
+    {
+      "file": "NesSndEmu/emu2413-NOTICE.txt",
+      "source": "ThirdParty/NesSndEmu/nes_apu/emu2413.c:1-12",
+      "scope": "verbatim copyright and attribution header",
+      "sha256_lf": "54a3d0fe9f37d5d5054e86372341c86a13329bc2bf928da6c5da78b085fb3a77"
+    },
+    {
+      "file": "NotSoFatso/FORK-NOTICE.txt",
+      "source": "FamiStudio Extended fork change record",
+      "scope": "identifies modified component; does not replace original terms",
+      "sha256_lf": "0089600a6293626ed89a5f84a1d466dc619ac5434c7d0faaf0dd998a5572bc73"
+    },
+    {
+      "file": "NotSoFatso/GPL-2.0.txt",
+      "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-2.0-or-later.txt",
+      "scope": "verbatim complete license",
+      "sha256_lf": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3"
+    },
+    {
+      "file": "NotSoFatso/NSF_Core-NOTICE.txt",
+      "source": "ThirdParty/NotSoFatso/NSF_Core.h:1-17",
+      "scope": "verbatim copyright and attribution header",
+      "sha256_lf": "7d41f3d0de48ea99fde822da431aac728be20bdc2f25909666bf4f8457e4e301"
+    },
+    {
+      "file": "NotSoFatso/Wave_VRC7-NOTICE.txt",
+      "source": "ThirdParty/NotSoFatso/Wave_VRC7.cpp:1-18",
+      "scope": "verbatim copyright and attribution header",
+      "sha256_lf": "a738d595d70ae96466ea1d32999445c6be3d422d3ff89ea41f991af5d63557ff"
+    },
+    {
+      "file": "NotSoFatso/fmopl-NOTICE.txt",
+      "source": "ThirdParty/NotSoFatso/fmopl.c:1-39",
+      "scope": "verbatim copyright and attribution header",
+      "sha256_lf": "44b707bfa51b8146eaf7eaeb5debc3bbe4fac793923a35f909a3b72f27192970"
+    },
+    {
+      "file": "Ogg/COPYING.txt",
+      "source": "https://raw.githubusercontent.com/xiph/ogg/master/COPYING",
+      "scope": "verbatim complete license",
+      "sha256_lf": "d2ab5758336489da61c12cc5bb757da5339c4ae9001f9bb0562b4370249af814"
+    },
+    {
+      "file": "PortAudio/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/PortAudio/portaudio/147dd722548358763a8b649b3e4b41dfffbcfbb6/LICENSE.txt",
+      "scope": "verbatim complete license",
+      "sha256_lf": "ec52a1952d701f94e5135719a47376da4ee0b4a0201f1cafb49f61db6480ac3d"
+    },
+    {
+      "file": "SharpDX/LICENSE-4.2.0.txt",
+      "source": "https://raw.githubusercontent.com/sharpdx/SharpDX/8e5df9f17b1d328c595a9df5851dbb2537b55621/License.txt",
+      "scope": "verbatim complete license",
+      "sha256_lf": "ed6e2ed433cc7006268284316ae05c40ec7350903c2cc67ffe8db6cdfca887ca"
+    },
+    {
+      "file": "SharpDX/PACKAGE-NOTICE.txt",
+      "source": "NuGet SharpDX/4.2.0/sharpdx.nuspec",
+      "scope": "package attribution; complete MIT license is alongside",
+      "sha256_lf": "d75903ec8ed0686a9069a0d0aadeed0151803facb40c683f5b83b54d50caf701"
+    },
+    {
+      "file": "ShineMp3/COPYING-LGPL-2.0.txt",
+      "source": "ThirdParty/ShineMp3/COPYING",
+      "scope": "verbatim repository license or original readme",
+      "sha256_lf": "2577e94e182eb1586880cccbadeee25ab30b15760e572092bd2137f6661042a2"
+    },
+    {
+      "file": "ShineMp3/README-original.md",
+      "source": "ThirdParty/ShineMp3/README.md",
+      "scope": "verbatim repository license or original readme",
+      "sha256_lf": "214a469f5a5c0e3b9468161def5f08fea31162223d03a9739d4b7ec31fb630ab"
+    },
+    {
+      "file": "Stb/stb_rect_pack-LICENSE.txt",
+      "source": "ThirdParty/Stb/stb_rect_pack.h",
+      "scope": "verbatim complete dual MIT/public-domain license block",
+      "sha256_lf": "7587efcca32db8f95bf5860dea6dfa4be410ee723e1964db3689c8ddf2a2e4a9"
+    },
+    {
+      "file": "Stb/stb_truetype-LICENSE.txt",
+      "source": "ThirdParty/Stb/stb_truetype.h",
+      "scope": "verbatim complete dual MIT/public-domain license block",
+      "sha256_lf": "7587efcca32db8f95bf5860dea6dfa4be410ee723e1964db3689c8ddf2a2e4a9"
+    },
+    {
+      "file": "Vorbis/COPYING-1.3.7.txt",
+      "source": "https://raw.githubusercontent.com/xiph/vorbis/v1.3.7/COPYING",
+      "scope": "verbatim complete license",
+      "sha256_lf": "ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a"
+    },
+    {
+      "file": "dotnet/LICENSE.TXT",
+      "source": "NuGet microsoft.netcore.app.runtime.win-x64/8.0.32/LICENSE.TXT",
+      "scope": "verbatim license from the exact distributed runtime package",
+      "sha256_lf": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310"
+    },
+    {
+      "file": "dotnet/THIRD-PARTY-NOTICES.TXT",
+      "source": "NuGet microsoft.netcore.app.runtime.win-x64/8.0.32/THIRD-PARTY-NOTICES.TXT",
+      "scope": "verbatim license from the exact distributed runtime package",
+      "sha256_lf": "97c1a7b3da6a4c6ad516448719f45114b41a4d4c5aa300a944476e2e4f5da438"
+    }
+  ]
+}

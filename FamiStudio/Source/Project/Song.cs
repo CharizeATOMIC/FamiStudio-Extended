@@ -77,6 +77,7 @@ namespace FamiStudio
         private string name;
         private int loopPoint = 0;
         private int logicRateMultiplier = 1;
+        private int effectRateMultiplier = 1;
         // Data clock is independent from the project's output/NSF call clock.
         // Raising output quality never reinterprets an existing song's timing.
         public int LogicRateMultiplier
@@ -89,6 +90,16 @@ namespace FamiStudio
             }
         }
         public double LogicUpdatesPerSecond => (project.PalMode ? NesApu.FpsPAL : NesApu.FpsNTSC) * logicRateMultiplier;
+        // Effects retain their authored clock when the editable grid is subdivided.
+        public int EffectRateMultiplier
+        {
+            get => effectRateMultiplier;
+            set
+            {
+                if (value != 1 && value != 2 && value != 4) throw new ArgumentOutOfRangeException(nameof(value));
+                effectRateMultiplier = value;
+            }
+        }
         private PatternCustomSetting[] patternCustomSettings = new PatternCustomSetting[Song.MaxLength];
         private int[] patternStartNote = new int[Song.MaxLength + 1];
 
@@ -142,6 +153,7 @@ namespace FamiStudio
             this.name = name;
             this.color = Theme.RandomCustomColor();
             logicRateMultiplier = project.UpdateRateMultiplier;
+            effectRateMultiplier = logicRateMultiplier;
 
             CreateCustomSettings();
             SetDefaultsForTempoMode(project.TempoMode);
@@ -165,6 +177,112 @@ namespace FamiStudio
             }
 
             patternLength = beatLength * 4;
+        }
+
+        // Build a complete, exact conversion without changing the song. Project
+        // applies every song and envelope only after all preflight checks succeed.
+        internal string PlanEditingRateChange(int targetRate, List<Action> changes)
+        {
+            int sourceRate = logicRateMultiplier;
+            string failure = null;
+            int Scale(int value, int minimum, int maximum, string path)
+            {
+                long numerator = (long)value * targetRate;
+                if (numerator % sourceRate != 0)
+                    failure ??= TuningStrings.EditingRateAlignmentError.Format(path);
+                long result = numerator / sourceRate;
+                if (result < minimum || result > maximum)
+                    failure ??= TuningStrings.EditingRateRangeError.Format(path);
+                return (int)result;
+            }
+            int[] ScaleGroove(int[] source, string path)
+            {
+                var result = source.Select(value => Scale(value, 1, FamiStudioTempoUtils.MaxNoteLength * 4 + 4, path)).ToArray();
+                if (!FamiStudioTempoUtils.ValidateGroove(result))
+                    failure ??= TuningStrings.EditingRateAlignmentError.Format(path);
+                return result;
+            }
+
+            // At native tempo each tracker row takes exactly Speed ticks. Other
+            // tempos carry fractional accumulator state across rows; multiplying
+            // row coordinates is not an exact transformation of that machine.
+            if (targetRate != sourceRate && UsesFamiTrackerTempo && famitrackerTempo != (project.PalMode ? NativeTempoPAL : NativeTempoNTSC))
+                return TuningStrings.EditingRateTempoError.Format(Name);
+
+            var allPatterns = channels.SelectMany(channel => channel.Patterns).Distinct().ToArray();
+            bool hasTimedEffects = allPatterns.Any(pattern => pattern.Notes.Values.Any(note =>
+                note.HasVibrato || note.HasEnvelopeDecay || note.IsSlideNote || note.HasVolumeSlide ||
+                note.Instrument?.IsFds == true && note.Instrument.FdsModDelay != 0));
+            if (effectRateMultiplier > targetRate && hasTimedEffects)
+                return TuningStrings.EditingRateEffectClockError.Format(Name);
+            if (targetRate == logicRateMultiplier)
+            {
+                if (effectRateMultiplier > targetRate) changes.Add(() => effectRateMultiplier = targetRate);
+                return null;
+            }
+
+            int newLength = Scale(patternLength, 1, Pattern.MaxLength, Name + " / PatternLength");
+            int newBeat = Scale(beatLength, 1, Pattern.MaxLength, Name + " / BeatLength");
+            int[] newGroove = UsesFamiStudioTempo ? ScaleGroove(groove, Name + " / Groove") : groove;
+            int newNoteLength = UsesFamiStudioTempo ? Utils.Min(newGroove) : noteLength;
+            var settings = patternCustomSettings.Select(setting => setting.Clone()).ToArray();
+            for (int p = 0; p < settings.Length; p++)
+            {
+                var custom = settings[p];
+                if (!custom.useCustomSettings) continue;
+                string path = Name + " / " + (p + 1);
+                custom.patternLength = Scale(custom.patternLength, 1, Pattern.MaxLength, path + " / PatternLength");
+                custom.beatLength = Scale(custom.beatLength, 1, Pattern.MaxLength, path + " / BeatLength");
+                if (UsesFamiStudioTempo)
+                {
+                    custom.groove = ScaleGroove(custom.groove, path + " / Groove");
+                    custom.noteLength = Utils.Min(custom.groove);
+                }
+            }
+            foreach (var pattern in allPatterns)
+            {
+                string path = Name + " / " + pattern.Channel.Name + " / " + pattern.Name;
+                int delay = Scale(pattern.PlaybackDelay, 0, 255, path + " / PlaybackDelay");
+                var entries = pattern.Notes.ToArray();
+                var positions = new int[entries.Length];
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    var note = entries[i].Value;
+                    positions[i] = Scale(entries[i].Key, 0, Pattern.MaxLength - 1, path + " / " + entries[i].Key);
+                    if (note.HasJumpOrSkip || UsesFamiTrackerTempo && note.HasNoteDelay && note.NoteDelay != 0)
+                        return TuningStrings.EditingRateTempoError.Format(Name);
+                    int duration = note.IsMusical ? Scale(note.Duration, 1, ushort.MaxValue, path + " / Duration") : 0;
+                    int release = note.HasRelease ? Scale(note.Release, 1, ushort.MaxValue, path + " / Release") : 0;
+                    int noteDelay = note.HasNoteDelay ? Scale(note.NoteDelay, 0, 31, path + " / NoteDelay") : 0;
+                    int cutDelay = note.HasCutDelay ? Scale(note.CutDelay, 0, 31, path + " / CutDelay") : 0;
+                    changes.Add(() =>
+                    {
+                        if (note.IsMusical) { note.Duration = duration; note.SetReleaseNoDurationCheck(release); }
+                        if (note.HasNoteDelay) note.NoteDelay = (byte)noteDelay;
+                        if (note.HasCutDelay) note.CutDelay = (byte)cutDelay;
+                    });
+                }
+                changes.Add(() =>
+                {
+                    pattern.Notes.Clear();
+                    for (int i = 0; i < entries.Length; i++) pattern.Notes.Add(positions[i], entries[i].Value);
+                    pattern.PlaybackDelay = delay;
+                });
+            }
+            if (failure != null) return failure;
+            changes.Add(() =>
+            {
+                patternLength = newLength;
+                beatLength = newBeat;
+                noteLength = newNoteLength;
+                groove = newGroove;
+                patternCustomSettings = settings;
+                logicRateMultiplier = targetRate;
+                effectRateMultiplier = Math.Min(effectRateMultiplier, targetRate);
+                UpdatePatternStartNotes();
+                InvalidateCumulativePatternCache();
+            });
+            return null;
         }
 
         private void CreateCustomSettings()
@@ -1070,11 +1188,11 @@ namespace FamiStudio
 
                             pattern.Notes.Clear();
 
-                            var grooveIterator = new GrooveIterator(localGroove, localGroovePadMode);
+                            var grooveIterator = new GrooveIterator(localGroove, localGroovePadMode, true);
 
                             for (int i = 0; i < maxPatternLen; i++)
                             {
-                                if (grooveIterator.IsPadFrame)
+                                while (grooveIterator.IsPadFrame)
                                     grooveIterator.Advance();
 
                                 if (originalNotes.TryGetValue(i, out var note) && note != null)
@@ -1089,13 +1207,13 @@ namespace FamiStudio
 
                     if (PatternHasCustomSettings(p))
                     {
-                        GetPatternCustomSettings(p).patternLength = FamiStudioTempoUtils.ComputeNumberOfFrameForGroove(localPatternLength, localGroove, localGroovePadMode);
+                        GetPatternCustomSettings(p).patternLength = FamiStudioTempoUtils.ComputeNumberOfFrameForGroove(localPatternLength, localGroove, localGroovePadMode, true);
                         GetPatternCustomSettings(p).beatLength    = Utils.Sum(localGroove);
                         GetPatternCustomSettings(p).groove        = new[] { 1 };
                     }
                 }
 
-                patternLength = FamiStudioTempoUtils.ComputeNumberOfFrameForGroove(patternLength, groove, groovePaddingMode);
+                patternLength = FamiStudioTempoUtils.ComputeNumberOfFrameForGroove(patternLength, groove, groovePaddingMode, true);
                 beatLength    = Utils.Sum(groove);
                 groove        = new [] { 1 };
 
@@ -1483,6 +1601,13 @@ namespace FamiStudio
                     if (buffer.IsReading) LogicRateMultiplier = logicRateMultiplier;
                 }
                 else if (buffer.IsReading) logicRateMultiplier = 1;
+
+                if (buffer.Version >= Project.EditingRateFormatVersion)
+                {
+                    buffer.Serialize(ref effectRateMultiplier);
+                    if (buffer.IsReading) EffectRateMultiplier = effectRateMultiplier;
+                }
+                else if (buffer.IsReading) effectRateMultiplier = logicRateMultiplier;
 
                 if (buffer.IsReading && !buffer.IsForUndoRedo)
                     DeleteNotesPastMaxInstanceLength();

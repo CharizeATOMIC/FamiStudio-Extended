@@ -180,6 +180,6 @@ static class InstrumentLayoutUiRegression
         }
         finally { explorer.Resize(originalWidth, originalHeight); }
         var saveAs = (Button)Field(window.ToolBar, "buttonSaveAs");
-        Check(saveAs.ImageName == null && !string.IsNullOrWhiteSpace(saveAs.Text), language + " Save As is a distinct text command without another disk icon");
+        Check(saveAs.ImageName == "SaveAs" && saveAs.Image != null && string.IsNullOrEmpty(saveAs.Text), language + " Save As has its own icon with a localized tooltip");
     }
 }

@@ -17,6 +17,11 @@ instrument's sample-mapping icon. Import DPCM into **DPCM Samples**. Assets may
 have the same name across these libraries without sharing source data or edits.
 An MMC5 or VRC6 instrument cannot accept a DPCM asset.
 
+The MMC5 PCM channel also accepts an ordinary 2A03 instrument's PCM mappings.
+The same instrument and PCM asset can be used on both channels. Its DPCM-only
+keys remain unchanged and are silent on MMC5 PCM. Opening the mapping keyboard
+keeps the selected compatible sample channel for audition.
+
 2A03 has one physical sample DAC, not an extra PCM channel. Starting a PCM key
 stops DPCM DMA; starting a DPCM key relinquishes software ownership. VRC6
 ordinary notes similarly relinquish PCM ownership and restore pulse registers.
@@ -44,6 +49,14 @@ music multiplier does not multiply sample pitch. NES export resamples to its
 actual timer rate. In particular, the VRC6 counter's CPU divider has a different
 relationship to PAL video scanlines; assuming the NTSC sample rate on PAL would
 change pitch and duration.
+
+The approximately 4 kHz rate is a limit of the supplied feeder implementation,
+not a fixed sample-rate limit of the DAC. A program can change the interval
+between DAC writes without changing the CPU clock. Faster service requires a
+matching resampling rate and enough CPU time for the worst IRQ path, DMA and
+music updates. Raising the WAV output rate alone does not restore frequencies
+removed during PCM conversion. The current release does not expose a higher
+PCM rate; the music update-rate control does not change PCM quality.
 
 Multiple PCM voices consume additional CPU time on every sample interrupt.
 The editor's host CPU can render combinations that an actual 6502 program
@@ -112,7 +125,9 @@ hardware behavior, not an unintended channel-mute operation. See
 
 ## Persistence and compatibility
 
-Format **1009** stores separate PCM assets, mappings, folders and sort state.
+Format **1009** introduced separate PCM assets, mappings, folders and sort state.
+New saves use **1010**, which also stores the independent note-effect clock
+needed when converting the editing grid without changing existing effects.
 R11 format 1008 remains readable: the loader clones required PCM source assets
 and converts the old regular instruments used on MMC5 PCM into MMC5
 instruments. Existing DPCM data is preserved. Saving uses the new format;
@@ -144,13 +159,19 @@ establish runtime support. Emulator execution is not a physical cartridge test.
 
 - **2A03**：同一个键位映射入口，每键选择 DPCM 或 PCM。两者轮流使用原生
   DPCM 声部，PCM 的硬件输出精度为 7 位。
-- **MMC5**：在 MMC5 乐器中映射 PCM。只能使用 PCM 采样，独立通道为 8 位。
+- **MMC5**：可用 MMC5 乐器，也可直接复用普通 2A03 乐器中的 PCM 键位。
+  只能播放 PCM，普通乐器的 DPCM 键位保留但在 MMC5 PCM 通道不发声。
+  独立通道的硬件精度为 8 位。
 - **VRC6**：在 VRC6 乐器中映射 PCM，通过任一方波通道播放，硬件精度为
   4 位。采样占用该方波，后续未映射音符恢复普通方波；锯齿波不受占用。
 
 监听与 WAV 导出使用相同处理数据。编辑器和 NSF2 约 4 kHz 的供样时钟独立于
 歌曲的更新倍率。硬件导出受 CPU 预算约束，不能把编辑器能播放的多路组合
 直接等同于 FC 能实时播放的组合。
+约 4 kHz 是当前供样驱动的实现限制，不是 DAC 的硬件上限。固定 CPU 时钟下，
+改变写入 DAC 的间隔即可改变 PCM 采样率，但须同步重新采样并核算最慢中断、
+DMA 与音乐更新的周期预算。本版尚未提供更高 PCM 采样率；提高音乐更新倍率
+或 WAV 输出采样率都不能恢复 PCM 转换时滤掉的高频内容。
 
 含 PCM 的 NSF/NSFe 需要支持 NSF2 IRQ 的播放器。PCM NES 使用独立模板：含 MMC5 的工程为 mapper 5，
 仅原生 APU 或使用 VRC6 的工程为 mapper 24，均为 1× 静态音乐播放器。NES 按自身时钟重新采样，
@@ -168,5 +189,5 @@ VRC6 的发声寄存器与中断。
 音量表，并核算画面与音频的共同负载。原生 DAC 的非线性混音可能改变
 三角波和噪波响度，这是 2A03 硬件本身的特性。
 
-工程格式升级为 1009。R11 工程会自动迁移共享采样，新保存的工程需要
+工程格式升级为 1010，保存转换网格时所需的独立音符效果时钟。R11 工程会自动迁移共享采样，新保存的工程需要
 本版或更新版本打开。跨平台移植必须同时重建原生音频库。

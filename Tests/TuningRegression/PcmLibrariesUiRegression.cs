@@ -3,6 +3,7 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using FamiStudio;
 
 static class PcmLibrariesUiRegression
@@ -119,6 +120,27 @@ static class PcmLibrariesUiRegression
         app.UndoRedoManager.Redo();
         apu = project.GetInstrument(apu.Id);
         Check(apu.GetPcmMapping(61)?.PcmPitch == -9, "key assignment supports redo");
+
+        // A regular instrument's PCM keys are shared with MMC5 without a
+        // duplicate or conversion. Opening its keyboard must keep that target.
+        int mmc5Channel = app.SelectedSong.GetChannelByType(ChannelType.Mmc5Pcm).Index;
+        app.SelectedChannelIndex = mmc5Channel;
+        app.StartEditDPCMMapping(apu);
+        Check(app.SelectedChannelIndex == mmc5Channel && window.PianoRoll.EditInstrument == apu,
+            "regular-instrument key editor keeps the selected MMC5 PCM destination");
+        var instrumentPlayer = (InstrumentPlayer)Field(app, "instrumentPlayer");
+        app.PlayInstrumentNote(61, false, false);
+        bool played = SpinWait.SpinUntil(() => instrumentPlayer.PlayingNote == 61 &&
+            NesApu.GetPcmPosition(NesApu.APU_INSTRUMENT, NesApu.PcmDestinationMmc5) >= 0, 2000);
+        app.StopInstrument();
+        Check(played, "UI piano audition plays regular PCM keys through the MMC5 native DAC");
+        Check(apu.GetDPCMMapping(37)?.Sample == project.GetSample(dpcmId),
+            "MMC5 audition leaves the regular instrument's DPCM key intact");
+        capture(window, Path.Combine(output, language + "-shared-apu-keys-mmc5.ppm"));
+        app.SelectedChannelIndex = app.SelectedSong.GetChannelByType(ChannelType.Mmc5Square1).Index;
+        app.StartEditDPCMMapping(apu);
+        Check(app.SelectedChannel.Type == ChannelType.Dpcm,
+            "opening sample keys from an MMC5 pulse chooses the regular instrument's sample destination");
 
         app.StartEditDPCMMapping(apu);
         Invoke(window.PianoRoll, "EditDPCMSampleMappingProperties", new Point(160, 150), apu.GetPcmMapping(49));

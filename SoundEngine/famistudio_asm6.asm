@@ -936,6 +936,10 @@ famistudio_clock_enabled:       .dsb 1
 famistudio_clock_song_divider:  .dsb 1
 famistudio_clock_song_counter:  .dsb 1
 famistudio_clock_logic_due:     .dsb 1
+; Divider zero preserves the original song-clock effect behavior.
+famistudio_clock_effect_divider: .dsb 1
+famistudio_clock_effect_counter: .dsb 1
+famistudio_clock_effect_due:     .dsb 1
 famistudio_clock_output_rate:   .dsb 1
 famistudio_clock_sfx_counter:   .dsb 1
 famistudio_clock_sfx_due:       .dsb 1
@@ -1569,6 +1573,8 @@ famistudio_music_stop:
     lda #0
     sta famistudio_clock_enabled
     sta famistudio_clock_song_counter
+    sta famistudio_clock_effect_divider
+    sta famistudio_clock_effect_counter
 .endif
 
     lda #0
@@ -1751,6 +1757,8 @@ famistudio_music_play:
     lda #0
     sta famistudio_clock_enabled
     sta famistudio_clock_song_counter
+    sta famistudio_clock_effect_divider
+    sta famistudio_clock_effect_counter
     pla
 .endif
 .if FAMISTUDIO_NUM_CHANNELS + FAMISTUDIO_USE_PCM = 5
@@ -2825,7 +2833,7 @@ famistudio_update_fds_channel_sound:
     sta FAMISTUDIO_FDS_MOD_HI
     sta FAMISTUDIO_FDS_SWEEP_ENV
 .if FAMISTUDIO_USE_UPDATE_RATE
-    lda famistudio_clock_logic_due
+    lda famistudio_clock_effect_due
     bne @rate_fds_mod_tick
     jmp @compute_volume
 @rate_fds_mod_tick:
@@ -4466,6 +4474,7 @@ famistudio_update:
     sta famistudio_clock_restart_due
     lda #1
     sta famistudio_clock_logic_due
+    sta famistudio_clock_effect_due
 .endif
     lda famistudio_song_speed ; Speed 0 means that no music is playing currently
     bmi @pause ; Bit 7 set is the pause flag
@@ -4575,6 +4584,25 @@ famistudio_update:
 
 ;----------------------------------------------------------------------------------------------------------------------
 @update_envelopes:
+.if FAMISTUDIO_USE_UPDATE_RATE
+    lda famistudio_clock_effect_divider
+    beq @rate_effect_legacy
+    lda famistudio_clock_effect_counter
+    beq @rate_effect_reload
+    dec famistudio_clock_effect_counter
+    beq @rate_effect_reload
+    lda #0
+    beq @rate_effect_store
+@rate_effect_reload:
+    lda famistudio_clock_effect_divider
+    sta famistudio_clock_effect_counter
+    lda #1
+    bne @rate_effect_store
+@rate_effect_legacy:
+    lda famistudio_clock_logic_due
+@rate_effect_store:
+    sta famistudio_clock_effect_due
+.endif
     ldx #0
 
 @env_process:
@@ -4724,7 +4752,7 @@ famistudio_update:
     bne @pitch_env_process
 
 .if FAMISTUDIO_USE_UPDATE_RATE
-    lda famistudio_clock_logic_due
+    lda famistudio_clock_effect_due
     bne @rate_effects_ready
     jmp @update_sound
 @rate_effects_ready:
@@ -6845,6 +6873,14 @@ famistudio_advance_channel:
     lda #1
     sta famistudio_clock_enabled
     jmp @read_byte
+
+@opcode_effect_rate:
+    lda (channel_data_ptr),y
+    iny
+    sta famistudio_clock_effect_divider
+    lda #0
+    sta famistudio_clock_effect_counter
+    jmp @read_byte
 .endif
 
 .if FAMISTUDIO_USE_PULSE_SWEEP
@@ -7454,6 +7490,7 @@ famistudio_advance_channel:
 .endif
 .if FAMISTUDIO_USE_UPDATE_RATE
     .byte <@opcode_update_rate ; $64
+    .byte <@opcode_effect_rate ; $65
 .endif
 
 
@@ -7632,6 +7669,7 @@ famistudio_advance_channel:
 .endif
 .if FAMISTUDIO_USE_UPDATE_RATE
     .byte >@opcode_update_rate ; $64
+    .byte >@opcode_effect_rate ; $65
 .endif
 
 
@@ -8023,7 +8061,7 @@ famistudio_clock_envelope_due:
 .if FAMISTUDIO_USE_ENVELOPE_DECAY
     lda famistudio_env_decay_rate,x
     beq @clock_env_macro
-    lda famistudio_clock_logic_due
+    lda famistudio_clock_effect_due
     bne @clock_env_due
     clc
     rts

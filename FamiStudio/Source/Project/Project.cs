@@ -31,7 +31,8 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1009;
+        public const int Version = 1010;
+        public const int EditingRateFormatVersion = 1010;
         public const int IndependentPcmFormatVersion = 1009;
         public const int Mmc5PcmFormatVersion = 1008;
         public const int TuningFormatVersion = 1001;
@@ -64,7 +65,7 @@ namespace FamiStudio
         {
             var incompatible = new List<string>();
             foreach (var song in songs)
-                if (song.LogicRateMultiplier > outputRate) incompatible.Add(song.Name + " (" + song.LogicRateMultiplier + "×)");
+                if (song.LogicRateMultiplier > outputRate || song.EffectRateMultiplier > outputRate) incompatible.Add(song.Name + " (" + Math.Max(song.LogicRateMultiplier, song.EffectRateMultiplier) + "×)");
             foreach (var instrument in instruments)
                 for (int type = 0; type < EnvelopeType.Count; type++)
                 {
@@ -79,6 +80,55 @@ namespace FamiStudio
             return incompatible.Count == 0 ? null : TuningStrings.UpdateRateIncompatibleError.Format(outputRate, string.Join(", ", incompatible.Take(6)) + (incompatible.Count > 6 ? "…" : ""));
         }
         public const int MaxMappedSampleSize = 0x40000;
+
+        private string PlanEditingRateChange(int targetRate, List<Action> changes)
+        {
+            if (targetRate != 1 && targetRate != 2 && targetRate != 4) throw new ArgumentOutOfRangeException(nameof(targetRate));
+            foreach (var song in songs)
+            {
+                var error = song.PlanEditingRateChange(targetRate, changes);
+                if (error != null) return TuningStrings.EditingRateError.Format(targetRate, error);
+            }
+            string PlanEnvelope(Envelope envelope, int type, string name, Action notify)
+            {
+                if (envelope == null || envelope.TickRateMultiplier <= targetRate) return null;
+                bool repeat = type == EnvelopeType.WaveformRepeat;
+                bool pulse = type == EnvelopeType.NoiseEnvelopeRestart;
+                if (!EnvelopeClockConversion.TryConvert(envelope.ShallowClone(), targetRate, repeat, pulse))
+                    return TuningStrings.EditingRateError.Format(targetRate, TuningStrings.EditingRateEnvelopeError.Format(name));
+                changes.Add(() => { EnvelopeClockConversion.TryConvert(envelope, targetRate, repeat, pulse); notify?.Invoke(); });
+                return null;
+            }
+            foreach (var instrument in instruments)
+                for (int type = 0; type < EnvelopeType.Count; type++)
+                {
+                    if (type == EnvelopeType.FdsModulation || type == EnvelopeType.FdsWaveform || type == EnvelopeType.N163Waveform) continue;
+                    int envelopeType = type;
+                    var error = PlanEnvelope(instrument.Envelopes[type], type, instrument.Name + " / " + EnvelopeType.LocalizedNames[type],
+                        () => instrument.NotifyEnvelopeChanged(envelopeType, false));
+                    if (error != null) return error;
+                }
+            foreach (var arpeggio in arpeggios)
+            {
+                var error = PlanEnvelope(arpeggio.Envelope, EnvelopeType.Arpeggio, arpeggio.Name, null);
+                if (error != null) return error;
+            }
+            return null;
+        }
+
+        public string GetEditingRateError(int targetRate) => PlanEditingRateChange(targetRate, new List<Action>());
+
+        // Deliberately separate from the raw output-clock setter used by loaders,
+        // undo and API clients. An explicit editor action changes the grid too.
+        public bool TryChangeEditingRate(int targetRate, out string error)
+        {
+            var changes = new List<Action>();
+            error = PlanEditingRateChange(targetRate, changes);
+            if (error != null) return false;
+            foreach (var change in changes) change();
+            UpdateRateMultiplier = targetRate;
+            return true;
+        }
         public const int MaxDPCMBanks = 64;
         public const int MaxSampleAddress = 255 * 64;
 

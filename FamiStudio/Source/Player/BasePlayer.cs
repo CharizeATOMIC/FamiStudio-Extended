@@ -191,7 +191,7 @@ namespace FamiStudio
 
                 FamiStudioTempoUtils.ValidateGroove(newGroove);
 
-                grooveIterator = new GrooveIterator(newGroove, newGroovePadMode);
+                grooveIterator = new GrooveIterator(newGroove, newGroovePadMode, true);
 
                 tempoEnvelope = FamiStudioTempoUtils.GetTempoEnvelope(newGroove, newGroovePadMode, song.Project.PalMode);
                 tempoEnvelopeCounter = tempoEnvelope[0];
@@ -277,7 +277,7 @@ namespace FamiStudio
             if (updateRateMultiplier > 1 && palPlayback != project.PalMode)
                 throw new InvalidOperationException(TuningStrings.UpdateRateRegionError);
             foreach (var channel in channelStates)
-                channel.ConfigureUpdateRates(updateRateMultiplier, song?.LogicRateMultiplier ?? updateRateMultiplier);
+                channel.ConfigureUpdateRates(updateRateMultiplier, song?.LogicRateMultiplier ?? updateRateMultiplier, song?.EffectRateMultiplier ?? updateRateMultiplier);
             var expMixerSettings = new ExpansionMixer[ExpansionType.Count];
 
             // Apply project overrides.

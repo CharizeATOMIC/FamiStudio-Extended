@@ -93,6 +93,7 @@ namespace FamiStudio
         private const byte OpcodeApuInstrumentFlags   = 0x62;
         private const byte OpcodePulseSweep           = 0x63;
         private const byte OpcodeUpdateRate           = 0x64;
+        private const byte OpcodeEffectRate           = 0x65;
 
         private const byte OpcodeSetReferenceFT2       = 0xff; // FT2
         private const byte OpcodeLoopFT2               = 0xfd; // FT2
@@ -625,7 +626,7 @@ namespace FamiStudio
                             {
                                 if (note.HasVibrato)
                                 {
-                                    uniqueVibratos.Add((note.RawVibrato, s.LogicRateMultiplier));
+                                    uniqueVibratos.Add((note.RawVibrato, s.EffectRateMultiplier));
                                 }
                             }
                         }
@@ -921,7 +922,7 @@ namespace FamiStudio
 
             // Setup the vibrato envelopes.
             foreach (var song in project.Songs)
-                vibratoEnvelopeNames[(0, song.LogicRateMultiplier)] = defaultPitchEnvName;
+                vibratoEnvelopeNames[(0, song.EffectRateMultiplier)] = defaultPitchEnvName;
 
             foreach (var kv in vibToCrc)
             {
@@ -1268,6 +1269,11 @@ namespace FamiStudio
                     channelData.Add($"{hexp}{OpcodeUpdateRate:x2}+");
                     channelData.Add($"{hexp}{project.UpdateRateMultiplier:x2}");
                     channelData.Add($"{hexp}{GetUpdateDivider(song.LogicRateMultiplier):x2}");
+                    if (song.EffectRateMultiplier != song.LogicRateMultiplier)
+                    {
+                        channelData.Add($"{hexp}{OpcodeEffectRate:x2}+");
+                        channelData.Add($"{hexp}{GetUpdateDivider(song.EffectRateMultiplier):x2}");
+                    }
                 }
 
                 if (isSpeedChannel && project.UsesFamiTrackerTempo)
@@ -1451,8 +1457,8 @@ namespace FamiStudio
 
                             // TODO: If note has attack, no point in setting the default vibrato envelope, instrument will do it anyway.
                             channelData.Add($"{hexp}{OpcodeOverridePitchEnv:x2}+");
-                            channelData.Add($"{lo}({vibratoEnvelopeNames[(vib, song.LogicRateMultiplier)]})");
-                            channelData.Add($"{hi}({vibratoEnvelopeNames[(vib, song.LogicRateMultiplier)]})");
+                            channelData.Add($"{lo}({vibratoEnvelopeNames[(vib, song.EffectRateMultiplier)]})");
+                            channelData.Add($"{hi}({vibratoEnvelopeNames[(vib, song.EffectRateMultiplier)]})");
 
                             if (vib == 0)
                             {

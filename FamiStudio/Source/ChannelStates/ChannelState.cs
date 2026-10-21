@@ -29,15 +29,22 @@ namespace FamiStudio
         readonly int[] envelopeClockCountdown = new int[EnvelopeType.Count];
         int outputRateMultiplier = 1;
         int logicRateMultiplier = 1;
+        int effectRateMultiplier = 1;
+        int effectClockCountdown;
         protected bool logicalUpdate = true;
+        protected bool effectUpdate = true;
 
-        public void ConfigureUpdateRates(int outputRate, int logicRate)
+        public void ConfigureUpdateRates(int outputRate, int logicRate, int effectRate = 0)
         {
+            if (effectRate == 0) effectRate = logicRate;
             if ((outputRate != 1 && outputRate != 2 && outputRate != 4) ||
-                (logicRate != 1 && logicRate != 2 && logicRate != 4) || logicRate > outputRate)
+                (logicRate != 1 && logicRate != 2 && logicRate != 4) || logicRate > outputRate ||
+                (effectRate != 1 && effectRate != 2 && effectRate != 4) || effectRate > outputRate)
                 throw new ArgumentOutOfRangeException(nameof(outputRate));
             outputRateMultiplier = outputRate;
             logicRateMultiplier = logicRate;
+            effectRateMultiplier = effectRate;
+            effectClockCountdown = 0;
         }
         private int volumeEnvelopeDecayPeriod;
         private int volumeEnvelopeDecayCounter;
@@ -334,7 +341,7 @@ namespace FamiStudio
                 if (newNote.VibratoDepth != 0 && newNote.VibratoDepth != 0)
                 {
                     envelopes[EnvelopeType.Pitch] = Envelope.CreateVibratoEnvelope(newNote.VibratoSpeed, newNote.VibratoDepth);
-                    envelopes[EnvelopeType.Pitch].TickRateMultiplier = logicRateMultiplier;
+                    envelopes[EnvelopeType.Pitch].TickRateMultiplier = effectRateMultiplier;
                     envelopeClockCountdown[EnvelopeType.Pitch] = 0;
                     envelopeIdx[EnvelopeType.Pitch] = 0;
                     envelopeValues[EnvelopeType.Pitch] = 0;
@@ -545,6 +552,9 @@ namespace FamiStudio
         public void Update(bool logicalTick = true)
         {
             logicalUpdate = logicalTick;
+            effectUpdate = effectRateMultiplier == logicRateMultiplier ? logicalTick : effectClockCountdown == 0;
+            if (effectClockCountdown == 0) effectClockCountdown = outputRateMultiplier / effectRateMultiplier;
+            effectClockCountdown--;
             if (logicalTick)
             {
                 while (scheduledEvents.Count != 0 && scheduledEvents[0].Frame <= playbackFrame)
@@ -557,17 +567,17 @@ namespace FamiStudio
                 }
                 UpdateDelayedNote();
             }
-            UpdateEnvelopes(logicalTick);
-            if (logicalTick)
+            UpdateEnvelopes(effectUpdate);
+            if (effectUpdate)
             {
                 UpdateSlide();
                 UpdateVolumeSlide();
-                playbackFrame++;
             }
+            if (logicalTick) playbackFrame++;
             UpdateAPU();
         }
 
-        private void UpdateEnvelopes(bool logicalTick)
+        private void UpdateEnvelopes(bool effectTick)
         {
             if (note.Instrument != null)
             {
@@ -584,7 +594,7 @@ namespace FamiStudio
                                 envelopeIdx[j] = initialEnvelope.Loop;
                             volumeEnvelopeDecayStartsOnAttack = false;
                         }
-                        if (logicalTick && --volumeEnvelopeDecayCounter == 0)
+                        if (effectTick && --volumeEnvelopeDecayCounter == 0)
                         {
                             envelopeValues[j] = Math.Max(0, envelopeValues[j] - 1);
                             volumeEnvelopeDecayCounter = volumeEnvelopeDecayPeriod;

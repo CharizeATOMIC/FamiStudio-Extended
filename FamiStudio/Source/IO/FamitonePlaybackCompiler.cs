@@ -130,15 +130,15 @@ namespace FamiStudio
                 patternRows[p] = rows.Count;
                 var groove = song.GetPatternGroove(p);
                 int padding = song.GetPatternGroovePaddingMode(p);
-                var iterator = new GrooveIterator(groove, padding);
+                var iterator = new GrooveIterator(groove, padding, true);
                 for (int n = 0; n < song.GetPatternLength(p); n++)
                 {
-                    if (iterator.IsPadFrame)
+                    while (iterator.IsPadFrame)
                         iterator.Advance();
                     rows.Add((p, n, frame + iterator.FrameIndex));
                     iterator.Advance();
                 }
-                frame += FamiStudioTempoUtils.ComputeNumberOfFrameForGroove(song.GetPatternLength(p), groove, padding);
+                frame += FamiStudioTempoUtils.ComputeNumberOfFrameForGroove(song.GetPatternLength(p), groove, padding, true);
             }
             patternFrames[originalLength] = frame;
             patternRows[originalLength] = rows.Count;

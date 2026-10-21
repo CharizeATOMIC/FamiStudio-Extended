@@ -28,6 +28,7 @@ namespace FamiStudio
 
         private TuningProperties tuningProperties;
         private int originalNoteLength;
+        private bool updatingTempoList;
 
         private TempoInfo[] tempoList;
         private string[]    tempoStrings;
@@ -127,7 +128,7 @@ namespace FamiStudio
                 tempoList = GetAvailableTempos(notesPerBeat / noteLength, groove);
                 var tempoIndex = FamiStudioTempoUtils.FindTempoFromGroove(tempoList, groove);
                 Debug.Assert(tempoIndex >= 0);
-                tempoStrings = tempoList.Select(t => (t.bpm * song.LogicRateMultiplier).ToString("n1") + (t.groove.Length == 1 ? " *": "")).ToArray();
+                tempoStrings = GetTempoStrings();
 
                 var grooveList = FamiStudioTempoUtils.GetAvailableGrooves(tempoList[tempoIndex].groove);
                 var grooveIndex = Array.FindIndex(grooveList, g => Utils.CompareArrays(g, groove) == 0);
@@ -141,7 +142,7 @@ namespace FamiStudio
 
                 props.ShowWarnings = true;
                 groovePropIdx    = props.AddDropDownList(GrooveLabel.Colon, grooveStrings, grooveStrings[grooveIndex], GrooveTooltip); // 4
-                groovePadPropIdx = props.AddDropDownList(GroovePaddingLabel.Colon, GroovePaddingType.Names, GroovePaddingType.Names[song.GroovePaddingMode], GroovePaddingTooltip); // 5
+                groovePadPropIdx = props.AddDropDownList(GroovePaddingLabel.Colon, GroovePaddingType.Names, GroovePaddingType.Names[patternIdx < 0 ? song.GroovePaddingMode : song.GetPatternGroovePaddingMode(patternIdx)], GroovePaddingTooltip); // 5
 
                 originalNoteLength = noteLength;
 
@@ -167,8 +168,19 @@ namespace FamiStudio
             return available;
         }
 
+        private string[] GetTempoStrings()
+        {
+            var labels = tempoList.Select(t => (t.bpm * song.LogicRateMultiplier).ToString("n1") + (t.groove.Length == 1 ? " *" : "")).ToArray();
+            var duplicates = labels.GroupBy(label => label).Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet();
+            // Converted grooves can have the same mean BPM as another rhythm.
+            // Distinguish their labels as well as keeping their selected index.
+            return labels.Select((label, i) => duplicates.Contains(label) ? label + " (" + string.Join("-", tempoList[i].groove) + ")" : label).ToArray();
+        }
+
         private void Props_PropertyChanged(PropertyPage props, int propIdx, int rowIdx, int colIdx, object value)
         {
+            if (updatingTempoList)
+                return;
             if (song.UsesFamiTrackerTempo)
             {
                 var tempo = song.FamitrackerTempo;
@@ -194,15 +206,18 @@ namespace FamiStudio
                 {
                     var currentGroove = tempoList[props.GetSelectedIndex(famistudioBpmPropIdx)].groove;
                     tempoList = GetAvailableTempos(notesPerBeat, currentGroove);
-                    tempoStrings = tempoList.Select(t => (t.bpm * song.LogicRateMultiplier).ToString("n1") + (t.groove.Length == 1 ? " *" : "")).ToArray();
+                    tempoStrings = GetTempoStrings();
                     props.UpdateDropDownListItems(famistudioBpmPropIdx, tempoStrings);
+                    updatingTempoList = true;
+                    try { props.SetDropDownListIndex(famistudioBpmPropIdx, FamiStudioTempoUtils.FindTempoFromGroove(tempoList, currentGroove)); }
+                    finally { updatingTempoList = false; }
                 }
 
                 // Changing the BPM affects the grooves and note length.
                 if (propIdx == famistudioBpmPropIdx ||
                     propIdx == notesPerBeatPropIdx)
                 {
-                    var tempoIndex    = Array.IndexOf(tempoStrings, props.GetPropertyValue<string>(famistudioBpmPropIdx));
+                    var tempoIndex    = props.GetSelectedIndex(famistudioBpmPropIdx);
                     var tempoInfo     = tempoList[tempoIndex];
                     var framesPerNote = Utils.Min(tempoInfo.groove);
 
@@ -225,7 +240,7 @@ namespace FamiStudio
 
             if (song.UsesFamiStudioTempo)
             {
-                var tempoIndex = Array.IndexOf(tempoStrings, props.GetPropertyValue<string>(famistudioBpmPropIdx));
+                var tempoIndex = props.GetSelectedIndex(famistudioBpmPropIdx);
                 var tempoInfo = tempoList[tempoIndex];
                 var notesPerBeat = props.GetPropertyValue<int>(notesPerBeatPropIdx);
                 var notesPerPattern = props.GetPropertyValue<int>(notesPerPatternPropIdx);
@@ -373,7 +388,7 @@ namespace FamiStudio
             }
             else
             {
-                var tempoIndex    = Array.IndexOf(tempoStrings, props.GetPropertyValue<string>(famistudioBpmPropIdx));
+                var tempoIndex    = props.GetSelectedIndex(famistudioBpmPropIdx);
                 var tempoInfo     = tempoList[tempoIndex];
 
                 var beatLength    = props.GetPropertyValue<int>(notesPerBeatPropIdx);

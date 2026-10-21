@@ -1,0 +1,7 @@
+The bundled NotSoFatso is the FamiStudio Extended modified version.
+Changes made in October 2026 include NSF2 timer IRQ execution and diagnostics,
+MMC5 PCM output, and register-timing validation support.
+The original GNU GPL version 2-or-later notices remain applicable.
+Complete corresponding source and build projects are distributed alongside
+the Windows binary as FamiStudio-Extended-r12-source.zip, under
+ThirdParty/NotSoFatso/, with the same source revision in the release manifest.

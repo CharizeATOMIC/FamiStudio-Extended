@@ -3789,13 +3789,18 @@ namespace FamiStudio
                     var changedExpansion = newExpansionMask != project.ExpansionAudioMask;
                     var changedNumChannels = numN163Channels != project.ExpansionNumN163Channels;
                     var changedAuthoringMachine = palAuthoring != project.PalMode;
-                    var changedTuning = tuning != project.Tuning || !project.ChipTuning.ContentEquals(dlg.ChipTuning) || project.UpdateRateMultiplier != dlg.UpdateRateMultiplier;
+                    var changedEditingRate = project.UpdateRateMultiplier != dlg.UpdateRateMultiplier ||
+                        project.Songs.Any(s => s.LogicRateMultiplier != dlg.UpdateRateMultiplier);
+                    var changedTuning = tuning != project.Tuning || !project.ChipTuning.ContentEquals(dlg.ChipTuning) || changedEditingRate;
                     var instanceCounts = dlg.InstanceCounts;
                     var changedInstances = Enumerable.Range(0, ExpansionType.Count).Any(i => instanceCounts[i] != project.GetExpansionInstances(i));
                     var changedMmc5Pcm = dlg.Mmc5PcmEnabled != project.Mmc5PcmEnabled;
                     var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => Project.IsChannelActive(t, newExpansionMask, numN163Channels, dlg.Mmc5PcmEnabled)).Sum(t => instanceCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
                     if (channelCount > 64) { App.DisplayNotification(TuningStrings.ChannelLimitError, true); return; }
                     var changedExpMixer = dlg.MixerProperties.Changed;
+
+                    var rateError = project.GetEditingRateError(dlg.UpdateRateMultiplier);
+                    if (rateError != null) { App.DisplayNotification(rateError, true, true); return; }
 
                     var transFlags = TransactionFlags.None;
 
@@ -3808,12 +3813,20 @@ namespace FamiStudio
 
                     App.UndoRedoManager.BeginTransaction(TransactionScope.ProjectNoDPCMSamples, transFlags);
 
+                    // Includes legacy projects whose output already runs at 4x
+                    // but whose existing songs still use a 1x editing grid.
+                    if (!project.TryChangeEditingRate(dlg.UpdateRateMultiplier, out rateError))
+                    {
+                        App.UndoRedoManager.AbortTransaction();
+                        App.DisplayNotification(rateError, true, true);
+                        return;
+                    }
+
                     project.Name = dlg.Title;
                     project.Author = dlg.Author;
                     project.Copyright = dlg.Copyright;
                     project.Tuning = tuning;
                     project.ChipTuning = dlg.ChipTuning;
-                    project.UpdateRateMultiplier = dlg.UpdateRateMultiplier;
 
                     project.SoundEngineUsesDpcmBankSwitching = dlg.DPCMBankswitching;
                     project.SoundEngineUsesExtendedDpcm = dlg.DPCMExtendedRange;
@@ -3864,6 +3877,8 @@ namespace FamiStudio
                     if (!string.IsNullOrEmpty(toast))
                         Platform.ShowToast(window, toast, true);
 
+                    if (changedEditingRate)
+                        SongModified?.Invoke(App.SelectedSong);
                     App.UndoRedoManager.EndTransaction();
 
                     RecreateAllControls();

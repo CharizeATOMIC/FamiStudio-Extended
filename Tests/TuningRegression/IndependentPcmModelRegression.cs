@@ -103,7 +103,7 @@ static class IndependentPcmModelRegression
         Check(converted.GetPcmMapping(38)?.Sample == pcm && !converted.HasAnyDpcmMappings,
             "instrument conversion retains compatible PCM keys without adding DPCM to MMC5");
         p.DeleteInstrument(converted);
-        Check(!p.Songs[0].GetChannelByType(ChannelType.Mmc5Pcm).SupportsInstrument(p.GetInstrument("2A03 keys")), "MMC5 PCM accepts its own instrument type only");
+        Check(p.Songs[0].GetChannelByType(ChannelType.Mmc5Pcm).SupportsInstrument(p.GetInstrument("2A03 keys")), "MMC5 PCM accepts shared regular-instrument PCM keys");
         CheckLibraries(p.DeepClone(), "clone");
         var undo = new ProjectSaveBuffer(p, ProjectBufferFlags.UndoRedo);
         p.Serialize(undo);
@@ -192,6 +192,7 @@ static class IndependentPcmModelRegression
                     "R11 shared text projects migrate without losing MMC5 notes or sample data");
             }
         }
+        PcmCrossChannelRegression.Run(Path.Combine(output, "shared-keys"));
         File.WriteAllText(Path.Combine(output, "independent-pcm-model.json"),
             JsonSerializer.Serialize(new { passed = true, checks = checks.Count, results = checks }, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"PASS independent PCM model: {checks.Count} checks");

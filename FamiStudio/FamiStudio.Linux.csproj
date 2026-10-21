@@ -1082,6 +1082,8 @@
     <EmbeddedResource Include="Resources\Atlas\S5BEnvelopeF@2x.tga" />
     <EmbeddedResource Include="Resources\Atlas\Save.tga" />
     <EmbeddedResource Include="Resources\Atlas\Save@2x.tga" />
+    <EmbeddedResource Include="Resources\Atlas\SaveAs.tga" />
+    <EmbeddedResource Include="Resources\Atlas\SaveAs@2x.tga" />
     <EmbeddedResource Include="Resources\Atlas\SaveSmall.tga" />
     <EmbeddedResource Include="Resources\Atlas\SaveSmall@2x.tga" />
     <EmbeddedResource Include="Resources\Atlas\SelectAll.tga" />

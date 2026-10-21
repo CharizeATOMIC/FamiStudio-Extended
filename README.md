@@ -8,6 +8,8 @@ The bundled **Gimmick!** demonstration includes four songs and uses the extended
 
 Independent **DPCM and PCM libraries** support mapped PCM on 2A03, MMC5 and VRC6 instruments. PCM shares the native DPCM voice on 2A03, uses its own DAC on MMC5, and occupies the selected VRC6 pulse. See [PCM integration](Docs/docs/development/mmc5-pcm-integration.md) for the matching sound engine, NSF2/NES exports and CPU/platform requirements.
 
+Project 1x/2x/4x changes also convert the **editing grid**, preserving musical speed and envelope duration. Ordinary instruments' PCM mappings can be reused on MMC5 PCM. **Save As** has a dedicated toolbar icon.
+
 ## Original upstream README (retained)
 
 The text below is the original FamiStudio introduction, including its upstream links and contribution policy. It describes the upstream project; the fork's current features, builds and validation limits are documented above.
