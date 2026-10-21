@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "repository": "CharizeATOMIC/FamiStudio-Extended",
+  "target_branch": "feature/song-tuning-mixer",
+  "target_commit": "8eb7d858696c8fc155e7f1d607745e46258451c6",
+  "tag": "r13",
+  "prerelease": true,
+  "make_latest": false,
+  "draft_identity": "exact-r13-tag",
+  "title": "FamiStudio Extended r13 — Selectable PCM sample rates",
+  "title_file": "r13-release-title.txt",
+  "title_file_sha256": "f78fc792efeefb2177170466be4c85bfeee4adc2ab9ed38911f4e62b68a66960",
+  "body_file": "r13-release-body.md",
+  "body_file_sha256": "86bfc4e658c0878fa688371cb6543e314fa308eb2474bccf0610b47d44b4064d",
+  "body_text_sha256": "a7e0581f634d12b7ad6967e9cce885ec5ff6a12ff636d8b362ba269b5b4a03d1",
+  "chunk_limit_bytes": 20971520,
+  "assets": [
+    {
+      "name": "FamiStudio-Extended-r13-Windows-x64.zip",
+      "bytes": 66551550,
+      "sha256": "1001f63c7325de6d604052b14e1819d60b0ba0c6bb4f4c0369b98f6e8c783ae2",
+      "source": "chunks",
+      "chunks": [
+        {
+          "file": "FamiStudio-Extended-r13-Windows-x64.zip.part01",
+          "bytes": 20971520,
+          "sha256": "36271ccd5521092211e0b5662387a59cb3f068baacb9024c564b7173773ce8db"
+        },
+        {
+          "file": "FamiStudio-Extended-r13-Windows-x64.zip.part02",
+          "bytes": 20971520,
+          "sha256": "5af2fe0955f70ae58c1c72b2a3befb1090f7783e99845f1546838164c9ee411c"
+        },
+        {
+          "file": "FamiStudio-Extended-r13-Windows-x64.zip.part03",
+          "bytes": 20971520,
+          "sha256": "95ea77ef8dfa01f9658ad433eafff6d1631c092af0175b1b48de1a1d71316e0f"
+        },
+        {
+          "file": "FamiStudio-Extended-r13-Windows-x64.zip.part04",
+          "bytes": 3636990,
+          "sha256": "ae75e7c7bfd1dc47d50c248eed09f1f238bb8942920ddfac6cf4508835d52e32"
+        }
+      ]
+    },
+    {
+      "name": "FamiStudio-Extended-r13-source.zip",
+      "bytes": 138369939,
+      "sha256": "3d69c609df97a5aa55ad28f4abdb99720abb1eb276e1a1f88d0870a4b3ffb4ab",
+      "source": "git_archive",
+      "prefix": "FamiStudio-Extended-r13-source/"
+    },
+    {
+      "name": "FamiStudio-Extended-r13.bundle",
+      "bytes": 34957,
+      "sha256": "97d24c837dc040cca3606cfda125d4db329f216910c9a140ca0164c7f6aa8527",
+      "source": "existing_repository_file",
+      "file": "FamiStudio-Extended-r13.bundle"
+    },
+    {
+      "name": "SHA256SUMS-r13.txt",
+      "bytes": 304,
+      "sha256": "fc3eb15bfcf6b0c9ca53c67b3c2d167d6edc920ff206d09d6129074ddb56371a",
+      "source": "file",
+      "file": "SHA256SUMS-r13.txt"
+    }
+  ]
+}

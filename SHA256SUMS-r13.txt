@@ -1,0 +1,3 @@
+1001f63c7325de6d604052b14e1819d60b0ba0c6bb4f4c0369b98f6e8c783ae2  FamiStudio-Extended-r13-Windows-x64.zip
+3d69c609df97a5aa55ad28f4abdb99720abb1eb276e1a1f88d0870a4b3ffb4ab  FamiStudio-Extended-r13-source.zip
+97d24c837dc040cca3606cfda125d4db329f216910c9a140ca0164c7f6aa8527  FamiStudio-Extended-r13.bundle
