@@ -34,4 +34,9 @@ jobs:
       - name: Reconstruct, verify and publish only the matching R12 draft
         env:
           GH_TOKEN: ${{ github.token }}
+          TZ: Asia/Hong_Kong
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'true'
         run: python3 r12-release-publish.py --publish --repository . --payload . --output "${{ runner.temp }}/r12-reconstructed"
+
