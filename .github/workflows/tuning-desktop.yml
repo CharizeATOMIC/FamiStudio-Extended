@@ -1,7 +1,41 @@
 name: Tuning desktop builds
+# master holds release-upload helpers. All other source branches and release
+# tags retain CI; publication payloads must not start application builds.
 on:
   push:
+    branches-ignore: [master]
+    tags: ['r*', 'v*']
+    paths:
+      - 'FamiStudio/**'
+      - 'ThirdParty/**'
+      - 'Tests/**'
+      - 'Setup/**'
+      - 'SoundEngine/**'
+      - 'LICENSE'
+      - '.gitattributes'
+      - '*.sln'
+      - '*.props'
+      - '*.targets'
+      - 'global.json'
+      - 'NuGet.Config'
+      - 'nuget.config'
+      - '.github/workflows/tuning-desktop.yml'
   pull_request:
+    paths:
+      - 'FamiStudio/**'
+      - 'ThirdParty/**'
+      - 'Tests/**'
+      - 'Setup/**'
+      - 'SoundEngine/**'
+      - 'LICENSE'
+      - '.gitattributes'
+      - '*.sln'
+      - '*.props'
+      - '*.targets'
+      - 'global.json'
+      - 'NuGet.Config'
+      - 'nuget.config'
+      - '.github/workflows/tuning-desktop.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,7 +51,7 @@ jobs:
           - os: ubuntu-latest
             project: FamiStudio.Linux.csproj
             native: libNesSndEmu.so
-          - os: macos-latest
+          - os: macos-15-intel
             project: FamiStudio.Mac.csproj
             native: NesSndEmu.dylib
     runs-on: ${{ matrix.os }}
