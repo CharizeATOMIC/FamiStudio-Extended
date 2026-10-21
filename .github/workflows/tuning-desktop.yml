@@ -178,9 +178,9 @@ jobs:
         shell: bash
         env:
           BUNDLE: FamiStudio-Extended-r13.bundle
-          BUNDLE_SHA: 97d24c837dc040cca3606cfda125d4db329f216910c9a140ca0164c7f6aa8527
-          BASE: 62d90ff8f40a8399f30b00d00eba4cf2cfb6b9dd
-          EXPECTED: 8eb7d858696c8fc155e7f1d607745e46258451c6
+          BUNDLE_SHA: fd883276f3f32ba490b7fabe72e409dec5e94960dde776e6801bea32e0182776
+          BASE: 99c959e87a0ec660f576fe53ff5772227e897109
+          EXPECTED: 5d038c96b697f5e2539defc873ff72d31d279f4e
           TARGET: refs/heads/feature/song-tuning-mixer
         run: |
           set -euo pipefail
@@ -220,8 +220,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' 'b515d659e0c4b22494e82e1c6f8343d56b86c0a03912e685182573ba65b116dc' 'r13-publish-manifest.json' | sha256sum --check --strict
-          printf '%s  %s\n' '3460a0aac4bf14993b13f62ce68e31282ff9edca5933cb9648290582d845dca0' 'r13-release-publish.py' | sha256sum --check --strict
+          printf '%s  %s\n' 'f3445ec1efba15c47b8c9ab3e674d31bc1bf3728328314cc4c2e27e2f8c0e453' 'r13-publish-manifest.json' | sha256sum --check --strict
+          printf '%s  %s\n' '3fba247d1d753d6925a585e14b62e63d8ded5abffebf75c0d3f7ddbc3d630eaf' 'r13-release-publish.py' | sha256sum --check --strict
       - name: Reconstruct and verify all four assets before publishing a new R13 prerelease
         env:
           GH_TOKEN: ${{ github.token }}
