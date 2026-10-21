@@ -33,6 +33,10 @@ static class Program
     {
         if (args.Length > 0 && args[0] == "--ui") { UiSmoke.Run(args); return; }
         Init.InitializeBaseSystems(true);
+        if (args.Length > 0 && args[0] == "--pcm-sample-rate-core") { PcmSampleRateCoreRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pcm-sample-rate-model") { PcmSampleRateModelRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pcm-sample-rate-export") { PcmSampleRateExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
+        if (args.Length > 0 && args[0] == "--pcm-sample-rate-playback") { PcmSampleRatePlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--song-grid-clocks") { SongGridClockExportRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pcm-nes") { PcmNesRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }
         if (args.Length > 0 && args[0] == "--pcm-playback") { PcmPlaybackRegression.Run(args[1]); Init.ShutdownBaseSystems(); return; }

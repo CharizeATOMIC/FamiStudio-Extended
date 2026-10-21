@@ -38,6 +38,7 @@ namespace FamiStudio
             var versionString = Utils.SplitVersionNumber(Platform.ApplicationVersion, out _);
             var projectLine = $"Project";
             if (project.UpdateRateMultiplier != 1) projectLine += GenerateAttribute("UpdateRateMultiplier", project.UpdateRateMultiplier);
+            if (project.PcmRateMultiplier != 1) projectLine += GenerateAttribute("PcmRateMultiplier", project.PcmRateMultiplier);
             if (!noVersion)
                 projectLine += $"{GenerateAttribute("Version", versionString)}";
             projectLine += $"{GenerateAttribute("TempoMode", TempoType.Names[project.TempoMode])}";
@@ -524,6 +525,7 @@ namespace FamiStudio
                             if (parameters.TryGetValue("TempoMode", out var tempoMode)) project.TempoMode = TempoType.GetValueForName(tempoMode);
                             if (parameters.TryGetValue("PAL", out var pal)) project.PalMode = bool.Parse(pal);
                             if (parameters.TryGetValue("UpdateRateMultiplier", out var rate)) project.UpdateRateMultiplier = int.Parse(rate);
+                            if (parameters.TryGetValue("PcmRateMultiplier", out var pcmRate)) project.PcmRateMultiplier = int.Parse(pcmRate);
                             if (parameters.TryGetValue("Mmc5PcmEnabled", out var mmc5Pcm)) project.Mmc5PcmEnabled = bool.Parse(mmc5Pcm);
                             if (parameters.TryGetValue("ChipInstances", out var chipInstances)) project.SetExpansionInstances(chipInstances.Split(',').Select(int.Parse).ToArray());
                             if (parameters.TryGetValue("Tuning", out var tuning)) project.Tuning = int.Parse(tuning);

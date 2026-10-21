@@ -131,8 +131,9 @@ namespace FamiStudio
             return flags;
         }
 
-        public unsafe bool Save(Project originalProject, int kernel, string filename, int[] songIds, string name, string author, string copyright, int machine, bool nsfe)
+        public unsafe bool Save(Project originalProject, int kernel, string filename, int[] songIds, string name, string author, string copyright, int machine, bool nsfe, int? pcmSampleRate = null)
         {
+            if (!Mmc5PcmExportData.ValidateSampleRate(originalProject, pcmSampleRate)) return false;
             if (originalProject.UpdateRateMultiplier > 1 && machine != (originalProject.PalMode ? MachineType.PAL : MachineType.NTSC))
             { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateRegionError); return false; }
             if (originalProject.UsesPcm && (kernel != FamiToneKernel.FamiStudio || machine == MachineType.Dual || originalProject.PalMode != (machine == MachineType.PAL)))
@@ -149,6 +150,7 @@ namespace FamiStudio
                     return false;
 
                 var project = originalProject.DeepClone();
+                project.PcmRateMultiplier = 1;
                 project.DeleteAllSongsBut(songIds);
                 project.SoundEngineUsesExtendedInstruments = true;
                 project.SoundEngineUsesDpcmBankSwitching = true;

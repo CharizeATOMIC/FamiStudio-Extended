@@ -3,15 +3,22 @@ using System.Collections.Generic;
 
 namespace FamiStudio
 {
-    // Keep editor playback and the 6502 feeder on exactly the same clock.
+    // The compatible 1x clock matches the supplied 6502 feeder. Higher
+    // multipliers improve editor/audio rendering without changing note timing.
     public static class Mmc5PcmTiming
     {
-        public static int GetPeriod(bool pal) => pal ? 416 : 448;
-        public static double GetSampleRate(bool pal) => (pal ? 1662607.125 : 1789772.7272727273) / GetPeriod(pal);
+        public static int GetPeriod(bool pal, int multiplier = 1)
+        {
+            if (multiplier != 1 && multiplier != 2 && multiplier != 4 && multiplier != 8)
+                throw new ArgumentOutOfRangeException(nameof(multiplier));
+            return (pal ? 416 : 448) / multiplier;
+        }
+        public static double GetSampleRate(bool pal, int multiplier = 1) =>
+            (pal ? 1662607.125 : 1789772.7272727273) / GetPeriod(pal, multiplier);
     }
 
-    // The editor displays the actual DAC samples, rather than the separate
-    // DPCM encoding kept in the shared sample library.
+    // The independent PCM library displays its actual DAC samples without
+    // passing the source through the DPCM bit encoder.
     public sealed class Mmc5PcmPreviewWave
     {
         public const int PlaybackSampleRate = 44100;
@@ -59,15 +66,26 @@ namespace FamiStudio
     public partial class DPCMSample
     {
         private readonly Dictionary<(bool Pal, int Pitch, double Rate), byte[]> pcmDataCache = new Dictionary<(bool, int, double), byte[]>();
-        private readonly Dictionary<bool, (byte[] Data, Mmc5PcmPreviewWave Wave)> pcmPreviewCache =
-            new Dictionary<bool, (byte[], Mmc5PcmPreviewWave)>();
+        private readonly Dictionary<(bool Pal, double Rate), (byte[] Data, Mmc5PcmPreviewWave Wave)> pcmPreviewCache =
+            new Dictionary<(bool, double), (byte[], Mmc5PcmPreviewWave)>();
+
+        public int GetPcmPeriod(bool pal) => Mmc5PcmTiming.GetPeriod(pal, project?.PcmRateMultiplier ?? 1);
+        public double GetPcmSampleRate(bool pal) => Mmc5PcmTiming.GetSampleRate(pal, project?.PcmRateMultiplier ?? 1);
+
+        private void ClearPcmCaches()
+        {
+            pcmDataCache.Clear();
+            pcmPreviewCache.Clear();
+        }
 
         public Mmc5PcmPreviewWave GetPcmPreviewWave(bool pal)
         {
             lock (ProcessedDataLock)
             {
-                var data = GetPcmData(pal);
-                if (pcmPreviewCache.TryGetValue(pal, out var cached) && ReferenceEquals(cached.Data, data))
+                var rate = GetPcmSampleRate(pal);
+                var key = (pal, rate);
+                var data = GetPcmData(pal, sampleRate: rate);
+                if (pcmPreviewCache.TryGetValue(key, out var cached) && ReferenceEquals(cached.Data, data))
                     return cached.Wave;
 
                 float startTime = 0;
@@ -102,24 +120,24 @@ namespace FamiStudio
                     startTime = (float)(first / (sourceData.GetSampleRate(palProcessing) * (double)finePitch));
                 }
 
-                var result = new Mmc5PcmPreviewWave(data, Mmc5PcmTiming.GetSampleRate(pal), startTime);
+                var result = new Mmc5PcmPreviewWave(data, rate, startTime);
                 // GetPcmData invalidates its arrays on source/processing edits,
                 // including undo. Array identity avoids a second cache epoch.
-                pcmPreviewCache[pal] = (data, result);
+                pcmPreviewCache[key] = (data, result);
                 return result;
             }
         }
 
-        // The original WAV is retained in the shared sample library. PCM must
-        // never be produced from its lossy DPCM preview when that WAV is present.
+        // Retain the PCM asset's original WAV so a higher output rate can
+        // recover its bandwidth; never resample an already reduced preview.
         public byte[] GetPcmData(bool pal, int semitones = 0, double? sampleRate = null)
         {
             if (semitones < -48 || semitones > 48) throw new ArgumentOutOfRangeException(nameof(semitones));
-            double targetRate = sampleRate ?? Mmc5PcmTiming.GetSampleRate(pal);
-            if (double.IsNaN(targetRate) || targetRate < 1000 || targetRate > 48000)
-                throw new ArgumentOutOfRangeException(nameof(sampleRate));
             lock (ProcessedDataLock)
             {
+                double targetRate = sampleRate ?? GetPcmSampleRate(pal);
+                if (double.IsNaN(targetRate) || targetRate < 1000 || targetRate > 48000)
+                    throw new ArgumentOutOfRangeException(nameof(sampleRate));
                 var key = (pal, semitones, targetRate);
                 if (pcmDataCache.TryGetValue(key, out var cached)) return cached;
                 if (sourceData == null || sourceData.NumSamples == 0) return Array.Empty<byte>();

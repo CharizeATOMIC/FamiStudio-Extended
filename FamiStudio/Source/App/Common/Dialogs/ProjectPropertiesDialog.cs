@@ -77,6 +77,7 @@ namespace FamiStudio
         public int    Machine   => InfoPage.GetSelectedIndex(4);
         public int    Tuning    => InfoPage.GetPropertyValue<int>(5);
         public int UpdateRateMultiplier => new[] { 1, 2, 4 }[InfoPage.GetSelectedIndex(7)];
+        public int PcmRateMultiplier => new[] { 1, 2, 4, 8 }[InfoPage.GetSelectedIndex(8)];
 
         public MixerProperties MixerProperties => mixerProperties;
 
@@ -109,7 +110,7 @@ namespace FamiStudio
             for (int i = 0; i < (int)ProjectSection.Max; i++)
             {
                 var section = (ProjectSection)i;
-                var scroll = i == (int)ProjectSection.Mixer || i == (int)ProjectSection.Expansion ? 380 : 0;
+                var scroll = i == (int)ProjectSection.Mixer || i == (int)ProjectSection.Expansion || i == (int)ProjectSection.Info ? 380 : 0;
                 var page = dialog.AddPropertyPage(SectionNames[i], "ProjectProperties" + section.ToString(), scroll);
                 CreatePropertyPage(page, section);
             }
@@ -132,6 +133,11 @@ namespace FamiStudio
                     page.AddButton(null, TuningStrings.CurveTitle, TuningStrings.CurveTooltip); // 6
                     var rates = new[] { "1× (NTSC 60 / PAL 50 Hz)", "2× (NTSC 120 / PAL 100 Hz)", "4× (NTSC 240 / PAL 200 Hz)" };
                     page.AddDropDownList(TuningStrings.UpdateRateLabel, rates, rates[project.UpdateRateMultiplier == 4 ? 2 : project.UpdateRateMultiplier - 1], TuningStrings.UpdateRateTooltip); // 7
+                    var pcmRates = new[] { "4 kHz", "8 kHz", "16 kHz", "32 kHz" };
+                    page.AddDropDownList(Mmc5PcmStrings.SampleRateLabel, pcmRates, pcmRates[Array.IndexOf(new[] { 1, 2, 4, 8 }, project.PcmRateMultiplier)], Mmc5PcmStrings.SampleRateTooltip); // 8
+                    // Reserve scroll space for the longest explanation before
+                    // selecting the current rate. Desktop tabs size once on show.
+                    page.AddLabel(null, GetPcmRateDescription(8, project.PalMode), true); // 9
                     page.PropertyClicked += (p, click, index, row, column) =>
                     {
                         if (index != 6) return;
@@ -189,6 +195,8 @@ namespace FamiStudio
             }
 
             page.Build();
+            if (section == ProjectSection.Info)
+                page.SetPropertyValue(9, GetPcmRateDescription(project.PcmRateMultiplier, project.PalMode));
             pages[(int)section] = page;
 
             return page;
@@ -211,6 +219,11 @@ namespace FamiStudio
 
         private void Info_PropertyChanged(PropertyPage props, int propIdx, int rowIdx, int colIdx, object value)
         {
+            if (propIdx == 8 || propIdx == 4)
+            {
+                props.SetPropertyValue(9, GetPcmRateDescription(PcmRateMultiplier, Machine == MachineType.PAL));
+                if (Platform.IsMobile) props.Build();
+            }
             if (propIdx == 7 && !restoringUpdateRate)
             {
                 var error = project.GetEditingRateError(UpdateRateMultiplier);
@@ -227,6 +240,12 @@ namespace FamiStudio
                 // Machine setting only makes sense in FamiStudio tempo.
                 props.SetPropertyEnabled(4, (string)value == TempoType.Names[TempoType.FamiStudio]);
             }
+        }
+
+        private string GetPcmRateDescription(int multiplier, bool pal)
+        {
+            return Mmc5PcmStrings.SampleRateDescription.Format(Mmc5PcmTiming.GetSampleRate(pal, multiplier), multiplier) + "\n" +
+                (multiplier == 1 ? Mmc5PcmStrings.SampleRateHardwareHint.ToString() : Mmc5PcmStrings.SampleRateHighHint.ToString());
         }
 
         private void SoundEngine_PropertyChanged(PropertyPage props, int propIdx, int rowIdx, int colIdx, object value)

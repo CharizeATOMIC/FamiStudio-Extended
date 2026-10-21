@@ -2340,6 +2340,7 @@ namespace FamiStudio
         {
             // Work on a temporary copy.
             project = originalProject.DeepClone();
+            project.PcmRateMultiplier = 1;
             project.Filename = originalProject.Filename;
             project.DeleteAllSongsBut(songIds, false);
             usesMmc5Pcm = project.UsesPcm;
@@ -2347,6 +2348,9 @@ namespace FamiStudio
             {
                 if (kernel != FamiToneKernel.FamiStudio || machine == MachineType.Dual)
                     throw new InvalidOperationException("PCM requires the FamiStudio engine and one explicit PAL/NTSC region.");
+                if (suppliedPcmData != null && (!double.IsFinite(suppliedPcmData.SampleRate) ||
+                    suppliedPcmData.SampleRate > Mmc5PcmTiming.GetSampleRate(machine == MachineType.PAL)))
+                    throw new InvalidOperationException("The sound engine supports only the 4 kHz PCM compatibility tier.");
                 pcmData = suppliedPcmData ?? Mmc5PcmExportData.Capture(project, songIds, machine == MachineType.PAL);
                 // DPCM DMA must stop when its shared DAC becomes a PCM voice.
                 // Preserve persistent effects. VRC6 keeps its original score
@@ -2596,8 +2600,9 @@ namespace FamiStudio
             return mask;
         }
 
-        public bool Save(Project originalProject, int[] songIds, int format, int maxDpcmBankSize, bool separateSongs, string filename, string dmcFilename, int dmcExportMode, bool exportUnusedMappings, string includeFilename, int machine)
+        public bool Save(Project originalProject, int[] songIds, int format, int maxDpcmBankSize, bool separateSongs, string filename, string dmcFilename, int dmcExportMode, bool exportUnusedMappings, string includeFilename, int machine, int? pcmSampleRate = null)
         {
+            if (!Mmc5PcmExportData.ValidateSampleRate(originalProject, pcmSampleRate)) return false;
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
             if (kernel != FamiToneKernel.FamiStudio && originalProject.UpdateRateMultiplier != 1)
             {
@@ -2873,7 +2878,7 @@ namespace FamiStudio
         }
 
         // HACK: This is pretty stupid. We write the ASM and parse it to get the bytes. Kind of backwards.
-        public byte[] GetBytes(Project project, int[] songIds, int songOffset, int dpcmBankSize, int dpcmExportMode, bool dpcmExportUnusedMappings, int dpcmOffset, int machine)
+        public byte[] GetBytes(Project project, int[] songIds, int songOffset, int dpcmBankSize, int dpcmExportMode, bool dpcmExportUnusedMappings, int dpcmOffset, int machine, int? pcmSampleRate = null)
         {
             // Exporters may run concurrently (audio/background validation), and
             // a failed save must never parse another export's stale assembly.
@@ -2887,7 +2892,7 @@ namespace FamiStudio
 
             try
             {
-                if (!Save(project, songIds, AssemblyFormat.ASM6, dpcmBankSize, false, tempAsmFilename, tempDmcFilename, dpcmExportMode, dpcmExportUnusedMappings, null, machine))
+                if (!Save(project, songIds, AssemblyFormat.ASM6, dpcmBankSize, false, tempAsmFilename, tempDmcFilename, dpcmExportMode, dpcmExportUnusedMappings, null, machine, pcmSampleRate))
                     throw new InvalidOperationException("Sound-engine music export failed. See the export log for the unsupported setting.");
                 return ParseAsmFile(tempAsmFilename, songOffset, dpcmOffset);
             }

@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
     [string]$InputProject = (Join-Path $PSScriptRoot 'TuningRegression/Fixtures/format1003.fms'),
     [string]$DotnetPath = 'dotnet',
-    [ValidateSet('', '--mmc5-pcm-ui')][string]$Mode = '',
+    [ValidateSet('', '--mmc5-pcm-ui', '--pcm-sample-rate-ui')][string]$Mode = '',
     [string[]]$Cases = @('zho:100', 'eng:100', 'deu:100', 'spa:100', 'por:100', 'rus:100', 'kor:100', 'zho:150')
 )
 $ErrorActionPreference = 'Stop'
@@ -40,7 +40,7 @@ try {
         & $DotnetPath (Join-Path $taskRuntime 'TuningRegression.dll') --ui $language $captures $inputFile $scale $Mode *> $log
         $code = $LASTEXITCODE
         $lines = Get-Content -LiteralPath $log
-        $expected = if ($Mode -eq '--mmc5-pcm-ui') { "PASS PCM UI $language" } else { "PASS UI $language scale=$scale" }
+        $expected = if ($Mode -eq '--mmc5-pcm-ui') { "PASS PCM UI $language" } elseif ($Mode -eq '--pcm-sample-rate-ui') { "PASS PCM sample rate UI $language" } else { "PASS UI $language scale=$scale" }
         $passed = $code -eq 0 -and $lines[-1] -eq $expected
         $results += [pscustomobject]@{
             language = $language; scale = $scale; exit_code = $code; passed = $passed

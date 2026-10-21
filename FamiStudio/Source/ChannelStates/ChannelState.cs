@@ -753,7 +753,7 @@ namespace FamiStudio
                     return true;
                 }
                 if (NesApu.StartPcm(apuIdx, destination, data, data.Length,
-                    (uint)Mmc5PcmTiming.GetPeriod(palPlayback) << 16,
+                    (uint)mapping.Sample.GetPcmPeriod(palPlayback) << 16,
                     mapping.Loop ? 0 : -1, mapping.Loop ? data.Length : -1, GetVolume()) == 0)
                     throw new InvalidOperationException("The native PCM stream could not be started.");
                 pcmDestination = destination;

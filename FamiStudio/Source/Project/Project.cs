@@ -31,7 +31,8 @@ namespace FamiStudio
         // Version 18 = FamiStudio 4.4.0 (FDS multi-wave)
         // Version 19 = FamiStudio 4.5.0 (VRC7 release / stop override, groove padding serialization, project export settings)
         // Fork format: deliberately outside the upstream sequence.
-        public const int Version = 1010;
+        public const int Version = 1011;
+        public const int PcmRateFormatVersion = 1011;
         public const int EditingRateFormatVersion = 1010;
         public const int IndependentPcmFormatVersion = 1009;
         public const int Mmc5PcmFormatVersion = 1008;
@@ -43,6 +44,37 @@ namespace FamiStudio
         public const int PulseSweepFormatVersion = 1006;
         public const int UpdateRateFormatVersion = 1006;
         public const int NoisePeriodFollowFormatVersion = 1007;
+        private int pcmRateMultiplier = 1;
+        public int PcmRateMultiplier
+        {
+            get => pcmRateMultiplier;
+            set
+            {
+                ValidatePcmRateMultiplier(value);
+                lock (DPCMSample.ProcessedDataLock)
+                {
+                    if (pcmRateMultiplier == value) return;
+                    var previous = pcmRateMultiplier;
+                    pcmRateMultiplier = value;
+                    try { ReprocessPcmSamples(); }
+                    catch
+                    {
+                        pcmRateMultiplier = previous;
+                        ReprocessPcmSamples();
+                        throw;
+                    }
+                }
+            }
+        }
+        private static void ValidatePcmRateMultiplier(int value)
+        {
+            if (value != 1 && value != 2 && value != 4 && value != 8)
+                throw new ArgumentOutOfRangeException(nameof(value), "PCM sample-rate multiplier must be 1, 2, 4 or 8.");
+        }
+        public void ReprocessPcmSamples()
+        {
+            foreach (var sample in pcmSamples) sample.Process();
+        }
         private int updateRateMultiplier = 1;
         public int UpdateRateMultiplier
         {
@@ -2806,6 +2838,7 @@ namespace FamiStudio
 
         public void Serialize(ProjectBuffer buffer, bool includeSamples = true)
         {
+            var previousPcmRate = pcmRateMultiplier;
             if (buffer.IsReading)
                 LoadingLegacySharedPcm = buffer.Version == Mmc5PcmFormatVersion;
             if (!buffer.IsForUndoRedo)
@@ -2891,6 +2924,13 @@ namespace FamiStudio
                 buffer.Serialize(ref mmc5PcmEnabled);
             else if (buffer.IsReading)
                 mmc5PcmEnabled = false;
+
+            // Samples must know their output clock before processing source WAV data.
+            if (buffer.Version >= PcmRateFormatVersion)
+                buffer.Serialize(ref pcmRateMultiplier);
+            else if (buffer.IsReading)
+                pcmRateMultiplier = 1;
+            if (buffer.IsReading) ValidatePcmRateMultiplier(pcmRateMultiplier);
 
             if (buffer.Version >= TuningFormatVersion)
             {
@@ -3020,7 +3060,13 @@ namespace FamiStudio
                 EnsureAllFoldersExist();
             }
             if (buffer.IsReading)
+            {
                 LoadingLegacySharedPcm = false;
+                // Undo snapshots can omit sample data. Refresh the surviving
+                // samples and their previews when their project clock changes.
+                if (previousPcmRate != pcmRateMultiplier && (!includeSamples || buffer.IsForUndoRedo))
+                    ReprocessPcmSamples();
+            }
         }
 
         public Project DeepClone()

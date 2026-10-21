@@ -12,7 +12,22 @@ VRC6 的两个方波声部也可以输出 CPU 提供的电平：`$9000/$A000` �
 
 ## 两种时钟必须分开
 
-现有音乐逻辑和包络的 1/2/4 倍更新率不是 PCM 采样率。初期 8 kHz 方案在 NTSC 下每样本约有 224 个周期，而完整音乐更新可能使用数千周期。实际最短循环样本路径曾占约 186 个周期，使 2× 音乐更新无法按时完成。因此产品时钟改为约 **4 kHz，仍为 8 位**。不能通过提高普通 NSF PLAY 调用频率、再在同一次调用中运行完整音乐更新来代替独立 PCM 时钟。
+现有音乐逻辑和包络的 1/2/4 倍更新率不是 PCM 采样率。工程现在可选约 4/8/16/32 kHz，默认约 4 kHz；高三档用于编辑器播放与音频导出。更高档位增加转换后的数据量和每秒处理的样本数，实际 CPU 开销取决于工程和机器，不能按档位承诺总 CPU 占用倍数。源数据仍为 8 位，APU/VRC6 的输出位深保持 7/4 位。不能通过提高普通 NSF PLAY 调用频率、再在同一次调用中运行完整音乐更新来代替独立 PCM 时钟。
+
+声音引擎、NSF/NSFe 和 NES 导出只提供“4 kHz 兼容导出”。高率工程默认未选择，必须由用户明确选择兼容档；API 默认拒绝，CLI 需传 `-pcm-rate:4000` 或 `-pcm-rate:4k`，其他值拒绝。导出器只改临时副本，从原始源波形低通重采样，保持音高、映射转调和音符时长，不修改工程采样率与源样本。降采样会缩减带宽；NES 的兼容档继续使用映射器实际频率。格式 1011 保存采样率，旧工程默认 4 kHz。
+
+现有完整 IRQ 路径不支持通用 8 kHz 承诺。`Tests/check_pcm_irq_cycles.py` 使用实际链接内核枚举 14 种地区/目标组合，每组 168 种路径，包含 IRQ 入口、寄存器保存、应答、切 bank、PCM service、RTI；不包含 DMC DMA、被中断指令尾部和宿主任务。当前最坏周期为：
+
+| 活动目标 | NTSC 最坏周期 | PAL 最坏周期 |
+| --- | ---: | ---: |
+| 2A03 | 248 | 248 |
+| MMC5 | 246 | 246 |
+| 一个 VRC6 方波 | 256 | 256 |
+| 两个 VRC6 方波 | 455 | 454 |
+| 2A03 + MMC5 | 436 | 436 |
+| 四个 DAC | 834 | 834 |
+
+单声部最坏值已经超过约 8 kHz 所能提供的 224/208 周期。短循环缓存路径更快，不能代表任意样本的切页、触发和回跳成本。该表是路径成本测量，不是所有多声部组合可导出的证明。现有 NSF 导出逐曲检查 PLAY 的真实耗时，能拒绝持续过载，但不提供每个采样 IRQ 的独立期限保证；将来开放高率硬件输出必须另外验证遗漏 IRQ、逐周期 DAC 间隔和 DMA 干扰，不能只沿用 PLAY 预算门槛。
 
 当前 NSF2 出口合同采用返回式 INIT/PLAY 和 IRQ 功能 bit 4；PCM 中断可抢占音乐 PLAY，并在两次 PLAY 之间继续运行。`$401B/$401C` 为周期重载值，`$401D` 控制启动并在读取时应答。周期为重载值加一。NTSC 重载 447、PAL 重载 415，即 448/416 个 CPU 周期，对应各自 CPU 时钟下约 4 kHz。CPU 完成当前指令后才响应 IRQ，因此实际寄存器写入有指令边界抖动。导出器仍须逐一验证各音乐更新率和最坏采样路径的 CPU 预算。依据：[NSF2](https://www.nesdev.org/wiki/NSF2)、[6502 中断时序](https://www.nesdev.org/wiki/Interrupts)。
 
@@ -67,7 +82,7 @@ PCM 开始/停止/音量在四个原生目标上独立。APU PCM 占用原 DPCM 
 
 - MMC5 direct PCM uses the full 8-bit `$5011` DAC. `$00` holds the preceding output; it is not silence. This implementation uses write mode, not MMC5 read-mode playback or its PCM IRQ.
 - VRC6 can hold either pulse channel at a CPU-selected 4-bit level. Two equally mixed channels provide 31 static summed levels, not an 8-bit DAC. R12 implements each pulse as an independent 4-bit PCM destination; ordinary pulse notes relinquish software-sample ownership.
-- Music logic at 1×/2×/4× and the PCM sample clock are independent. The product PCM clock is about 4 kHz (NTSC 448 cycles, PAL 416 cycles); Source PCM is 8-bit, with hardware output quantized to 7 bits on 2A03 and 4 bits per VRC6 pulse. NSF export requires a player supporting NSF2 timer IRQs and returning INIT/PLAY.
+- Music logic at 1×/2×/4× and the PCM sample clock are independent. Editing and audio support project rates of approximately 4/8/16/32 kHz. Hardware exports support only the explicit 4 kHz compatibility tier (NSF: NTSC 448 cycles, PAL 416 cycles). High-rate projects require explicit resampling consent; unsupported hardware rates are not offered. Source PCM is 8-bit, with hardware output quantized to 7 bits on 2A03 and 4 bits per VRC6 pulse. NSF export requires a player supporting NSF2 timer IRQs and returning INIT/PLAY.
 - NSF2 loading supports that IRQ subset, including interruptible PLAY/idle, RAM IRQ vectors, DMA-aware timer accounting and track reset. Non-returning INIT and other unsupported NSF2 feature flags are rejected. EPSM cannot share `$401C/$401D` with this timer.
 - An instruction-level emulator and software CPU tests do not constitute physical-hardware certification. Separate mapper 5 and mapper 24 NES players resample for their actual clocks and require independent timing verification.
 - Displayed PCM samples and processed sample audition come from the actual PCM conversion, not the lossy DPCM preview. Original WAV audition and DPCM behavior remain separate.
@@ -96,3 +111,9 @@ CPU costs from the earlier single-voice R11 engine cannot be reused as R12
 budget results. Extra destinations increase dispatch and sample work. Product
 exports need their own IRQ and music-update checks with the final engine.
 No software test establishes physical-cartridge or untested-platform behavior.
+
+`--pcm-sample-rate-export <output>` verifies that unconfirmed high-rate exports and
+unsupported rates preserve existing destination files. Explicit 4 kHz exports
+are compared with the corresponding original 4 kHz project's NSF, NSFe, NES,
+assembly and PCM bytes, including actual NSF CPU register sequences, PAL/NTSC,
+all four DACs, mapping transposition, loops and the unchanged source project.

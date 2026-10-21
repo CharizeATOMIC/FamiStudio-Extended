@@ -64,7 +64,7 @@ namespace FamiStudio
 
         public float ProcessedStartTime  => processedDataStartTime;
         public float ProcessedEndTime    => processedDataStartTime + ProcessedDuration;
-        public float ProcessedSampleRate => isPcm ? (float)Mmc5PcmTiming.GetSampleRate(palProcessing) : DPCMSampleRate.Frequencies[palProcessing ? 1 : 0, sampleRate];
+        public float ProcessedSampleRate => isPcm ? (float)GetPcmSampleRate(palProcessing) : DPCMSampleRate.Frequencies[palProcessing ? 1 : 0, sampleRate];
         public float ProcessedDuration   => processedData.Length * (isPcm ? 1 : 8) / ProcessedSampleRate;
 
         public byte[]   ProcessedData       { get => processedData;       set => processedData   = value; }
@@ -105,7 +105,7 @@ namespace FamiStudio
 
         public float GetPlaybackSampleRate(bool palPlayback)
         {
-            return isPcm ? (float)Mmc5PcmTiming.GetSampleRate(palPlayback) : DPCMSampleRate.Frequencies[palPlayback ? 1 : 0, previewRate];
+            return isPcm ? (float)GetPcmSampleRate(palPlayback) : DPCMSampleRate.Frequencies[palPlayback ? 1 : 0, previewRate];
         }
 
         public float GetPlaybackCents(bool palPlayback)
@@ -135,7 +135,7 @@ namespace FamiStudio
         {
             lock (ProcessedDataLock)
             {
-                pcmDataCache.Clear();
+                ClearPcmCaches();
                 sourceData = new DPCMSampleDmcSourceData(data);
                 sourceFilename = filename;
                 if (resetParams)
@@ -152,7 +152,7 @@ namespace FamiStudio
         {
             lock (ProcessedDataLock)
             {
-                pcmDataCache.Clear();
+                ClearPcmCaches();
                 sourceData = new DPCMSampleWavSourceData(data, rate);
                 sourceFilename = filename;
                 if (resetParams)
@@ -216,7 +216,7 @@ namespace FamiStudio
         {
             lock (ProcessedDataLock)
             {
-                pcmDataCache.Clear();
+                ClearPcmCaches();
                 processedDataStartTime = 0;
                 if (isPcm)
                 {
@@ -385,7 +385,13 @@ namespace FamiStudio
 
         public void SetProject(Project newProject)
         {
-            project = newProject;
+            lock (ProcessedDataLock)
+            {
+                bool changedRate = (project?.PcmRateMultiplier ?? 1) != (newProject?.PcmRateMultiplier ?? 1);
+                project = newProject;
+                if (isPcm && changedRate && sourceData != null)
+                    Process();
+            }
         }
 
         public void ValidateIntegrity(Project project, Dictionary<int, object> idMap)
@@ -472,7 +478,7 @@ namespace FamiStudio
         {
             if (buffer.IsReading)
             {
-                lock (ProcessedDataLock) pcmDataCache.Clear();
+                lock (ProcessedDataLock) ClearPcmCaches();
                 project = buffer.Project;
             }
 

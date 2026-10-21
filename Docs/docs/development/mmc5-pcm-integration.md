@@ -38,7 +38,7 @@ See [MMC5 audio](https://www.nesdev.org/wiki/MMC5_audio).
 
 | Target | Sample scheduling | Requirements |
 | --- | --- | --- |
-| Editor/audio export | Native stream, approximately 4 kHz | Matching NesSndEmu library |
+| Editor/audio export | Project PCM rate: approximately 4, 8, 16 or 32 kHz | Matching NesSndEmu library; higher rates process and store more samples |
 | NSF/NSFe | NSF2 timer IRQ, 448 NTSC or 416 PAL CPU cycles | IRQ-capable player, explicit project region, CPU-budget checks |
 | NES player with MMC5 | Mapper 5 scanline IRQ and blanking feeder | Supplied mapper 5 player; rendering enabled |
 | APU-only or VRC6 NES player | Mapper 24 counter IRQ | Supplied mapper 24 player |
@@ -50,13 +50,44 @@ actual timer rate. In particular, the VRC6 counter's CPU divider has a different
 relationship to PAL video scanlines; assuming the NTSC sample rate on PAL would
 change pitch and duration.
 
-The approximately 4 kHz rate is a limit of the supplied feeder implementation,
-not a fixed sample-rate limit of the DAC. A program can change the interval
-between DAC writes without changing the CPU clock. Faster service requires a
-matching resampling rate and enough CPU time for the worst IRQ path, DMA and
-music updates. Raising the WAV output rate alone does not restore frequencies
-removed during PCM conversion. The current release does not expose a higher
-PCM rate; the music update-rate control does not change PCM quality.
+The project PCM rate controls sample conversion and playback independently of
+the music update clock and the WAV output rate. The default remains about
+4 kHz. Higher rates retain more source bandwidth but increase PCM data size
+and samples processed per second; total CPU cost depends on the project and
+machine. They do not increase the hardware bit depth of any destination.
+
+The supplied sound engine, NSF/NSFe and NES players still support only the
+approximately **4 kHz compatibility tier**. For a higher-rate project, the
+export dialog starts with an unselected PCM rate. Explicitly choose **4 kHz
+compatibility export** before exporting. Unsupported 8/16/32 kHz rates are
+not hardware-export choices. Conversion uses a temporary project and the
+original source waveform, preserves sample pitch, note timing and duration,
+and does not change the project rate or stored source. The downsampling does
+reduce bandwidth. NES uses its mapper's actual clock within this compatibility
+tier, as described below.
+
+Direct export APIs likewise reject a high-rate PCM project unless the caller
+passes `pcmSampleRate: 4000`. Command-line exports require the explicit option
+`-pcm-rate:4000` or `-pcm-rate:4k`, for example:
+
+```text
+FamiStudio music.fms nsf-export music.nsf -pcm-rate:4k
+FamiStudio music.fms nsf-export music.nsf -nsf-nsfe -pcm-rate:4000
+FamiStudio music.fms famistudio-asm-export music.s -pcm-rate:4k
+FamiStudio music.fms rom-export music.nes -pcm-rate:4k
+```
+
+No higher value is accepted by these hardware-export paths. The option does
+not relax the existing region, mapper, voice-overlap or CPU-budget checks.
+Ordinary 4 kHz projects retain their existing default export behavior.
+
+This is a feeder limitation, not a fixed sample-rate limit of the DAC. The
+linked IRQ test (`Tests/check_pcm_irq_cycles.py`) measures complete interrupt
+entry through RTI. Current single-voice worst cases are 248 cycles for 2A03,
+246 for MMC5 and 256 for VRC6, before DMA or interrupted-instruction latency.
+They exceed the 224 NTSC / 208 PAL cycle budget of an approximately 8 kHz
+clock. Cached one-byte loops are faster but do not establish a safe general
+sample rate. Raising a timer rate without changing the feeder is unsupported.
 
 Multiple PCM voices consume additional CPU time on every sample interrupt.
 The editor's host CPU can render combinations that an actual 6502 program
@@ -126,8 +157,9 @@ hardware behavior, not an unintended channel-mute operation. See
 ## Persistence and compatibility
 
 Format **1009** introduced separate PCM assets, mappings, folders and sort state.
-New saves use **1010**, which also stores the independent note-effect clock
-needed when converting the editing grid without changing existing effects.
+Format **1010** added the independent note-effect clock needed when converting
+the editing grid without changing existing effects. New saves use **1011**,
+which also stores the project PCM rate; older projects default to 4 kHz.
 R11 format 1008 remains readable: the loader clones required PCM source assets
 and converts the old regular instruments used on MMC5 PCM into MMC5
 instruments. Existing DPCM data is preserved. Saving uses the new format;

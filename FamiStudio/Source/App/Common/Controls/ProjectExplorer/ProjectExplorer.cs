@@ -3795,6 +3795,7 @@ namespace FamiStudio
                     var instanceCounts = dlg.InstanceCounts;
                     var changedInstances = Enumerable.Range(0, ExpansionType.Count).Any(i => instanceCounts[i] != project.GetExpansionInstances(i));
                     var changedMmc5Pcm = dlg.Mmc5PcmEnabled != project.Mmc5PcmEnabled;
+                    var changedPcmRate = dlg.PcmRateMultiplier != project.PcmRateMultiplier;
                     var channelCount = Enumerable.Range(0, ChannelType.Count).Where(t => Project.IsChannelActive(t, newExpansionMask, numN163Channels, dlg.Mmc5PcmEnabled)).Sum(t => instanceCounts[ChannelType.GetExpansionTypeForChannelType(t)]);
                     if (channelCount > 64) { App.DisplayNotification(TuningStrings.ChannelLimitError, true); return; }
                     var changedExpMixer = dlg.MixerProperties.Changed;
@@ -3806,12 +3807,23 @@ namespace FamiStudio
 
                     if (changedExpansion || changedInstances || changedMmc5Pcm)
                         transFlags = TransactionFlags.RecreatePlayers | TransactionFlags.RecreateStreams; // Toggling EPSM will change mono/stereo and requires new audiostreams.
-                    else if (changedAuthoringMachine || changedNumChannels || changedExpMixer || changedTuning)
+                    else if (changedAuthoringMachine || changedNumChannels || changedExpMixer || changedTuning || changedPcmRate)
                         transFlags = TransactionFlags.RecreatePlayers;
                     else if (changedTempoMode)
                         transFlags = TransactionFlags.StopAudio;
 
                     App.UndoRedoManager.BeginTransaction(TransactionScope.ProjectNoDPCMSamples, transFlags);
+
+                    // RecreatePlayers has stopped audio before rebuilding PCM.
+                    // Apply this first so a sample-size failure leaves the score
+                    // and all other project properties untouched.
+                    try { project.PcmRateMultiplier = dlg.PcmRateMultiplier; }
+                    catch (Exception ex)
+                    {
+                        App.UndoRedoManager.AbortTransaction();
+                        App.DisplayNotification(Mmc5PcmStrings.SampleRateChangeError.Format(ex.Message), true, true);
+                        return;
+                    }
 
                     // Includes legacy projects whose output already runs at 4x
                     // but whose existing songs still use a 1x editing grid.

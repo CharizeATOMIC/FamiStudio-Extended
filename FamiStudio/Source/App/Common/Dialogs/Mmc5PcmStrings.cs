@@ -37,6 +37,16 @@ namespace FamiStudio
         public static LocalizedString ImportSingleProjectError;
         public static LocalizedString EmptyLibraryError;
         public static LocalizedString SourceFileFilter;
+        public static LocalizedString SampleRateLabel;
+        public static LocalizedString SampleRateTooltip;
+        public static LocalizedString SampleRateDescription;
+        public static LocalizedString SampleRateHardwareHint;
+        public static LocalizedString SampleRateHighHint;
+        public static LocalizedString SampleRateChangeError;
+        public static LocalizedString ExportPcmRateLabel;
+        public static LocalizedString ExportPcmRateSelect;
+        public static LocalizedString ExportPcmRate4k;
+        public static LocalizedString ExportPcmRateRequired;
 
         static Mmc5PcmStrings() { Localization.LocalizeStatic(typeof(Mmc5PcmStrings)); }
     }

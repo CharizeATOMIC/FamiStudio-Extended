@@ -97,8 +97,9 @@ namespace FamiStudio
             }
         }
 
-        public unsafe bool Save(Project originalProject, string filename, int[] songIds, string name, string author, bool pal)
+        public unsafe bool Save(Project originalProject, string filename, int[] songIds, string name, string author, bool pal, int? pcmSampleRate = null)
         {
+            if (!Mmc5PcmExportData.ValidateSampleRate(originalProject, pcmSampleRate)) return false;
             if (originalProject.UpdateRateMultiplier != 1) { Log.LogMessage(LogSeverity.Error, TuningStrings.UpdateRateExportError); return false; }
             if (originalProject.HasVirtualChips) { Log.LogMessage(LogSeverity.Error, TuningStrings.HardwareExportError); return false; }
 
@@ -123,6 +124,7 @@ namespace FamiStudio
                     Array.Resize(ref songIds, maxSong);
 
                 var project = originalProject.DeepClone();
+                project.PcmRateMultiplier = 1;
                 project.DeleteAllSongsBut(songIds);
                 project.SoundEngineUsesExtendedInstruments = true;
                 project.SoundEngineUsesDpcmBankSwitching = true;

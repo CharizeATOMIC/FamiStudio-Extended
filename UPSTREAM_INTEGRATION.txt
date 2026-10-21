@@ -25,7 +25,14 @@ Suggested review sequence:
    Port managed effect clocks, music export and optional engine instruction $65
    together; regenerate NSF kernels. Reject inexact conversions before mutation.
 
-The fork uses format 1010. Upstream should allocate its own version and native
+R13 adds a separately reviewable PCM sample-clock setting (4/8/16/32 kHz tiers).
+Port its serialization before sample loading, resampling/cache invalidation,
+managed playback period, undo handling and localized UI together. The native
+PCM ABI already accepts the sample period; no new native ABI is introduced.
+Higher rates are editor/audio-only. Port the explicit 4 kHz export gate and
+clone-only resampling together, retaining current CPU-budget checks.
+
+The fork uses format 1011. Upstream should allocate its own version and native
 ABI identifiers. The existing DPCMSample processing class is retained with an
 IsPcm discriminator, but library objects, sources, IDs and folders are distinct.
 MMC5 PCM uses a previously reserved channel type. 2A03/VRC6 reuse existing
@@ -41,11 +48,15 @@ builds do not replace Linux/macOS native and Android device testing.
 
 R12 将 DPCM/PCM 拆为独立资源，并支持 2A03、MMC5、VRC6。建议按数据模型与
 迁移、原生播放与声部交接、可选引擎/NSF2、NES 模板、界面与各平台验证的
-依赖顺序审阅。上游可自行分配格式与 ABI 编号，不必接受本分支的 1010。
+依赖顺序审阅。上游可自行分配格式与 ABI 编号，不必接受本分支的 1011。
 普通模式保持原路径，PCM 需同时移植相关层才可启用。旧 R10 的补丁应用
 结果不覆盖此批改动，也不保证对作者尚未公开的开发分支无冲突。
 编辑网格转换可单独审阅，但须一起移植事务预检、groove 子帧、音符效果时钟、
 播放与导出，以及可选引擎指令 $65；不应仅修改工程倍率或界面标签。
+R13 的 PCM 采样率可以作为独立改动审阅：一起移植样本加载之前的格式字段、
+重采样和缓存失效、播放周期、撤销与多语言界面。原生 ABI 已支持可变周期，
+本次无需扩充。高档仅用于编辑与音频导出；硬件导出必须保留显式 4 kHz
+选择和仅修改副本的兼容重采样，以及现有 CPU 预算检查。
 
 Historical R10 integration record / R10 历史整合记录
 ----------------------------------------------------

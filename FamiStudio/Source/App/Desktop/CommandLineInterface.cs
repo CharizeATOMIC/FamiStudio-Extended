@@ -28,6 +28,24 @@ namespace FamiStudio
             return false;
         }
 
+        private bool TryParsePcmExportRate(out int? rate)
+        {
+            rate = null;
+            foreach (var arg in args)
+            {
+                if (!arg.Equals("-pcm-rate", StringComparison.OrdinalIgnoreCase) &&
+                    !arg.StartsWith("-pcm-rate:", StringComparison.OrdinalIgnoreCase)) continue;
+                var value = arg.Substring(Math.Min(arg.Length, "-pcm-rate:".Length));
+                if (rate.HasValue || (value != "4000" && !value.Equals("4k", StringComparison.OrdinalIgnoreCase)))
+                {
+                    Log.LogMessage(LogSeverity.Error, "Use -pcm-rate:4000 or -pcm-rate:4k. Higher PCM rates are available only for editing and audio export.");
+                    return false;
+                }
+                rate = Mmc5PcmExportData.CompatibleSampleRate;
+            }
+            return true;
+        }
+
         private string ParseOption(string name, string defaultValue)
         {
             foreach (var a in args)
@@ -135,6 +153,7 @@ namespace FamiStudio
             Console.WriteLine($"  famitone2-asm-sfx-export : Export to FamiTone2 sound effect assembly file(s) (*.s, *.asm).");
             Console.WriteLine($"");
             Console.WriteLine($"General options:");
+            Console.WriteLine("  -pcm-rate:4000 (or -pcm-rate:4k) : Explicit 4 kHz compatibility resampling for NSF/NSFe, NES or music-engine export. Required for high-rate PCM projects. The input project is unchanged. No higher hardware-export rate is supported.");
             Console.WriteLine($"  -export-songs:<songs> : Comma-seperated zero-based indices of the songs to export (default:all).");
             Console.WriteLine($"");
             Console.WriteLine($"NSF import specific options");
@@ -355,6 +374,7 @@ namespace FamiStudio
 
         private void NsfExport(string filename)
         {
+            if (!TryParsePcmExportRate(out var pcmSampleRate)) return;
             if (!ValidateExtension(filename, ".nsf"))
                 return;
 
@@ -381,12 +401,14 @@ namespace FamiStudio
                     project.Author,
                     project.Copyright,
                     machine,
-                    nsfe);
+                    nsfe,
+                    pcmSampleRate);
             }
         }
 
         private void RomExport(string filename)
         {
+            if (!TryParsePcmExportRate(out var pcmSampleRate)) return;
             if (!ValidateExtension(filename, ".nes"))
                 return;
 
@@ -415,7 +437,7 @@ namespace FamiStudio
                     exportSongIds,
                     project.Name,
                     project.Author,
-                    pal);
+                    pal, pcmSampleRate);
             }
         }
 
@@ -477,6 +499,7 @@ namespace FamiStudio
 
         private void FamiTone2MusicExport(string filename, bool famistudio)
         {
+            if (!TryParsePcmExportRate(out var pcmSampleRate)) return;
             var kernel = famistudio ? FamiToneKernel.FamiStudio : FamiToneKernel.FamiTone2;
             var engineName = famistudio ? "famistudio" : "famitone2";
             var formatString = ParseOption($"{engineName}-asm-format", "nesasm");
@@ -546,7 +569,7 @@ namespace FamiStudio
                         Log.LogMessage(LogSeverity.Info, $"Exporting song '{song.Name}' as a separate assembly file.");
 
                         FamitoneMusicFile f = new FamitoneMusicFile(kernel, true);
-                        f.Save(project, new int[] { songId }, format, -1, true, songFilename, dpcmFilename, dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine);
+                        f.Save(project, new int[] { songId }, format, -1, true, songFilename, dpcmFilename, dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine, pcmSampleRate);
                     }
                 }
                 else
@@ -556,7 +579,7 @@ namespace FamiStudio
                     Log.LogMessage(LogSeverity.Info, $"Exporting all songs to a single assembly file.");
 
                     FamitoneMusicFile f = new FamitoneMusicFile(kernel, true);
-                    f.Save(project, exportSongIds, format, -1, false, filename, Path.ChangeExtension(filename, ".dmc"), dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine);
+                    f.Save(project, exportSongIds, format, -1, false, filename, Path.ChangeExtension(filename, ".dmc"), dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine, pcmSampleRate);
                 }
             }
         }

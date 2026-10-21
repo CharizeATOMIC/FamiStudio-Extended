@@ -54,6 +54,7 @@ namespace FamiStudio
         private uint lastProjectCrc;
         private string lastExportFilename;
         private FamiStudio app;
+        private readonly Dictionary<int, int> pcmRateProperties = new Dictionary<int, int>();
 
         private bool canExportToRom         = true;
         private bool canExportToFamiTracker = true;
@@ -423,6 +424,36 @@ namespace FamiStudio
             return data;
         }
 
+        private void AddPcmRateProperty(PropertyPage page, ExportFormat format)
+        {
+            if (!project.UsesPcm) return;
+            string[] choices = project.PcmRateMultiplier > 1
+                ? new[] { Mmc5PcmStrings.ExportPcmRateSelect.Value, Mmc5PcmStrings.ExportPcmRate4k.Value }
+                : new[] { Mmc5PcmStrings.ExportPcmRate4k.Value };
+            pcmRateProperties[(int)format] = page.AddDropDownList(
+                Mmc5PcmStrings.ExportPcmRateLabel.Colon, choices, choices[0], Mmc5PcmStrings.ExportPcmRateRequired);
+        }
+
+        private void ResetPcmRateSelection(ExportFormat format)
+        {
+            if (pcmRateProperties.TryGetValue((int)format, out int index))
+                dialog.GetPropertyPage((int)format).SetDropDownListIndex(index, 0);
+        }
+
+        private bool TryGetPcmExportRate(ExportFormat format, out int? rate)
+        {
+            rate = null;
+            if (!pcmRateProperties.TryGetValue((int)format, out int index)) return true;
+            var page = dialog.GetPropertyPage((int)format);
+            if (page.GetPropertyValue<string>(index) != Mmc5PcmStrings.ExportPcmRate4k.Value)
+            {
+                Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.ExportPcmRateRequired);
+                return false;
+            }
+            rate = Mmc5PcmExportData.CompatibleSampleRate;
+            return true;
+        }
+
         private void CreatePropertyPage(PropertyPage page, ExportFormat format)
         {
             var songNames = GetSongNames();
@@ -526,6 +557,7 @@ namespace FamiStudio
 #if DEBUG
                     page.AddDropDownList("Engine :", FamiToneKernel.Names, FamiToneKernel.Names[FamiToneKernel.FamiStudio]); // 7
 #endif
+                    AddPcmRateProperty(page, format);
                     page.PropertyClicked += NsfPage_PropertyClicked;
                     break;
                 case ExportFormat.Rom:
@@ -542,6 +574,7 @@ namespace FamiStudio
                         page.AddDropDownList(ModeLabel.Colon, romFdsModes, romFdsModes.Contains(romSettings.Mode) ? romSettings.Mode : project.PalMode ? "PAL" : "NTSC", MachineTooltip); // 3
                         page.AddCheckBoxList(Platform.IsDesktop ? null : SongsLabel, songNames, romBools, SongListTooltip, 12); // 4
                         page.AddButton(null, ResetDefaultsLabel.Format(ExportFormatNames[3])); // 5
+                        AddPcmRateProperty(page, format);
                         page.SetPropertyEnabled(0, project.UsesFdsExpansion);
                         page.PropertyClicked += RomFdsPage_PropertyClicked;
                     }
@@ -620,6 +653,7 @@ namespace FamiStudio
                         page.AddCheckBox(GenerateSongListIncludeLabel.Colon, musicCodeSettings.SongListInclude, FT2SongListTooltip); // 6
                         page.AddCheckBoxList(null, songNames, musicCodeBools, SongListTooltip, 12); // 7
                         page.AddButton(null, ResetDefaultsLabel.Format(ExportFormatNames[format == ExportFormat.FamiStudioMusic ? 8 : 10])); // 8
+                        if (format == ExportFormat.FamiStudioMusic) AddPcmRateProperty(page, format);
                         page.SetPropertyEnabled(2, musicCodeSettings.Separate);
                         page.SetPropertyEnabled(3, musicCodeSettings.Separate);
                         page.SetPropertyEnabled(5, musicCodeSettings.DmcExportMode != musicCodeDmcModes[DpcmExportMode.Minimum]);
@@ -921,6 +955,7 @@ namespace FamiStudio
                     if (r == DialogResult.Yes)
                     {
                         project.ResetNsfExportSettings();
+                        ResetPcmRateSelection(ExportFormat.Nsf);
 
                         var settings = project.NsfExportConfig;
                         bool[] trues = new bool[project.Songs.Count];
@@ -946,6 +981,7 @@ namespace FamiStudio
                     if (r == DialogResult.Yes)
                     {
                         project.ResetRomFdsExportSettings();
+                        ResetPcmRateSelection(ExportFormat.Rom);
 
                         var settings = project.RomFdsExportConfig;
                         bool[] trues = new bool[project.Songs.Count];
@@ -1279,6 +1315,8 @@ namespace FamiStudio
 
         private void ExportNsf()
         {
+            if (!TryGetPcmExportRate(ExportFormat.Nsf, out var pcmSampleRate))
+            { ShowExportResultToast(FormatNsfMessage, false); return; }
             var props = dialog.GetPropertyPage((int)ExportFormat.Nsf);
             var nsfe = props.GetSelectedIndex(3) > 0;
             var extension = nsfe ? "nsfe" : "nsf";
@@ -1314,7 +1352,8 @@ namespace FamiStudio
                         artist,
                         copyright,
                         mode,
-                        nsfe);
+                        nsfe,
+                        pcmSampleRate);
 
                     lastExportFilename = filename;
                 }
@@ -1343,6 +1382,8 @@ namespace FamiStudio
         {
             if (!canExportToRom)
                 return;
+            if (!TryGetPcmExportRate(ExportFormat.Rom, out var pcmSampleRate))
+            { ShowExportResultToast(FormatRomMessage, false); return; }
 
             var props = dialog.GetPropertyPage((int)ExportFormat.Rom);
             var songIds = GetSongIds(props.GetPropertyValue<bool[]>(4));
@@ -1375,7 +1416,7 @@ namespace FamiStudio
                             project, filename, songIds,
                             name,
                             artist,
-                            props.GetPropertyValue<string>(3) == "PAL");
+                            props.GetPropertyValue<string>(3) == "PAL", pcmSampleRate);
 
                         lastExportFilename = filename;
                     }
@@ -1492,6 +1533,7 @@ namespace FamiStudio
                             project.ResetFamiStudioMusicCodeExportSettings();
                         else
                             project.ResetFamiTone2MusicCodeExportSettings();
+                        ResetPcmRateSelection(famistudio ? ExportFormat.FamiStudioMusic : ExportFormat.FamiTone2Music);
 
                         var settings = famistudio ? project.FamiStudioMusicExportConfig : project.FamiTone2MusicExportConfig;
                         var types = Localization.ToStringArray(DpcmExportMode.LocalizedNames);
@@ -1903,6 +1945,10 @@ namespace FamiStudio
                 return;
 
             var props = dialog.GetPropertyPage(famiStudio ? (int)ExportFormat.FamiStudioMusic : (int)ExportFormat.FamiTone2Music);
+            if (!TryGetPcmExportRate(famiStudio ? ExportFormat.FamiStudioMusic : ExportFormat.FamiTone2Music, out var pcmSampleRate))
+            { ShowExportResultToast(FormatAssemblyMessage, false); return; }
+            var machine = project.UsesPcm || project.UpdateRateMultiplier > 1
+                ? (project.PalMode ? MachineType.PAL : MachineType.NTSC) : MachineType.Dual;
 
             var separate = props.GetPropertyValue<bool>(1);
             var songIds = GetSongIds(props.GetPropertyValue<bool[]>(7));
@@ -1954,7 +2000,7 @@ namespace FamiStudio
                         Log.LogMessage(LogSeverity.Info, $"Exporting song '{song.Name}' as a separate assembly file.");
 
                         FamitoneMusicFile f = new FamitoneMusicFile(kernel, true);
-                        success = success && f.Save(project, new int[] { songId }, exportFormat, -1, true, songFilename, dpcmFilename, dpcmExportMode, dpcmExportUnusedMappings, includeFilename, MachineType.Dual);
+                        success = success && f.Save(project, new int[] { songId }, exportFormat, -1, true, songFilename, dpcmFilename, dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine, pcmSampleRate);
                     }
 
                     lastExportFilename = folder;
@@ -1973,7 +2019,7 @@ namespace FamiStudio
                     Log.LogMessage(LogSeverity.Info, $"Exporting all songs to a single assembly file.");
 
                     FamitoneMusicFile f = new FamitoneMusicFile(kernel, true);
-                    var success = f.Save(project, songIds, exportFormat, -1, false, filename, Path.ChangeExtension(filename, ".dmc"), dpcmExportMode, dpcmExportUnusedMappings, includeFilename, MachineType.Dual);
+                    var success = f.Save(project, songIds, exportFormat, -1, false, filename, Path.ChangeExtension(filename, ".dmc"), dpcmExportMode, dpcmExportUnusedMappings, includeFilename, machine, pcmSampleRate);
 
                     lastExportFilename = filename;
                     ShowExportResultToast(FormatAssemblyMessage, success);
@@ -2015,6 +2061,8 @@ namespace FamiStudio
             // Only hashing fields that would have an impact on the generated UI.
             uint crc = CRC32.Compute(project.ExpansionAudioMask);
             crc = CRC32.Compute(project.ExpansionNumN163Channels, crc);
+            crc = CRC32.Compute(project.PcmRateMultiplier, crc);
+            crc = CRC32.Compute(project.UsesPcm ? 1 : 0, crc);
 
             foreach (var song in project.Songs)
             {

@@ -3204,7 +3204,7 @@ namespace FamiStudio
                 textY += r.fonts.FontVeryLarge.LineHeight;
                 if (IsEditingPcmMapping)
                 {
-                    r.f.DrawText(Mmc5PcmStrings.PlaybackLabel.Format(Math.Round(Mmc5PcmTiming.GetSampleRate(App.PalPlayback))), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
+                    r.f.DrawText(Mmc5PcmStrings.PlaybackLabel.Format(Math.Round(Mmc5PcmTiming.GetSampleRate(App.PalPlayback, App.Project.PcmRateMultiplier))), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);
                     return;
                 }
                 r.f.DrawText(DPCMInstrumentUsageLabel.Format(editInstrument.GetTotalMappedSampleSize(), Project.MaxMappedSampleSize), r.fonts.FontMedium, bigTextPosX, textY, Theme.LightGreyColor1);

@@ -9,6 +9,25 @@ namespace FamiStudio
     // trigger/stop/volume commands are compiled to a sparse output-clock stream.
     public sealed class Mmc5PcmExportData
     {
+        // This is a compatibility tier, not an exact clock. NSF uses 448/416
+        // CPU cycles; cartridges resample for their mapper's actual clock.
+        public const int CompatibleSampleRate = 4000;
+
+        public static bool ValidateSampleRate(Project project, int? pcmSampleRate)
+        {
+            if (pcmSampleRate.HasValue && pcmSampleRate.Value != CompatibleSampleRate)
+            {
+                Log.LogMessage(LogSeverity.Error, "PCM hardware export supports only -pcm-rate:4000 (or -pcm-rate:4k).");
+                return false;
+            }
+            if (project.UsesPcm && project.PcmRateMultiplier > 1 && !pcmSampleRate.HasValue)
+            {
+                Log.LogMessage(LogSeverity.Error, Mmc5PcmStrings.ExportPcmRateRequired);
+                return false;
+            }
+            return true;
+        }
+
         public sealed class Sample
         {
             public int Offset;
@@ -91,12 +110,22 @@ namespace FamiStudio
             }
         }
 
-        public static Mmc5PcmExportData Capture(Project project, int[] songIds, bool pal, double? sampleRate = null, int bankSize = 4096)
+        public static Mmc5PcmExportData Capture(Project project, int[] songIds, bool pal, double? sampleRate = null, int bankSize = 4096, int? pcmSampleRate = null)
         {
+            if (!ValidateSampleRate(project, pcmSampleRate))
+                throw new InvalidOperationException(Log.GetLastMessage(LogSeverity.Error));
             if (!project.UsesPcm) return null;
             if (pal != project.PalMode)
                 throw new InvalidOperationException("PCM export must use the project's PAL/NTSC region. Export a separate project for the other region.");
             if (bankSize != 4096 && bankSize != 8192 && bankSize != 16384) throw new ArgumentOutOfRangeException(nameof(bankSize));
+            if (sampleRate.HasValue && (!double.IsFinite(sampleRate.Value) || sampleRate.Value < 1000 ||
+                sampleRate.Value > Mmc5PcmTiming.GetSampleRate(pal)))
+                throw new InvalidOperationException("PCM hardware capture requires a supported compatibility clock at or below the 4 kHz tier.");
+            if (project.PcmRateMultiplier != 1)
+            {
+                project = project.DeepClone();
+                project.PcmRateMultiplier = 1;
+            }
             var result = new Mmc5PcmExportData { BankSize = bankSize, Pal = pal, SampleRate = sampleRate ?? Mmc5PcmTiming.GetSampleRate(pal) };
             var mappings = new Dictionary<(int, int, bool), int>();
             foreach (var song in project.Songs.Where(s => songIds.Contains(s.Id)))

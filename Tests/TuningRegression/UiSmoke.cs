@@ -43,6 +43,15 @@ static class UiSmoke
         glfwSetWindowSize(native, 1280, 900);
         app.Initialize(window, args.Length > 3 ? Path.GetFullPath(args[3]) : null);
         window.RunEventLoop();
+        if (args.Length > 5 && args[5] == "--pcm-sample-rate-ui")
+        {
+            PcmSampleRateUiRegression.Run(window, language, output, Capture);
+            Invoke(app, "ShutdownAudioPlayers", true);
+            Invoke(window, "DestroyWindow");
+            Init.ShutdownBaseSystems();
+            Console.WriteLine("PASS PCM sample rate UI " + language);
+            return;
+        }
         if (args.Length > 5 && args[5] == "--mmc5-pcm-ui")
         {
             Mmc5PcmUiTests.Run(window, language, output, Capture);
