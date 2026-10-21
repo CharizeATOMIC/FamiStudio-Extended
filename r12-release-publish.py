@@ -42,7 +42,7 @@ def reconstruct(args):
     m=json.loads(local_path(payload,'r12-publish-manifest.json').read_text(encoding='utf-8'))
     require(m['repository']==REPOSITORY and m['target_commit']==COMMIT and m['tag']==TAG, 'Unexpected publication target')
     require(m['prerelease'] is True and m['make_latest'] is False, 'Unexpected release flags')
-    require(m['expected_draft_marker']=='untagged-4997acaf726312a78e85', 'Unexpected draft identity')
+    require(m['expected_draft_marker']=='untagged-9561c8f1c561cb9ea9d4', 'Unexpected draft identity')
     require(len(m['assets'])==5 and len({a['name'] for a in m['assets']})==5, 'Expected exactly five distinct release assets')
     for kind in ['title','body']:
         p=local_path(payload,m[kind+'_file'])
