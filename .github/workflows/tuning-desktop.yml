@@ -1,7 +1,37 @@
 name: Tuning desktop builds
+# master holds release-upload helpers. All other source branches and release
+# tags retain CI; publication payloads must not start application builds.
 on:
   push:
+    branches-ignore: [master]
+    tags: ['r*', 'v*']
+    paths:
+      - 'FamiStudio/**'
+      - 'ThirdParty/**'
+      - 'Tests/**'
+      - 'Setup/**'
+      - 'SoundEngine/**'
+      - '*.sln'
+      - '*.props'
+      - '*.targets'
+      - 'global.json'
+      - 'NuGet.Config'
+      - 'nuget.config'
+      - '.github/workflows/tuning-desktop.yml'
   pull_request:
+    paths:
+      - 'FamiStudio/**'
+      - 'ThirdParty/**'
+      - 'Tests/**'
+      - 'Setup/**'
+      - 'SoundEngine/**'
+      - '*.sln'
+      - '*.props'
+      - '*.targets'
+      - 'global.json'
+      - 'NuGet.Config'
+      - 'nuget.config'
+      - '.github/workflows/tuning-desktop.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +53,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Manual runs launched from publication master build the source branch.
+          # Other runs keep the exact selected/event SHA, including PR merge SHA.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && 'feature/song-tuning-mixer' || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
@@ -77,3 +112,4 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --save-project work/save-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-pitch-migration work/noise-pitch-migration-tests
+
