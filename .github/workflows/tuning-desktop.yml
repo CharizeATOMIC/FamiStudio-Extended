@@ -111,3 +111,7 @@ jobs:
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --save-project work/save-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-follow work/noise-follow-tests
           dotnet run --project Tests/TuningRegression -c Release --no-build -- --noise-pitch-migration work/noise-pitch-migration-tests
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-core work/pcm-rate-core
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-model work/pcm-rate-model
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-playback work/pcm-rate-playback
+          dotnet run --project Tests/TuningRegression -c Release --no-build -- --pcm-sample-rate-export work/pcm-rate-export
