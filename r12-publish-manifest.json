@@ -2,7 +2,7 @@
   "schema": 1,
   "repository": "CharizeATOMIC/FamiStudio-Extended",
   "target_branch": "feature/song-tuning-mixer",
-  "target_commit": "66d19e4d9f95247684c3d5dd230228210caee3a7",
+  "target_commit": "33173b20b8cca975aef3269928cb371b12ab76aa",
   "tag": "r12",
   "prerelease": true,
   "make_latest": false,
@@ -46,52 +46,15 @@
     },
     {
       "name": "FamiStudio-Extended-r12-source.zip",
-      "bytes": 138263014,
-      "sha256": "0be78e948579c632d63603695a4979313364a88959ac1ee7bd3b2614464b8610",
+      "bytes": 138263360,
+      "sha256": "1bc3bc5ae73af4eac73330fc24f8bd0c1442d00b90be430ac7e31388183b6b5d",
       "source": "git_archive",
-      "prefix": "FamiStudio-Extended/",
-      "optional_chunks": [
-        {
-          "file": "r12-source.part001",
-          "bytes": 20971520,
-          "sha256": "3f2ae640c2db222bd8cee8d64efd2cdb284d900ff115188d619d8c3d115a2758"
-        },
-        {
-          "file": "r12-source.part002",
-          "bytes": 20971520,
-          "sha256": "37f303171a465880919f91446755fd6d4aebba10dbef046949c0d024283b163e"
-        },
-        {
-          "file": "r12-source.part003",
-          "bytes": 20971520,
-          "sha256": "be2bf619639012950ec6740cd4223fdeed188ee6db8d2629b8864d6a5a734224"
-        },
-        {
-          "file": "r12-source.part004",
-          "bytes": 20971520,
-          "sha256": "eadc7660e7affef87c1824e7f231ef39cf63b19cc9620904107db8d4f3734d4b"
-        },
-        {
-          "file": "r12-source.part005",
-          "bytes": 20971520,
-          "sha256": "7eada93bd7a0cfb364255a63d420a89cc04161ae994102ddb3c44b413dc75380"
-        },
-        {
-          "file": "r12-source.part006",
-          "bytes": 20971520,
-          "sha256": "a3c3f51e1faeef45b6b5764cc54919224a0c4bed79dd6946b38c959805f0f24e"
-        },
-        {
-          "file": "r12-source.part007",
-          "bytes": 12433894,
-          "sha256": "091badeb06159cfd18e9dc701f104a4239758bd291391bbf8b462e4ff6f0d895"
-        }
-      ]
+      "prefix": "FamiStudio-Extended/"
     },
     {
       "name": "FamiStudio-Extended-r12.bundle",
-      "bytes": 3589048,
-      "sha256": "a21dc1970faccc70b439319452af4addb5477665546d129d55ce4d523c7a9491",
+      "bytes": 3593095,
+      "sha256": "a191b5cf48506a8a7c52dadf15e4f1cad87cdf05da279f04eae09d8965ceeba5",
       "source": "existing_repository_file",
       "file": "FamiStudio-Extended-r12.bundle"
     },
@@ -105,10 +68,12 @@
     {
       "name": "SHA256SUMS-r12.txt",
       "bytes": 384,
-      "sha256": "e7c9c388fd623d0f8203fa901c5b6b3373e4b8fcb6db468fe259d1e6fb9d4261",
+      "sha256": "d39ef7ff2cfaeaf2697ae7fcb8514cb2ab5fb794f3e9c577ff11d74fd56ac040",
       "source": "file",
       "file": "SHA256SUMS-r12.txt"
     }
   ],
-  "source_zip_policy": "Run git archive with the exact committed tree and prefix. Refuse on any SHA difference. Optional source chunks are not part of the initial upload and require a reviewed workflow/manifest change before use."
+  "source_zip_policy": "Run git archive with the exact committed tree and prefix. Refuse on any SHA difference. Optional source chunks are not part of the initial upload and require a reviewed workflow/manifest change before use.",
+  "runtime_build_commit": "66d19e4d9f95247684c3d5dd230228210caee3a7",
+  "test_only_successor_file": "Tests/TuningRegression/DpcmEffectRegression.cs"
 }
