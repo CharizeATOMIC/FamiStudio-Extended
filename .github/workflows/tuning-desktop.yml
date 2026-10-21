@@ -143,8 +143,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' 'aad3c51253c504b69fcfcf784ab6b7e47f388b576641f796303caf633f0f2368' 'r12-publish-manifest.json' | sha256sum --check --strict
-          printf '%s  %s\n' '884da36cdc820291efa627e35b48f914a81229a6dd0eb4d0364752d5a9bf566c' 'r12-release-publish.py' | sha256sum --check --strict
+          printf '%s  %s\n' '0a41d495716ac938eadc1f25576230747a323f1b9101f4781805537a0eb2d05b' 'r12-publish-manifest.json' | sha256sum --check --strict
+          printf '%s  %s\n' 'c2c6a7938638f160f9602b082707939979bac698ba9d3d65711bc4ebfa4eec24' 'r12-release-publish.py' | sha256sum --check --strict
       - name: Reconstruct, verify and publish only the matching R12 draft
         env:
           GH_TOKEN: ${{ github.token }}
