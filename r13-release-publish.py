@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 REPOSITORY = 'CharizeATOMIC/FamiStudio-Extended'
-COMMIT = '8eb7d858696c8fc155e7f1d607745e46258451c6'
+COMMIT = '5d038c96b697f5e2539defc873ff72d31d279f4e'
 TAG = 'r13'
 API = 'https://api.github.com/repos/' + REPOSITORY
 
